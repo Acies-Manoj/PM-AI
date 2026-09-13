@@ -73,10 +73,47 @@ def _apply_ratio(df: pd.DataFrame, spec: dict) -> pd.Series | None:
     return pct.where(denominator != 0).round(1)
 
 
+def _apply_excursion_duration(df: pd.DataFrame, spec: dict) -> pd.Series | None:
+    """Count segments (rows) where the mean temp exceeds the product limit."""
+    col = spec.get("mean_column", "Mean Value")
+    limit = spec.get("limit")
+    if col not in df.columns or limit is None:
+        return None
+    series = pd.to_numeric(df[col], errors="coerce")
+    return (series > float(limit)).astype("Int64")
+
+
+def _apply_excursion_magnitude(df: pd.DataFrame, spec: dict) -> pd.Series | None:
+    """How far above the limit the mean temperature is (0 if within spec)."""
+    col = spec.get("mean_column", "Mean Value")
+    limit = spec.get("limit")
+    if col not in df.columns or limit is None:
+        return None
+    series = pd.to_numeric(df[col], errors="coerce")
+    return (series - float(limit)).clip(lower=0).round(2)
+
+
+def _apply_rate_of_change(df: pd.DataFrame, spec: dict) -> pd.Series | None:
+    """Approximate rate of change: (Max Value - Min Value) / (duration or 1)."""
+    val_col = spec.get("value_column", "Mean Value")
+    if val_col not in df.columns:
+        return None
+    series = pd.to_numeric(df[val_col], errors="coerce")
+    # Use Max - Min as a proxy when no time axis is available
+    if "Max Value" in df.columns and "Min Value" in df.columns:
+        max_v = pd.to_numeric(df["Max Value"], errors="coerce")
+        min_v = pd.to_numeric(df["Min Value"], errors="coerce")
+        return (max_v - min_v).round(2)
+    return series.diff().abs().round(2)
+
+
 _APPLIERS = {
     "lookup": _apply_lookup,
     "extract_month": _apply_extract_month,
     "ratio": _apply_ratio,
+    "excursion_duration": _apply_excursion_duration,
+    "excursion_magnitude": _apply_excursion_magnitude,
+    "rate_of_change": _apply_rate_of_change,
 }
 
 

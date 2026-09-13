@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from app.schemas import AuditIssue, FeatureResult
+from app.schemas import AuditIssue, FeatureResult, ScreeningReport
 
 
 @dataclass
@@ -20,6 +20,7 @@ class AuditSession:
     summary: str = ""
     features: list[FeatureResult] = field(default_factory=list)
     feature_skipped_notes: list[str] = field(default_factory=list)
+    screening_report: ScreeningReport | None = None
 
 
 class AuditStore:

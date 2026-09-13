@@ -1,0 +1,72 @@
+.orch-banner {
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  margin-bottom: 24px;
+  border: 1px solid;
+}
+
+.orch-banner--full {
+  background: var(--carrier-blue-tint);
+  border-color: var(--carrier-blue-tint-2);
+}
+
+.orch-banner--direct {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.orch-banner__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.orch-banner__icon {
+  font-size: 16px;
+}
+
+.orch-banner__route {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--carrier-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.orch-banner--direct .orch-banner__route {
+  color: #15803d;
+}
+
+.orch-banner__reason {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.orch-banner__description {
+  font-size: 13.5px;
+  color: var(--color-text);
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.orch-banner__questions {
+  margin-top: 8px;
+}
+
+.orch-banner__questions-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.orch-banner__questions-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--color-text);
+  line-height: 1.7;
+}

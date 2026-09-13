@@ -14,6 +14,7 @@ import {
   type FeatureDefinitionsSummary,
   type FeatureReport,
 } from "../api/audit";
+import { suggestFeatures } from "../api/analysis";
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
 import type { AuditReportsState, FilesState } from "../App";
@@ -39,6 +40,8 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
   const [previewOpen, setPreviewOpen] = useState<PreviewOpenState>({});
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggestionDraft, setSuggestionDraft] = useState("");
+  const [aiSuggestions, setAiSuggestions] = useState<import("../api/analysis").FeatureSuggestion[]>([]);
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
 
   const [defsSummary, setDefsSummary] = useState<FeatureDefinitionsSummary | null>(null);
   const [defsLoading, setDefsLoading] = useState(false);
@@ -94,12 +97,26 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
     setSuggestionDraft("");
   };
 
+  const handleAiSuggest = async () => {
+    const sessionId = slotsReady[0] ? auditReports[slotsReady[0]]!.session_id : null;
+    if (!sessionId) return;
+    setAiSuggestLoading(true);
+    try {
+      const suggestions = await suggestFeatures(sessionId, "");
+      setAiSuggestions(suggestions);
+    } catch {
+      // silently fail
+    } finally {
+      setAiSuggestLoading(false);
+    }
+  };
+
   if (AUDITED_SLOTS.every((id) => !files[id])) {
     return (
       <div className="features-page">
         <Header />
         <main className="features-page__main">
-          <StepIndicator current={3} />
+          <StepIndicator current={4} />
           <div className="features-page__empty">
             <p>No audited data yet.</p>
             <button type="button" className="features-page__btn features-page__btn--primary" onClick={() => navigate("/upload")}>
@@ -116,7 +133,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
       <div className="features-page">
         <Header />
         <main className="features-page__main">
-          <StepIndicator current={3} />
+          <StepIndicator current={4} />
           <div className="features-page__empty">
             <p>Finish resolving the data audit before features can be computed.</p>
             <button type="button" className="features-page__btn features-page__btn--primary" onClick={() => navigate("/audit")}>
@@ -133,7 +150,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
       <div className="features-page">
         <Header />
         <main className="features-page__main">
-          <StepIndicator current={3} />
+          <StepIndicator current={4} />
           <div className="features-page__empty">
             <p>
               No Customer KPI Profile has been uploaded. Feature definitions (what to compute, and any
@@ -153,7 +170,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
     <div className="features-page">
       <Header />
       <main className="features-page__main">
-        <StepIndicator current={3} />
+        <StepIndicator current={4} />
 
         <div className="features-page__intro">
           <h1 className="features-page__heading">Feature Engineering</h1>
@@ -229,10 +246,38 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
 
         <section className="features-page__slot">
           <h2 className="features-page__slot-title">Want more features?</h2>
-          <p className="features-page__suggest-hint">
+
+          <div className="features-page__ai-suggest-row">
+            <button
+              type="button"
+              className="features-page__btn features-page__btn--secondary"
+              onClick={handleAiSuggest}
+              disabled={aiSuggestLoading || slotsReady.length === 0}
+            >
+              {aiSuggestLoading ? "Thinking…" : "✦ AI Suggest Features"}
+            </button>
+            <span className="features-page__suggest-hint">
+              Let the Feature Agent propose cold-chain features based on your data columns.
+            </span>
+          </div>
+
+          {aiSuggestions.length > 0 && (
+            <ul className="features-page__ai-list">
+              {aiSuggestions.map((s, idx) => (
+                <li key={idx} className="features-page__ai-item">
+                  <strong>{s.name}</strong> <span className="features-page__ai-type">({s.feature_type})</span>
+                  <br />
+                  <span>{s.description}</span>
+                  <br />
+                  <em className="features-page__ai-rationale">{s.rationale}</em>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="features-page__suggest-hint" style={{ marginTop: "16px" }}>
             Add a new entry to your Customer KPI Profile JSON and re-upload it on the Upload page to compute
-            it. Note anything you'd want here in the meantime -- it's captured for the next round, not
-            computed automatically.
+            it. Note anything you'd want here in the meantime.
           </p>
           <div className="features-page__suggest-input-row">
             <input
@@ -259,8 +304,11 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
         </section>
 
         <div className="features-page__actions">
-          <button type="button" className="features-page__btn features-page__btn--secondary" onClick={() => navigate("/audit")}>
-            Back to Audit
+          <button type="button" className="features-page__btn features-page__btn--secondary" onClick={() => navigate("/screening")}>
+            Back to Screening
+          </button>
+          <button type="button" className="features-page__btn features-page__btn--primary" onClick={() => navigate("/analysis")}>
+            Continue to Analysis
           </button>
         </div>
       </main>

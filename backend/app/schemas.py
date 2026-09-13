@@ -1,4 +1,4 @@
-"""Pydantic response models for the data audit API."""
+"""Pydantic response models for all API stages of the pipeline."""
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -73,3 +73,122 @@ class FeatureDefinitionsSummary(BaseModel):
     filename: str
     feature_count: int
     feature_names: list[str]
+
+
+# ── Phase 1: Orchestrator ────────────────────────────────────────────────────
+
+class BriefAnalysis(BaseModel):
+    key_questions: list[str]
+    pipeline_description: str
+
+
+# ── Phase 2: Screening ───────────────────────────────────────────────────────
+
+class FlaggedTrip(BaseModel):
+    trip_id: str
+    product: str
+    mean_temp: float
+    temp_limit: float | None = None
+    exceedance: float | None = None
+    segment_days_above: int = 0
+    origin: str | None = None
+    destination: str | None = None
+
+
+class ScreeningReport(BaseModel):
+    session_id: str
+    total_trips: int
+    flagged_count: int
+    flagged_trips: list[FlaggedTrip]
+    product_means: dict[str, float]
+    screening_notes: list[str]
+
+
+class TripTrace(BaseModel):
+    trip_id: str
+    timestamps: list[str]
+    temperatures: list[float | None]
+    light_events: list[str]
+
+
+class ScreeningRequest(BaseModel):
+    session_id: str
+    rawdata_session_id: str | None = None
+    custom_thresholds: dict[str, float] | None = None
+
+
+# ── Phase 3: Feature Agent ───────────────────────────────────────────────────
+
+class FeatureSuggestion(BaseModel):
+    name: str
+    description: str
+    rationale: str
+    feature_type: str
+
+
+class AIFeatureSuggestRequest(BaseModel):
+    session_id: str
+    brief: str = ""
+
+
+class AIFeatureGenerateRequest(BaseModel):
+    session_id: str
+    user_request: str
+
+
+class AIFeatureCodeResult(BaseModel):
+    name: str
+    description: str
+    output_column: str
+    code: str
+    success: bool = False
+    sample_values: list[Any] = []
+    error: str | None = None
+
+
+# ── Phase 4: Analysis ────────────────────────────────────────────────────────
+
+class AnalysisStep(BaseModel):
+    step_number: int
+    step_type: str
+    content: str
+    chart_type: str | None = None
+    drill_down_suggestions: list[str] = []
+    formula_code: str | None = None
+    compute_result: dict[str, Any] | None = None
+
+
+class StartAnalysisRequest(BaseModel):
+    session_id: str
+    brief: str
+
+
+class NextStepRequest(BaseModel):
+    user_ask: str | None = None
+
+
+class ComputeRequest(BaseModel):
+    ask: str
+
+
+class AnalysisState(BaseModel):
+    analysis_id: str
+    session_id: str
+    brief: str
+    steps: list[AnalysisStep]
+    status: str
+
+
+# ── Phase 5: Report ──────────────────────────────────────────────────────────
+
+class ReportRequest(BaseModel):
+    analysis_id: str
+    format: Literal["html", "markdown"] = "html"
+
+
+class ReportOutput(BaseModel):
+    report_id: str
+    analysis_id: str
+    title: str
+    format: str
+    content: str

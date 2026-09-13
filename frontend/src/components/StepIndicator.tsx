@@ -1,14 +1,19 @@
 import "./StepIndicator.css";
 
+type StepNumber = 1 | 2 | 3 | 4 | 5 | 6;
+
 interface StepIndicatorProps {
-  current: 1 | 2 | 3;
+  current: StepNumber;
 }
 
-const STEPS = [
+const STEPS: { step: StepNumber; label: string }[] = [
   { step: 1, label: "Upload" },
   { step: 2, label: "Audit" },
-  { step: 3, label: "Features" },
-] as const;
+  { step: 3, label: "Screening" },
+  { step: 4, label: "Features" },
+  { step: 5, label: "Analysis" },
+  { step: 6, label: "Report" },
+];
 
 export default function StepIndicator({ current }: StepIndicatorProps) {
   return (
@@ -17,7 +22,11 @@ export default function StepIndicator({ current }: StepIndicatorProps) {
         <li
           key={step}
           className={`step-indicator__item ${
-            step === current ? "step-indicator__item--current" : step < current ? "step-indicator__item--done" : ""
+            step === current
+              ? "step-indicator__item--current"
+              : step < current
+              ? "step-indicator__item--done"
+              : ""
           }`}
         >
           <span className="step-indicator__badge">{step < current ? "✓" : step}</span>

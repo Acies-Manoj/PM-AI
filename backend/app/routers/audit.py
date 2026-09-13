@@ -66,7 +66,7 @@ async def upload_for_audit(file: UploadFile = File(...), source: str = Form(...)
     try:
         summary = generate_summary(source, file.filename or "upload", len(df), len(df.columns), issues)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Data audit agent (Groq) is unavailable: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Data audit agent is unavailable: {exc}") from exc
     if parse_warnings:
         summary = " ".join(parse_warnings) + " " + summary
 

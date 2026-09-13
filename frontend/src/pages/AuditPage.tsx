@@ -141,9 +141,9 @@ export default function AuditPage({
             type="button"
             className="audit-page__btn audit-page__btn--primary"
             disabled={!canContinue}
-            onClick={() => navigate("/features")}
+            onClick={() => navigate("/screening")}
           >
-            Continue to Features
+            Continue to Screening
           </button>
         </div>
 

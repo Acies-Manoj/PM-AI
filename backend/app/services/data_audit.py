@@ -6,7 +6,7 @@ trusting stale row indices computed at audit time.
 
 No LLM involved here on purpose: duplicate/outlier detection has to be
 reliable, not a plausible-sounding guess -- see audit_agent.py for the one
-place Groq is used (the narrative summary only).
+place an LLM is used (the narrative summary only).
 
 Column-level checks (empty/high-null/constant columns) are "selective":
 each fires as ONE issue carrying every offending column in `selectable_items`

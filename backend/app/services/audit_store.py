@@ -20,6 +20,17 @@ class AuditSession:
     summary: str = ""
     features: list[FeatureResult] = field(default_factory=list)
     feature_skipped_notes: list[str] = field(default_factory=list)
+    # Features page: ids the user unchecked from the "Customer KPI Profile"
+    # (Defined) or "Client-Requested" lists -- same exclusions-not-inclusions
+    # rationale as excluded_pivot_ids below.
+    excluded_feature_ids: list[str] = field(default_factory=list)
+    # The AI-suggested/custom/client-requested feature specs last applied on
+    # top of the uploaded Customer KPI Profile -- remembered so a caller that
+    # only wants to change something else (or a fresh page load that never
+    # resent the accepted list) can recompute without silently dropping
+    # everything this session already added. Same role as extra_pivot_defs
+    # below, for features instead of analyses.
+    extra_feature_defs: list[dict] = field(default_factory=list)
     # Undo support for resolved issues that actually mutated `df` (dropped
     # columns / removed rows). `mutation_stack` is a LIFO of issue ids -- only
     # the most recent one is safe to revert without re-deriving every
@@ -40,6 +51,19 @@ class AuditSession:
     # mutate it, so there's no snapshot/undo bookkeeping needed here.
     pivots: list[PivotResult] = field(default_factory=list)
     pivot_skipped_notes: list[str] = field(default_factory=list)
+    # Analysis page: ids the user unchecked from the "Analysis Profile"
+    # (Defined) list -- stored as exclusions, not inclusions, same rationale
+    # as excluded_slide_keys below, so a defined analysis that only becomes
+    # computable later (e.g. after a feature it needs is added) is included
+    # by default rather than silently missing.
+    excluded_pivot_ids: list[str] = field(default_factory=list)
+    # Pivots created by clicking "Add" on a per-chart drill-down suggestion
+    # (see routers/analysis.py's drill-down/apply) -- kept separately from
+    # `pivots` because they're a snapshot of ONE Formula Agent answer, not
+    # part of the Analysis Profile/AI-suggestion/custom-KPI definition sets
+    # `_combined_pivot_defs` recomputes from scratch on every apply_pivots
+    # call, so they'd otherwise be wiped out by the next recompute.
+    drill_down_pivots: list[PivotResult] = field(default_factory=list)
     # The AI-suggested/custom pivot definitions last applied on top of the
     # uploaded Analysis Profile -- remembered so a caller that only wants to
     # change slicer filters (e.g. the Report page) can recompute without
@@ -68,6 +92,12 @@ class AuditSession:
     # Per-pivot custom slide title -- a pivot id absent here uses its own
     # name (the default). Report-time only, purely cosmetic.
     report_titles: dict[str, str] = field(default_factory=dict)
+    # Keys (see report_generator.slide_key) of the slides the user switched
+    # OFF in the Report page's preview. Stored as exclusions, not
+    # inclusions, so a slide that only appears later -- because a filter was
+    # widened, or another analysis added -- is in the deck by default rather
+    # than silently missing from it.
+    excluded_slide_keys: list[str] = field(default_factory=list)
     # Last-computed overall analysis (see routers/analysis.py's /overall
     # endpoint) -- kept here so the report generator can reuse the exact
     # highlights/narrative the user already saw on screen instead of

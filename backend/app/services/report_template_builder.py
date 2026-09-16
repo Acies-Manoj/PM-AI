@@ -9,8 +9,8 @@ _add_pivot_slides) needing to know or care which one it's talking to.
 
 Content is placed into the TEMPLATE's own named layouts and their
 placeholders -- title/subtitle on a "Cover" layout, a chart into a "Single
-Chart" layout's content placeholder, narrative text into a "Single Column"
-layout -- rather than fixed Inches() coordinates, since the template's own
+Chart" layout's content placeholder, the summary narrative + highlight
+bullets into a "Single Column" layout -- rather than fixed Inches() coordinates, since the template's own
 slide size and branding (colors, fonts, footer, logo) aren't ours to assume.
 Chart styling (data-label size, gridlines, axis titles) still goes through
 report_generator's module-level style_* helpers so a template-based deck
@@ -29,7 +29,6 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
-from app.schemas import OverallAnalysisReport
 from app.services import chart_xml, report_generator as rg, report_style as style
 
 COVER_LAYOUT_NAMES = ["Cover 1, example 1", "Cover 1", "Cover 2, example 1", "Cover 2"]
@@ -93,7 +92,8 @@ def _remove_placeholder(slide, *idx_candidates) -> None:
 
 
 class TemplateReportBuilder:
-    def __init__(self, template_bytes: bytes):
+    def __init__(self, template_bytes: bytes, phrases: dict[str, str] | None = None):
+        self.phrases = phrases or {}
         self.prs = Presentation(io.BytesIO(template_bytes))
         master = self.prs.slide_masters[0]
         _remove_existing_slides(self.prs)
@@ -255,7 +255,10 @@ class TemplateReportBuilder:
         rg.set_axis_title(chart.value_axis, metric_label)
         rg.set_axis_title(chart.category_axis, category_axis_title)
 
-    def add_summary_slide(self, heading: str, overall: OverallAnalysisReport | None):
+    def add_summary_slide(self, heading: str, narrative: str | None, bullets: list[str]):
+        """Same contract as ReportBuilder.add_summary_slide -- `narrative`
+        and `bullets` arrive already translated and already formatted (see
+        report_generator.plan_report); this only places them."""
         slide = self._new_slide(self._summary_layout)
         self._set_title(slide, heading)
         content = _placeholder(slide, *CONTENT_IDX_CANDIDATES)
@@ -263,13 +266,13 @@ class TemplateReportBuilder:
             return
         tf = content.text_frame
         tf.word_wrap = True
-        if overall is None:
-            tf.text = "No overall analysis had been generated for this session yet."
+        if narrative is None and not bullets:
+            tf.text = self.phrases.get(rg.NO_HIGHLIGHTS_CAPTION, rg.NO_HIGHLIGHTS_CAPTION)
             return
-        tf.text = overall.narrative
-        for h in overall.highlights:
-            p = tf.add_paragraph()
-            p.text = f"•  {h.label}: {h.value}"
+        lines = ([narrative] if narrative else []) + [f"•  {b}" for b in bullets]
+        tf.text = lines[0]
+        for line in lines[1:]:
+            tf.add_paragraph().text = line
 
     def save_bytes(self) -> bytes:
         buffer = io.BytesIO()

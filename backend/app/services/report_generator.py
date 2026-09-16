@@ -9,6 +9,21 @@ slide, heading, and chart is 100% rule-driven from the pivot's own shape
 The one exception is the narrative sentence on the summary slide, which is
 already-computed prose handed in via `overall.narrative` -- this module
 never reinterprets a raw number itself.
+
+Generation runs in two steps. `plan_report` decides the WHOLE deck --
+every slide, its heading, and the exact chart data behind it -- and returns
+that as a list of plain `ReportSlide` records. `build_report` then renders
+that plan into PPTX. The Report page's preview reads the very same plan
+(see routers/analysis.py's /report-preview), so what a user previews and
+deselects is literally what the file is built from, not a second guess at
+it.
+
+`plan_report`'s `language` param optionally translates the report's PROSE
+via translation_service -- its own fixed phrases (see TRANSLATABLE_PHRASES)
+plus each slide's heading and caption and the summary narrative. The values
+that have to keep matching the data -- category values, column names, metric
+labels -- are never translated, so a translated deck still describes the
+same numbers by the same names.
 """
 import io
 import re
@@ -23,12 +38,57 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
-from app.schemas import OverallAnalysisReport, PivotResult
-from app.services import chart_xml, pivot_engine, report_style as style
+from app.schemas import OverallAnalysisReport, PivotResult, ReportSlide
+from app.services import chart_xml, pivot_engine, report_style as style, translation_service
 
 MAX_CHART_ROWS = 20
 
 REPORT_NAME = "Eduka Report"  # standing report title/filename -- not derived from the uploaded source file's name
+
+# Fixed English phrases the report builder writes itself. Translated as one
+# batch per report/language in plan_report, then looked up via the `phrases`
+# dict the plan and both builders carry -- along with the authored prose
+# plan_report adds to that same batch: each slide's heading and caption (a
+# pivot's name/description, or the user's own slide title) and the summary
+# narrative.
+#
+# What is NEVER translated is a value that has to keep matching the data:
+# category labels read out of the spreadsheet (Italy, a carrier name), the
+# column names used as axis titles, and the metric labels from the Analysis
+# Profile. Translating those would leave the deck describing itself in one
+# language and its own numbers in another. PROGRAM_TITLE and REPORT_NAME are
+# excluded for a different reason -- they're product/brand names, not
+# descriptive text, so they stay in English the way the frontend's own
+# "Program Manager AI" branding does.
+SUMMARY_HEADING = "Summary"
+NO_HIGHLIGHTS_CAPTION = "No overall analysis had been generated for this session yet."
+GROUPED_BY_PHRASE = "grouped by"
+
+# Highlight-label keyword prefixes (see overall_analysis.py's
+# build_highlights) -- translated once, then substituted back onto the FRONT
+# of the label ahead of whatever data-derived text follows (a feature/pivot/
+# metric name), via translate_highlight_label below, so a data value is
+# never itself sent to the translator.
+HIGHLIGHT_LABEL_PREFIXES = ["Total Rows Analyzed", "Most common", "Highest", "Lowest", "Avg"]
+
+TRANSLATABLE_PHRASES = [
+    SUMMARY_HEADING, NO_HIGHLIGHTS_CAPTION, GROUPED_BY_PHRASE, style.PROPRIETARY_TEXT, *HIGHLIGHT_LABEL_PREFIXES,
+]
+
+
+def translate_highlight_label(label: str, phrases: dict[str, str]) -> str:
+    """Swaps in the translated version of whichever HIGHLIGHT_LABEL_PREFIXES
+    entry `label` starts with, leaving everything after it (the actual
+    feature/pivot/metric name -- a data value) untouched. Returns `label`
+    unchanged if it doesn't match a known prefix shape."""
+    for prefix in sorted(HIGHLIGHT_LABEL_PREFIXES, key=len, reverse=True):
+        translated_prefix = phrases.get(prefix, prefix)
+        if label == prefix:
+            return translated_prefix
+        if label.startswith(prefix + " "):
+            return translated_prefix + label[len(prefix):]
+    return label
+
 
 PRIMARY = RGBColor.from_string(style.BAR_COLOR_HEX)
 LINE_COLOR = RGBColor.from_string(style.LINE_COLOR_HEX)
@@ -181,7 +241,8 @@ def style_native_chart(chart, number_format: str, single_series: bool):
 
 
 class ReportBuilder:
-    def __init__(self):
+    def __init__(self, phrases: dict[str, str] | None = None):
+        self.phrases = phrases or {}
         self.prs = Presentation()
         self.prs.slide_width = style.SLIDE_W
         self.prs.slide_height = style.SLIDE_H
@@ -242,14 +303,14 @@ class ReportBuilder:
 
         tb = slide.shapes.add_textbox(Inches(1.25), style.SLIDE_H - Inches(0.35), Inches(2.5), Inches(0.25))
         p = tb.text_frame.paragraphs[0]
-        p.text = style.PROGRAM_TITLE
+        p.text = style.PROGRAM_TITLE  # brand name -- always English, never translated
         p.font.size = Pt(12)
         p.font.color.rgb = MUTED
         p.font.name = style.FONT_BODY
 
         proprietary = slide.shapes.add_textbox(Inches(3.85), style.SLIDE_H - Inches(0.35), Inches(2.3), Inches(0.25))
         pr = proprietary.text_frame.paragraphs[0]
-        pr.text = style.PROPRIETARY_TEXT
+        pr.text = self.phrases.get(style.PROPRIETARY_TEXT, style.PROPRIETARY_TEXT)
         pr.font.size = Pt(12)
         pr.alignment = PP_ALIGN.CENTER
         pr.font.color.rgb = MUTED
@@ -403,29 +464,37 @@ class ReportBuilder:
         set_axis_title(chart.category_axis, category_axis_title)
         self._footer(slide)
 
-    def add_summary_slide(self, heading: str, overall: OverallAnalysisReport | None):
+    def add_summary_slide(self, heading: str, narrative: str | None, bullets: list[str]):
+        """`narrative` and `bullets` arrive already translated and already
+        formatted as finished lines (see plan_report) -- this only lays them
+        out. `narrative` is None, with no bullets, when no overall analysis
+        was ever generated for the session."""
         slide = self._new_slide()
         self._header(slide, heading)
 
-        if overall is None:
-            self._caption(slide, "No overall analysis had been generated for this session yet.", top=Inches(0.6))
+        if narrative is None and not bullets:
+            caption = self.phrases.get(NO_HIGHLIGHTS_CAPTION, NO_HIGHLIGHTS_CAPTION)
+            self._caption(slide, caption, top=Inches(0.6))
             self._footer(slide)
             return
 
-        box = slide.shapes.add_textbox(Inches(0.5), Inches(0.75), style.SLIDE_W - Inches(1.0), Inches(1.5))
-        tf = box.text_frame
-        tf.word_wrap = True
-        tf.text = overall.narrative
-        tf.paragraphs[0].font.size = Pt(12)
-        tf.paragraphs[0].font.color.rgb = DARK_TEXT
-        tf.paragraphs[0].font.name = style.FONT_BODY
+        list_top = Inches(0.75)
+        if narrative:
+            box = slide.shapes.add_textbox(Inches(0.5), Inches(0.75), style.SLIDE_W - Inches(1.0), Inches(1.5))
+            tf = box.text_frame
+            tf.word_wrap = True
+            tf.text = narrative
+            tf.paragraphs[0].font.size = Pt(12)
+            tf.paragraphs[0].font.color.rgb = DARK_TEXT
+            tf.paragraphs[0].font.name = style.FONT_BODY
+            list_top = Inches(2.4)
 
-        list_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.4), style.SLIDE_W - Inches(1.0), style.SLIDE_H - Inches(2.9))
+        list_box = slide.shapes.add_textbox(Inches(0.5), list_top, style.SLIDE_W - Inches(1.0), style.SLIDE_H - list_top - Inches(0.5))
         tf2 = list_box.text_frame
         tf2.word_wrap = True
-        for i, h in enumerate(overall.highlights):
+        for i, bullet in enumerate(bullets):
             p = tf2.paragraphs[0] if i == 0 else tf2.add_paragraph()
-            p.text = f"•  {h.label}: {h.value}"
+            p.text = f"•  {bullet}"
             p.font.size = Pt(12)
             p.font.color.rgb = DARK_TEXT
             p.font.name = style.FONT_BODY
@@ -442,13 +511,23 @@ def _percent_metric(pivot: PivotResult) -> str | None:
     return next((m for m in pivot.metric_labels if "%" in m), None)
 
 
-def _add_pivot_slides(builder: ReportBuilder, pivot: PivotResult) -> None:
-    """Exactly ONE slide per pivot, whatever its shape -- mirrors the
-    reference GenericReportBuilder, where a pivot maps to a single slide
-    call (add_grouped_bar_slide / add_combo_slide / add_simple_chart_slide),
-    never one slide per metric."""
+def _plan_pivot_chart(pivot: PivotResult, phrases: dict[str, str], description: str) -> dict | None:
+    """Decides the ONE chart a pivot becomes, whatever its shape -- mirrors
+    the reference GenericReportBuilder, where a pivot maps to a single slide,
+    never one slide per metric. Returns a self-contained chart spec (chart
+    type + the exact categories/values that go on the slide), or None when
+    the pivot has nothing chartable.
+
+    `description` is the slide's caption, already translated by the caller --
+    taken as a parameter rather than read off `pivot.description` here so the
+    grouped-bar case can splice an untranslated column name into translated
+    prose without this function needing to know about languages.
+
+    The returned dict is both what `_render_chart_slide` draws into the deck
+    and what the Report page's preview draws on screen -- keeping that
+    decision in one place is what stops the preview drifting from the file."""
     if pivot.row_count == 0:
-        return
+        return None
 
     if len(pivot.group_by) == 2:
         level1, level2 = pivot.group_by
@@ -459,12 +538,16 @@ def _add_pivot_slides(builder: ReportBuilder, pivot: PivotResult) -> None:
         metric_label = pivot.metric_labels[0]
         groups = _grouped_bar_data(pivot.rows, level1, level2, metric_label)
         if groups:
-            builder.add_grouped_bar_slide(
-                heading=pivot.name,
-                description=f"{pivot.description}  (grouped by {level2})",
-                groups=groups, y_axis_title=metric_label, category_axis_title=level1,
-            )
-            return
+            grouped_by = phrases.get(GROUPED_BY_PHRASE, GROUPED_BY_PHRASE)
+            return {
+                "type": "grouped_bar",
+                # `level2` is a column name -- spliced in untranslated,
+                # around prose that isn't.
+                "description": f"{description}  ({grouped_by} {level2})",
+                "groups": [[key, [[l2, v] for l2, v in leaves]] for key, leaves in groups],
+                "y_axis_title": metric_label,
+                "category_axis_title": level1,
+            }
 
     if len(pivot.group_by) == 1 and len(pivot.metric_labels) == 2:
         pct_label = _percent_metric(pivot)
@@ -474,12 +557,16 @@ def _add_pivot_slides(builder: ReportBuilder, pivot: PivotResult) -> None:
             pivot.rows, pivot.group_by[0], bar_label, other_label, sort_by_count=not _is_trend_pivot(pivot)
         )
         if categories:
-            builder.add_combo_slide(
-                heading=pivot.name, description=pivot.description, categories=categories,
-                category_axis_title=pivot.group_by[0],
-                bar_name=bar_label, bar_values=bar_values, line_name=other_label, line_values=line_values,
-            )
-            return
+            return {
+                "type": "combo",
+                "description": description,
+                "categories": categories,
+                "category_axis_title": pivot.group_by[0],
+                "bar_name": bar_label,
+                "bar_values": bar_values,
+                "line_name": other_label,
+                "line_values": line_values,
+            }
 
     # Fallback: a single simple chart on the first metric that actually has
     # numeric data -- covers a plain single-group-by/single-metric pivot,
@@ -490,14 +577,44 @@ def _add_pivot_slides(builder: ReportBuilder, pivot: PivotResult) -> None:
         rows = _numeric_rows(pivot.rows, metric_label)[:MAX_CHART_ROWS]
         if not rows:
             continue
-        categories = [" / ".join(str(r.get(c, "")) for c in pivot.group_by) for r in rows]
-        values = [r[metric_label] for r in rows]
-        builder.add_simple_chart_slide(
-            heading=pivot.name, description=pivot.description,
-            categories=categories, category_axis_title=" / ".join(pivot.group_by),
-            metric_label=metric_label, values=values, is_trend=_is_trend_pivot(pivot),
+        return {
+            "type": "simple",
+            "description": description,
+            "categories": [" / ".join(str(r.get(c, "")) for c in pivot.group_by) for r in rows],
+            "category_axis_title": " / ".join(pivot.group_by),
+            "metric_label": metric_label,
+            "values": [r[metric_label] for r in rows],
+            "is_trend": _is_trend_pivot(pivot),
+        }
+
+    return None
+
+
+def _render_chart_slide(builder, slide: ReportSlide) -> None:
+    """Draws one planned chart slide with whichever builder is in play --
+    both expose the same add_*_slide signatures, so this never needs to know
+    which one it's talking to."""
+    chart = slide.chart or {}
+    description = slide.subtitle or ""
+    if chart["type"] == "grouped_bar":
+        builder.add_grouped_bar_slide(
+            heading=slide.title, description=description,
+            groups=[(key, [(l2, v) for l2, v in leaves]) for key, leaves in chart["groups"]],
+            y_axis_title=chart["y_axis_title"], category_axis_title=chart["category_axis_title"],
         )
-        return
+    elif chart["type"] == "combo":
+        builder.add_combo_slide(
+            heading=slide.title, description=description, categories=chart["categories"],
+            category_axis_title=chart["category_axis_title"],
+            bar_name=chart["bar_name"], bar_values=chart["bar_values"],
+            line_name=chart["line_name"], line_values=chart["line_values"],
+        )
+    else:
+        builder.add_simple_chart_slide(
+            heading=slide.title, description=description, categories=chart["categories"],
+            category_axis_title=chart["category_axis_title"], metric_label=chart["metric_label"],
+            values=chart["values"], is_trend=chart["is_trend"],
+        )
 
 
 MAX_COMBOS_PER_PIVOT = 12
@@ -567,6 +684,140 @@ def resolve_default_scope(pivot_name: str, active_columns: list[str]) -> list[st
     return [c for c in active_columns if c not in excluded]
 
 
+COVER_SLIDE_KEY = "cover"
+SUMMARY_SLIDE_KEY = "summary"
+
+
+def slide_key(pivot_id: str, combo_label: str) -> str:
+    """A chart slide's identity, stable across re-plans: the pivot it came
+    from plus the filter combo that produced it. Deliberately NOT positional
+    -- a user deselecting "Carrier Ranking - Italy" has to keep meaning that
+    same slide after they add another analysis above it, or after a combo
+    that produced nothing drops out of the plan."""
+    return f"{pivot_id}|{combo_label}"
+
+
+def plan_report(
+    source_label: str,
+    df: pd.DataFrame,
+    pivots: list[PivotResult],
+    definitions: list[dict],
+    report_filters: list[dict],
+    pivot_filter_scope: dict[str, list[str]] | None,
+    report_titles: dict[str, str] | None,
+    overall: OverallAnalysisReport | None,
+    language: str = "en",
+    excluded_keys: list[str] | None = None,
+) -> tuple[list[ReportSlide], dict[str, str]]:
+    """Works out the entire deck -- every slide and the exact chart data
+    behind it -- WITHOUT touching python-pptx, so the Report page can render
+    the same plan as a preview and build_report can render it as a file.
+    Returns (slides, phrases); `phrases` is the translation lookup the
+    builders still need for the bits they write themselves (the footer).
+
+    Each pivot is recomputed fresh from the raw data using the one shared
+    `report_filters`, scoped down per pivot by `pivot_filter_scope` first (a
+    pivot id absent there uses every active column, i.e. the same scope
+    everywhere). A column with 2+ selected values that survives scoping fans
+    out into one slide per value for THAT pivot (see _report_filter_combos)
+    -- e.g. pivot_1 scoped to just Country of Origin ignores an Origin
+    multiplier entirely, while pivot_2 scoped to Country of Origin + Origin
+    still multiplies by it. A pivot whose spec has gone missing, or that
+    ends up with zero rows (or nothing chartable) for a given combo, is
+    silently left out rather than breaking the whole export.
+
+    `language` is a translation_service.SUPPORTED_LANGUAGES code (or "en",
+    the default/no-op). Prose is translated -- TRANSLATABLE_PHRASES, every
+    slide heading and caption, and the summary narrative. Values that have to
+    keep matching the data (category values from the uploaded spreadsheet,
+    column names used as axis titles, Analysis Profile metric labels) are
+    spliced back in untranslated.
+
+    `excluded_keys` doesn't drop slides from the plan -- it marks them
+    `included=False`, so the preview can still show the user what they've
+    switched off. build_report is what actually skips them.
+    """
+    excluded = set(excluded_keys or [])
+    report_titles = report_titles or {}
+    narrative = overall.narrative if overall and overall.narrative else None
+
+    # One translation call for the whole report: the builder's own fixed
+    # phrases, the summary narrative, and every slide's heading + caption.
+    # Batched here rather than per-slide so a 12-combo pivot costs the same
+    # one round trip as a single-slide one -- its 12 headings share the same
+    # base title, and translate_many de-duplicates before it calls out.
+    authored = [text for p in pivots for text in (report_titles.get(p.id, p.name), p.description) if text]
+    batch = list(TRANSLATABLE_PHRASES) + ([narrative] if narrative else []) + authored
+    phrases = translation_service.translate_many(batch, language)
+
+    slides: list[ReportSlide] = [
+        ReportSlide(
+            key=COVER_SLIDE_KEY,
+            kind="cover",
+            title=source_label,
+            subtitle=_date_range_label(df),
+            # The cover carries the deck's identity (and its page-1 slot), so
+            # unlike every other slide it isn't the user's to switch off.
+            included=True,
+        )
+    ]
+
+    defs_by_id = {d["id"]: d for d in definitions}
+    pivot_filter_scope = pivot_filter_scope or {}
+
+    for pivot in pivots:
+        spec = defs_by_id.get(pivot.id)
+        if not spec:
+            continue
+        allowed_columns = pivot_filter_scope.get(pivot.id)
+        if allowed_columns is None:
+            allowed_columns = resolve_default_scope(pivot.name, [f["column"] for f in report_filters])
+        scoped_filters = (
+            report_filters if allowed_columns is None else [f for f in report_filters if f["column"] in allowed_columns]
+        )
+        fixed_columns = {
+            f["column"] for f in scoped_filters
+            if not (f.get("op") == "in" and isinstance(f.get("value"), list) and len(f["value"]) > 1)
+        }
+        for combo in _report_filter_combos(scoped_filters):
+            results, _ = pivot_engine.apply_pivots(df, [spec], pivot_filters={spec["id"]: combo})
+            if not results:
+                continue
+            base_title = report_titles.get(pivot.id, pivot.name)
+            chart = _plan_pivot_chart(results[0], phrases, phrases.get(pivot.description, pivot.description))
+            if chart is None:
+                continue
+            label = _combo_label(combo, fixed_columns)
+            # Only the base title is translated -- `label` is a category
+            # value out of the spreadsheet, so it's appended as-is.
+            base_title = phrases.get(base_title, base_title)
+            key = slide_key(pivot.id, label)
+            slides.append(ReportSlide(
+                key=key,
+                kind="chart",
+                title=f"{base_title} - {label}" if label else base_title,
+                subtitle=chart.pop("description", None),
+                chart=chart,
+                pivot_id=pivot.id,
+                combo_label=label or None,
+                included=key not in excluded,
+            ))
+
+    slides.append(ReportSlide(
+        key=SUMMARY_SLIDE_KEY,
+        kind="summary",
+        title=phrases.get(SUMMARY_HEADING, SUMMARY_HEADING),
+        narrative=phrases.get(narrative, narrative) if narrative else None,
+        bullets=[
+            f"{translate_highlight_label(h.label, phrases)}: {h.value}"
+            for h in (overall.highlights if overall else [])
+        ],
+        included=SUMMARY_SLIDE_KEY not in excluded,
+    ))
+
+    return slides, phrases
+
+
 def build_report(
     source_label: str,
     df: pd.DataFrame,
@@ -577,17 +828,12 @@ def build_report(
     report_titles: dict[str, str] | None,
     overall: OverallAnalysisReport | None,
     template_bytes: bytes | None = None,
+    language: str = "en",
+    excluded_keys: list[str] | None = None,
 ) -> bytes:
-    """Builds the deck from EVERY current pivot, each recomputed fresh from
-    the raw data using the one shared `report_filters` -- scoped down per
-    pivot by `pivot_filter_scope` first (a pivot id absent there uses every
-    active column, i.e. the same scope everywhere). A column with 2+
-    selected values that survives scoping fans out into one slide per value
-    for THAT pivot (see _report_filter_combos) -- e.g. pivot_1 scoped to
-    just Country of Origin ignores an Origin multiplier entirely, while
-    pivot_2 scoped to Country of Origin + Origin still multiplies by it. A
-    pivot whose spec has gone missing, or that ends up with zero rows for a
-    given combo, is silently skipped rather than breaking the whole export.
+    """Renders the plan `plan_report` produced (see its docstring for how
+    the slide list itself is decided) into a .pptx, skipping any slide the
+    user deselected on the Report page.
 
     `template_bytes` is an optional user-uploaded .pptx (see
     report_template_store.py) that overrides the permanent built-in default
@@ -601,43 +847,29 @@ def build_report(
     expose the same add_*_slide methods, so nothing below this line needs
     to know or care which one it's talking to.
     """
+    slides, phrases = plan_report(
+        source_label=source_label, df=df, pivots=pivots, definitions=definitions,
+        report_filters=report_filters, pivot_filter_scope=pivot_filter_scope,
+        report_titles=report_titles, overall=overall, language=language, excluded_keys=excluded_keys,
+    )
+
     if not template_bytes and style.DEFAULT_TEMPLATE_PATH.exists():
         template_bytes = style.DEFAULT_TEMPLATE_PATH.read_bytes()
 
     if template_bytes:
         from app.services.report_template_builder import TemplateReportBuilder
-        builder = TemplateReportBuilder(template_bytes)
+        builder = TemplateReportBuilder(template_bytes, phrases=phrases)
     else:
-        builder = ReportBuilder()
-    builder.add_title_slide(source_label, _date_range_label(df))
+        builder = ReportBuilder(phrases=phrases)
 
-    defs_by_id = {d["id"]: d for d in definitions}
-    pivot_filter_scope = pivot_filter_scope or {}
-    report_titles = report_titles or {}
-
-    for pivot in pivots:
-        spec = defs_by_id.get(pivot.id)
-        if not spec:
+    for slide in slides:
+        if not slide.included:
             continue
-        allowed_columns = pivot_filter_scope.get(pivot.id)
-        if allowed_columns is None:
-            allowed_columns = resolve_default_scope(pivot.name, [f["column"] for f in report_filters])
-        scoped_filters = (
-            report_filters if allowed_columns is None else [f for f in report_filters if f["column"] in allowed_columns]
-        )
-        fixed_columns = {
-            f["column"] for f in scoped_filters if not (f.get("op") == "in" and isinstance(f.get("value"), list) and len(f["value"]) > 1)
-        }
-        combos = _report_filter_combos(scoped_filters)
-        for combo in combos:
-            results, _ = pivot_engine.apply_pivots(df, [spec], pivot_filters={spec["id"]: combo})
-            if not results:
-                continue
-            label = _combo_label(combo, fixed_columns)
-            base_title = report_titles.get(pivot.id, pivot.name)
-            title = f"{base_title} — {label}" if label else base_title
-            pivot_result = results[0].model_copy(update={"name": title})
-            _add_pivot_slides(builder, pivot_result)
+        if slide.kind == "cover":
+            builder.add_title_slide(slide.title, slide.subtitle)
+        elif slide.kind == "chart":
+            _render_chart_slide(builder, slide)
+        else:
+            builder.add_summary_slide(slide.title, slide.narrative, slide.bullets)
 
-    builder.add_summary_slide("Summary", overall)
     return builder.save_bytes()

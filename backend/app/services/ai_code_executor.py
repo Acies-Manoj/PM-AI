@@ -64,11 +64,13 @@ def _validate_ast(tree: ast.AST) -> None:
             raise ValueError(f"Generated code accesses a disallowed attribute: '{node.attr}'.")
 
 
-def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
-    """Executes `code` against a copy of `df` and returns whatever it
-    assigns to a variable named `result`. Raises ValueError on anything
-    unsafe or malformed -- callers treat that as "this calculation
-    couldn't be computed" and show a skip note, never the raw traceback."""
+def _compile_and_run(code: str, df: pd.DataFrame, *, label: str):
+    """Shared compile-and-execute step for both sandboxed entry points below:
+    parse, AST-validate against the same allowlist, execute against a copy
+    of `df` with the same restricted builtins, and hand back whatever the
+    snippet assigned to `result` (unvalidated -- callers apply their own
+    shape check, since a per-row feature and a whole-dataset analysis
+    answer expect different shapes)."""
     try:
         tree = ast.parse(code, mode="exec")
     except SyntaxError as exc:
@@ -76,7 +78,7 @@ def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
 
     _validate_ast(tree)
 
-    compiled = compile(tree, filename="<ai_generated_feature>", mode="exec")
+    compiled = compile(tree, filename=f"<{label}>", mode="exec")
     sandbox_globals = {"__builtins__": _SAFE_BUILTINS, "pd": pd}
     sandbox_locals: dict = {"df": df.copy()}
 
@@ -85,9 +87,40 @@ def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
     except Exception as exc:
         raise ValueError(f"Generated code raised an error while running: {exc}") from exc
 
-    result = sandbox_locals.get("result")
+    if "result" not in sandbox_locals:
+        raise ValueError("Generated code did not assign anything to a variable named `result`.")
+    return sandbox_locals["result"]
+
+
+def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
+    """Executes `code` against a copy of `df` and returns whatever it
+    assigns to a variable named `result`. Raises ValueError on anything
+    unsafe or malformed -- callers treat that as "this calculation
+    couldn't be computed" and show a skip note, never the raw traceback."""
+    result = _compile_and_run(code, df, label="ai_generated_feature")
     if not isinstance(result, pd.Series):
         raise ValueError("Generated code did not assign a pandas Series to `result`.")
     if len(result) != len(df):
         raise ValueError("Generated code's `result` doesn't have one value per row.")
     return result.set_axis(df.index)
+
+
+def run_generated_analysis_code(code: str, df: pd.DataFrame):
+    """Sibling to `run_generated_code` for the Formula Agent's "novel ask"
+    path (see formula_agent.py): a plain-language analysis question that
+    doesn't fit the pivot-table template shape (group_by/metrics), so Groq
+    is asked to compute the answer directly instead of one value per row.
+    Same AST allowlist and restricted builtins -- only the accepted shape of
+    `result` differs: a DataFrame (a small table), a dict/scalar/str/number
+    (a single computed answer), rather than a strict per-row Series."""
+    result = _compile_and_run(code, df, label="ai_generated_analysis")
+    if isinstance(result, pd.Series):
+        return result.to_dict()
+    if isinstance(result, pd.DataFrame):
+        return result
+    if isinstance(result, (dict, list, str, int, float, bool)) or result is None:
+        return result
+    raise ValueError(
+        "Generated code's `result` must be a DataFrame, Series, dict, string, or number -- "
+        f"got {type(result).__name__}."
+    )

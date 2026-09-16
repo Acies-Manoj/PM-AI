@@ -80,6 +80,16 @@ class ResolveRequest(BaseModel):
     selected_items: list[str] | None = None
 
 
+class ExcludeTripRequest(BaseModel):
+    """The Audit page's Outlier Screening tab "Exclude from analysis" action
+    -- drops every row for this (Serial Number, Trip ID) from the audit
+    session's dataframe, recorded as an already-resolved AuditIssue (category
+    "outlier_trip::<serial>::<trip_id>") so it shows up in Overall Checks/
+    Summary and can be reverted the same way as any other finding."""
+    serial: str
+    trip_id: int
+
+
 class FeatureResult(BaseModel):
     id: str
     name: str
@@ -99,6 +109,9 @@ class FeatureReport(BaseModel):
     columns: list[str]
     features: list[FeatureResult]
     skipped_notes: list[str] = []
+    # Ids the user unchecked from the "Customer KPI Profile" (Defined) or
+    # "Client-Requested" sections on the Features page.
+    excluded_feature_ids: list[str] = []
 
 
 class FeatureDefinitionsSummary(BaseModel):
@@ -138,7 +151,16 @@ class FeatureSuggestionsResponse(BaseModel):
 
 
 class ApplyFeaturesRequest(BaseModel):
-    extra_features: list[dict[str, Any]] = []
+    # None (the default) leaves session.extra_feature_defs as it was -- a
+    # caller that only wants to change something else (excluded_feature_ids,
+    # or nothing at all -- a bare recompute) doesn't have to resend the full
+    # accepted[] set to avoid dropping it. An explicit list (even []) replaces
+    # it wholesale, same "send the whole current selection" convention as
+    # ApplyPivotsRequest.extra_pivots/pivot_filters.
+    extra_features: list[dict[str, Any]] | None = None
+    # None (the default) leaves the exclusion set as it was; an explicit list
+    # replaces it wholesale -- same convention as above.
+    excluded_feature_ids: list[str] | None = None
 
 
 AggType = Literal["sum", "mean", "count", "min", "max", "median", "distinct_count", "pct_of_total"]
@@ -232,6 +254,10 @@ class PivotReport(BaseModel):
     # applied, so it can pre-populate its filter UI and merge in new filters
     # without clobbering the ones already saved.
     pivot_filters: dict[str, list[dict[str, Any]]] = {}
+    # Ids the user unchecked from the "Analysis Profile" (Defined) list on
+    # the Analysis page -- lets the frontend restore checkbox state on
+    # reload without tracking it separately from the backend's own record.
+    excluded_pivot_ids: list[str] = []
 
 
 class PivotDefinitionsSummary(BaseModel):
@@ -281,6 +307,17 @@ class ApplyPivotsRequest(BaseModel):
     pivot_filters: dict[str, list[dict[str, Any]]] = {}
 
 
+class SetPivotSelectionRequest(BaseModel):
+    """Analysis page's "Defined" checkboxes -- replaces the excluded-id set
+    wholesale, same "always send the whole current selection" convention as
+    SetReportSlidesRequest below."""
+    excluded_ids: list[str]
+
+
+class PivotDrillDownRequest(BaseModel):
+    suggestion: str
+
+
 class OverallHighlight(BaseModel):
     label: str
     value: str
@@ -291,3 +328,443 @@ class OverallAnalysisReport(BaseModel):
     row_count: int
     highlights: list[OverallHighlight]
     narrative: str
+
+
+# -- Saved custom definitions (the persistent library) ------------------------
+# See services/custom_library_store.py. `scope` is the only thing separating
+# the two save options the Add-a-KPI / Add-an-Analysis forms offer.
+
+SavedScope = Literal["regular", "suggested"]
+
+
+class SavedDefinition(BaseModel):
+    """One user-created KPI or analysis, as kept on disk. `spec` is the
+    definition dict verbatim -- the same shape the frontend already sends as
+    an `extra_features` / `extra_pivots` entry, so it can be echoed straight
+    back into either path with no reshaping."""
+    id: str
+    name: str
+    description: str = ""
+    scope: SavedScope
+    saved_at: str
+    spec: dict[str, Any]
+
+
+class SavedDefinitionsResponse(BaseModel):
+    items: list[SavedDefinition]
+
+
+class SaveDefinitionRequest(BaseModel):
+    scope: SavedScope
+    definition: dict[str, Any]
+
+
+class SetSavedScopeRequest(BaseModel):
+    scope: SavedScope
+
+
+# -- Report translation -------------------------------------------------------
+
+
+class LanguageOption(BaseModel):
+    code: str
+    name: str
+
+
+class SupportedLanguagesResponse(BaseModel):
+    # "en" (English) is always first -- the report's default, no-translation
+    # language -- followed by whatever translation_service.SUPPORTED_LANGUAGES
+    # currently lists.
+    languages: list[LanguageOption]
+    # False when translation can't actually run (no DEEPL_API_KEY, or the
+    # `deepl` package isn't installed in the environment serving this app).
+    # The languages are still listed -- picking one just wouldn't change
+    # anything -- so the Report page says so rather than letting the picker
+    # look broken.
+    available: bool = True
+
+
+# -- Report preview / slide selection -----------------------------------------
+
+
+class ReportSlide(BaseModel):
+    """One slide the downloaded deck WOULD contain, described in enough
+    detail for the Report page to draw a faithful preview of it. Produced by
+    report_generator.plan_report -- the exact same plan build_report renders
+    into PPTX, so the preview can't drift from the file."""
+    # Stable across re-plans (it's derived from the pivot id + the filter
+    # combo's own label, not a position), so a slide stays deselected while
+    # the user keeps editing filters around it.
+    key: str
+    kind: Literal["cover", "chart", "summary"]
+    title: str
+    subtitle: str | None = None
+    # Only set on a "chart" slide. Shape depends on chart["type"]:
+    #   grouped_bar -- groups, y_axis_title, category_axis_title
+    #   combo       -- categories, category_axis_title, bar_name/bar_values,
+    #                  line_name/line_values
+    #   simple      -- categories, category_axis_title, metric_label, values,
+    #                  is_trend
+    chart: dict[str, Any] | None = None
+    # Only set on the "summary" slide.
+    narrative: str | None = None
+    bullets: list[str] = []
+    # Which pivot this slide came from, and which filter-combo of it, so the
+    # Report page can group a pivot's slides under its own title/scope
+    # controls. Both None for the cover and summary slides.
+    pivot_id: str | None = None
+    combo_label: str | None = None
+    # False when the user has deselected this slide (see /report-slides) --
+    # it is then skipped at download time.
+    included: bool = True
+
+
+class ReportPreviewResponse(BaseModel):
+    session_id: str
+    language: str
+    slides: list[ReportSlide]
+
+
+class SetReportSlidesRequest(BaseModel):
+    # The keys of the slides to LEAVE OUT. Sent (and stored) as exclusions
+    # rather than inclusions so a slide that appears later -- because the
+    # user widened a filter, or added an analysis -- is included by default
+    # instead of silently missing from the deck.
+    excluded_keys: list[str] = []
+
+
+class ReportSlidesResponse(BaseModel):
+    session_id: str
+    excluded_keys: list[str]
+
+
+# -- Raw Data Explorer (pre-audit step) --------------------------------------
+# Aggregated trip summary + up to two "data point matrix" files (temperature
+# / light, one column per trip, raw sequential readings). A selected trip's
+# own start timestamp (from the aggregated file) anchors point #1; later
+# points are spaced by `interval_minutes`. See raw_data_matrix.py.
+
+
+class RawDataTrip(BaseModel):
+    serial: str
+    trip_id: int
+    label: str
+    # ISO 8601 -- kept as a plain string like the rest of this API's row data
+    # (see AuditReport.sample / DataPreview.rows, which go through
+    # df.to_json rather than a typed datetime field).
+    start_time: str
+
+
+class RawDataUploadResponse(BaseModel):
+    session_id: str
+    interval_minutes: int
+    trips: list[RawDataTrip]
+    temperature_uploaded: bool
+    temperature_matched: int | None = None
+    temperature_total: int | None = None
+    light_uploaded: bool
+    light_matched: int | None = None
+    light_total: int | None = None
+
+
+class RawDataSeriesPoint(BaseModel):
+    t: str
+    v: float | None
+
+
+class RawDataChannel(BaseModel):
+    unit: str
+    points: list[RawDataSeriesPoint]
+
+
+class RawDataTripSeriesResponse(BaseModel):
+    session_id: str
+    serial: str
+    trip_id: int
+    start_time: str
+    interval_minutes: int
+    temperature: RawDataChannel | None = None
+    light: RawDataChannel | None = None
+
+
+# -- Step 1 screening: outlier/threshold flags over the raw-data upload ------
+# See services/anomaly_detection.py -- run against the same aggregated table
+# a Raw Data Explorer session already holds.
+
+
+class RawDataFlaggedTrip(BaseModel):
+    serial: str
+    trip_id: int
+    label: str
+    flag_count: int
+    flags: list[str]
+    duration_outlier: bool
+    mean_temp: float | None = None
+    product: str | None = None
+
+
+class RawDataTripMeanTemp(BaseModel):
+    """One point for the Step 1 mean-temperature-by-product chart -- every
+    trip, not just the flagged ones, so the chart can show where the
+    flagged points sit relative to the rest of their product's trips."""
+    serial: str
+    trip_id: int
+    label: str
+    start_time: str
+    product: str | None = None
+    mean_temp: float | None = None
+    limit_low: float | None = None
+    limit_ideal: float | None = None
+    limit_high: float | None = None
+    flagged: bool
+
+
+class RawDataFlagsResponse(BaseModel):
+    session_id: str
+    total_trips: int
+    all_trips: list[RawDataTripMeanTemp] = []
+    flagged_trips: list[RawDataFlaggedTrip]
+
+
+class RcaHypothesisModel(BaseModel):
+    hypothesis: str
+    score: int
+    confidence: str
+    rationale: list[str]
+
+
+class RawDataRcaResponse(BaseModel):
+    session_id: str
+    serial: str
+    trip_id: int
+    hypotheses: list[RcaHypothesisModel]
+
+
+# -- Orchestrator Agent -------------------------------------------------------
+# Reads the free-text client brief and decides which of the two entry points
+# it belongs to -- see services/orchestrator_agent.py.
+
+
+class OrchestratorRouteRequest(BaseModel):
+    brief: str
+
+
+class OrchestratorRouteResponse(BaseModel):
+    path: Literal["feature_request", "analysis_question"]
+    cleaned_request: str
+    rationale: str
+    # Both None when the brief was already English (or DeepL couldn't be
+    # reached) -- nothing to show the user in that case.
+    detected_language: str | None = None
+    translated_text: str | None = None
+
+
+# -- Step 2: user-requested feature (plain language) -------------------------
+# See services/feature_request_agent.py. Response is a FeatureSuggestion so
+# the frontend can accept/apply/save it exactly like an AI-suggested one.
+
+
+class RequestFeatureRequest(BaseModel):
+    session_id: str
+    request_text: str
+
+
+# -- Client Brief -> multi-feature creation pipeline (Feature Engineering) ---
+# See services/feature_orchestrator.py (extraction + orchestration) and
+# services/kpi_store.py (the durable provenance registry). Distinct from the
+# single free-text "User Requests a Feature" flow above -- a brief can name
+# several features at once, and the AI may add a few more of its own.
+
+FeatureSource = Literal["CLIENT_REQUESTED", "AI_SUGGESTED", "USER_REQUESTED"]
+
+
+class ClientRequirement(BaseModel):
+    """One feature extracted from a natural-language Client Brief (or one
+    the AI additionally proposed to help satisfy it) -- structured JSON per
+    feature_orchestrator.py's extraction prompt. Not yet a computable spec;
+    that's what the Feature Agent (feature_request_agent.py) drafts next."""
+    feature_name: str
+    description: str
+    type: str = "derived_feature"
+    source: FeatureSource
+
+
+class ClientBriefFeatureRequest(BaseModel):
+    session_id: str
+    brief: str
+
+
+class KpiFeatureOutcome(BaseModel):
+    """What happened to one ClientRequirement: reused an existing KPI Store
+    entry, created a new one, or -- after retrying across every dependency
+    pass -- failed, with why."""
+    feature_name: str
+    description: str
+    source: FeatureSource
+    status: Literal["reused", "created", "failed"]
+    kpi_id: str | None = None
+    output_column: str | None = None
+    error: str | None = None
+
+
+class ClientBriefFeatureResponse(BaseModel):
+    session_id: str
+    client_requirements: list[ClientRequirement]
+    ai_suggested: list[ClientRequirement]
+    outcomes: list[KpiFeatureOutcome]
+    accepted_specs: list[FeatureSuggestion]
+    feature_report: FeatureReport
+
+
+class KpiStoreEntry(BaseModel):
+    """One entry in kpi_store.json, as returned by the transparency endpoint
+    (GET /api/features/kpi-store) -- the durable registry's own record
+    shape, kept separate from FeatureSuggestion (the ephemeral, per-request
+    draft shape) since it carries provenance/version metadata a draft
+    doesn't have yet."""
+    id: str
+    name: str
+    description: str
+    source: FeatureSource
+    output_column: str
+    type: str
+    source_columns: list[str] = []
+    formula: str = ""
+    python_code: str | None = None
+    data_type: str
+    dependencies: list[str] = []
+    version: int
+    created_at: str
+    updated_at: str
+    spec: dict[str, Any]
+
+
+class KpiStoreListResponse(BaseModel):
+    features: list[KpiStoreEntry]
+
+
+# -- Step 3: chart interpretation, drill-down suggestions, ask-a-question ----
+# See services/chart_interpretation_agent.py, drill_down_agent.py,
+# formula_agent.py.
+
+
+class ChartInterpretationResponse(BaseModel):
+    session_id: str
+    pivot_id: str
+    interpretation: str
+
+
+class DrillDownSuggestionsResponse(BaseModel):
+    session_id: str
+    suggestions: list[str]
+
+
+class AskQuestionRequest(BaseModel):
+    session_id: str
+    question: str
+
+
+class FormulaAnswerResponse(BaseModel):
+    session_id: str
+    question: str
+    mode: Literal["template", "custom_python"]
+    pivot: PivotResult | None = None
+    table: list[dict[str, Any]] | None = None
+    value: str | None = None
+    explanation: str
+
+
+# -- Client Brief -> Step 3's AI-Assisted Analysis, run in one shot ----------
+# See routers/analysis.py's /client-brief. Every piece here is an existing
+# agent (pivot_suggester, overall_analysis(_agent), chart_interpretation_
+# agent, drill_down_agent, formula_agent) -- this just sequences them for a
+# brief instead of requiring a click per step.
+
+
+class AnalysisRequirement(BaseModel):
+    """One specific analysis/chart/breakdown the client explicitly asked for
+    in a natural-language Client Brief -- structured JSON per
+    analysis_orchestrator.py's extraction prompt. Not yet computed; that's
+    what the Formula Agent (formula_agent.answer_question) resolves next --
+    a pivot template first, sandboxed Python otherwise -- the SAME engine
+    "Request an Analysis"/a chart's own drill-down "Add" already run
+    through, so an explicit client ask is guaranteed the same treatment as
+    every other analysis in this app, not a second execution path."""
+    analysis_name: str
+    description: str
+
+
+class AnalysisRequirementOutcome(BaseModel):
+    """What happened to one AnalysisRequirement: reused an already-active
+    pivot with the same group-by/metric shape, computed and added a new
+    one, or failed, with why."""
+    analysis_name: str
+    description: str
+    status: Literal["reused", "created", "failed"]
+    pivot_id: str | None = None
+    error: str | None = None
+
+
+class AnalysisBriefRequest(BaseModel):
+    session_id: str
+    brief: str
+
+
+class AnalysisBriefResponse(BaseModel):
+    session_id: str
+    overall: OverallAnalysisReport | None = None
+    suggested_pivots: list[PivotSuggestion] = []
+    applied_pivot_ids: list[str] = []
+    interpretations: dict[str, str] = {}
+    formula_answer: FormulaAnswerResponse | None = None
+    # Every analysis the brief explicitly asked for -- one outcome per
+    # requirement, always attempted regardless of what Chart Suggestion
+    # (suggested_pivots, above) came up with on its own.
+    client_requirements: list[AnalysisRequirement] = []
+    outcomes: list[AnalysisRequirementOutcome] = []
+    pivot_report: PivotReport
+    # Soft-fail notes -- one agent being unavailable (Groq down/rate-limited)
+    # doesn't abort the rest of the pipeline; whatever succeeded still comes
+    # back, and this says what didn't.
+    errors: list[str] = []
+
+
+# -- Analysis Store ------------------------------------------------------------
+# See services/analysis_store.py -- everything Step 3's agents have already
+# produced for a session, kept for reuse.
+
+
+class AnalysisStoreEntry(BaseModel):
+    id: str
+    kind: Literal["summary", "chart_interpretation", "drill_down", "formula_result"]
+    label: str
+    content: Any
+    created_at: str
+
+
+class AnalysisStoreResponse(BaseModel):
+    session_id: str
+    entries: list[AnalysisStoreEntry]
+
+
+# -- Audit page: Segment Days (per-trip transit-duration outliers) ---------
+# See services/anomaly_detection.py's compute_lane_duration_outliers. Each
+# row here is one trip whose own lane fence flagged it, not the fence/rule
+# numbers themselves -- those still ride along per row for reference.
+
+
+class SegmentDaysRow(BaseModel):
+    serial: str | None
+    trip_id: int | None
+    origin: str
+    destination: str
+    segment_days: float
+    lower_fence_days: float | None
+    upper_fence_days: float | None
+    status: str
+
+
+class SegmentDaysResponse(BaseModel):
+    session_id: str
+    total_trips: int
+    rows: list[SegmentDaysRow]

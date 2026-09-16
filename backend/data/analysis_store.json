@@ -1,0 +1,3780 @@
+{
+  "06a7f7a59cca48689212464c6ca32896": [
+    {
+      "id": "5e00bb6c6e554d268400a7adddd14c6e",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "177"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (146 rows, 82%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (72 rows, 41%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "93.6"
+          },
+          {
+            "label": "Avg Transit Duration",
+            "value": "596.8"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 88"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 1"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "DIAMANTOPOULOS: 99.5"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "SEA: 61.8"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 97.17"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 90.99"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 119"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 1"
+          }
+        ],
+        "narrative": "Out of the 177 shipments analyzed, 82\u202f% (146 rows) originated in South Africa and 41\u202f% (72 rows) arrived in January. Overall compliance remains high at an average 93.6\u202f% in\u2011spec, with carrier DIAMANTOPOULOS leading at 99.5\u202f% and SEA lagging at 61.8\u202f%; monthly compliance fell to its low of 90.99\u202f% in January but rose to a high of 97.17\u202f% in February. The most frequent product\u2011origin pairing was Grapes shipped by Southern Cross Marketing ZA, accounting for 88 shipments."
+      },
+      "created_at": "2026-09-13T18:45:41+00:00"
+    }
+  ],
+  "d8c1e617a4244f9789b5262b2afb163e": [
+    {
+      "id": "71b59867d77a462497a628cbf8bb4ebb",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "303"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 78%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 39%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.3"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Clementines/Easy Peelers / Poulis Larisa: 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 191"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 303 shipments reveals that South Africa dominates the origin profile, representing 78% of rows, and January accounts for the largest share of arrivals at 39%. Overall compliance averaged 83.3% in spec, reaching a high of 84.45% in February and a low of 82.34% in January. Carrier LAVORTA TRUCK EOOD achieved a perfect 100% compliance rate, while KARANIKOLAS DIMITRIOS fell to 59.4%."
+      },
+      "created_at": "2026-09-13T19:02:14+00:00"
+    },
+    {
+      "id": "783215b4af1d436a8c93f48e9b85debd",
+      "kind": "chart_interpretation",
+      "label": "Shipments by Product & Origin",
+      "content": "Table grapes from Southern Cross Marketing ZA dominate the cold\u2011chain volume with 140 shipments, far outpacing the next highest sources (Cape Town Port \u2013 Dole and Kiwi from Balakanakis at 50 each). In contrast, all other product\u2011origin pairs register under 10 shipments, indicating a heavy reliance on a single grape supplier and limited diversification across other items.",
+      "created_at": "2026-09-13T19:02:16+00:00"
+    },
+    {
+      "id": "7cf54bcc6f824e3eb3c7a9375afaac0c",
+      "kind": "drill_down",
+      "label": "Drill-Down Suggestions",
+      "content": [
+        "Drill into Table Grapes \u2192 Southern Cross Marketing ZA (140 shipments) to assess volume drivers",
+        "Contrast carrier LAVORTA TRUCK EOOD (100% in\u2011spec) with KARANIKOLAS DIMITRIOS (59.4% in\u2011spec) for compliance gaps",
+        "Compare January (82.34% in\u2011spec, 118 transports) vs February (84.45% in\u2011spec, 105 transports) in the Monthly Compliance Trend",
+        "Review the Rail mode (2 shipments) in Shipment Mix by Mode of Transportation for outlier handling"
+      ],
+      "created_at": "2026-09-13T19:02:18+00:00"
+    },
+    {
+      "id": "1f5b1a44a6304b2fad0f8ea7def6d7e5",
+      "kind": "formula_result",
+      "label": "average time above high limit by carrier",
+      "content": {
+        "mode": "template",
+        "id": "ask_0bba4b3e",
+        "name": "average time above high limit by carrier",
+        "description": "average time above high limit by carrier",
+        "group_by": [
+          "Carrier"
+        ],
+        "metric_labels": [
+          "Avg Time Above High Hours"
+        ],
+        "rows": [
+          {
+            "Carrier": "SEA",
+            "Avg Time Above High Hours": 105.2
+          },
+          {
+            "Carrier": "MSC",
+            "Avg Time Above High Hours": 61.78
+          },
+          {
+            "Carrier": "MAERSK",
+            "Avg Time Above High Hours": 45.25
+          },
+          {
+            "Carrier": "KARANIKOLAS DIMITRIOS",
+            "Avg Time Above High Hours": 32.5
+          },
+          {
+            "Carrier": "NIKOLAIDIS KONSTANTINOS",
+            "Avg Time Above High Hours": 28.25
+          },
+          {
+            "Carrier": "THERMO TRANS",
+            "Avg Time Above High Hours": 21.12
+          },
+          {
+            "Carrier": null,
+            "Avg Time Above High Hours": 16.43
+          },
+          {
+            "Carrier": "Hapag Lloyd",
+            "Avg Time Above High Hours": 5.5
+          },
+          {
+            "Carrier": "ONE",
+            "Avg Time Above High Hours": 2.25
+          },
+          {
+            "Carrier": "LATSARIS ARISTOMENIS",
+            "Avg Time Above High Hours": 0.33
+          },
+          {
+            "Carrier": "KYRIAZIS MILTIADIS",
+            "Avg Time Above High Hours": 0.25
+          },
+          {
+            "Carrier": "DIAMANTOPOULOS",
+            "Avg Time Above High Hours": 0.0
+          },
+          {
+            "Carrier": "ECO INTERNATIONAL",
+            "Avg Time Above High Hours": 0.0
+          },
+          {
+            "Carrier": "LAVORTA TRUCK EOOD",
+            "Avg Time Above High Hours": 0.0
+          },
+          {
+            "Carrier": "KIRIAZIS THEODOROS",
+            "Avg Time Above High Hours": 0.0
+          },
+          {
+            "Carrier": "FREJA",
+            "Avg Time Above High Hours": 0.0
+          },
+          {
+            "Carrier": "SIDIROPOULOS EFSTATHIOS",
+            "Avg Time Above High Hours": 0.0
+          }
+        ],
+        "row_count": 17,
+        "filterable_columns": [],
+        "filter_options": {},
+        "filter_combinations": []
+      },
+      "created_at": "2026-09-13T19:02:19+00:00"
+    },
+    {
+      "id": "f0875f47d92d452896bce143ed4e56bb",
+      "kind": "formula_result",
+      "label": "what percentage of shipments have a compliance ratio above 90 percent, as a single number",
+      "content": {
+        "mode": "custom_python",
+        "value": "25.412541254125415"
+      },
+      "created_at": "2026-09-13T19:02:53+00:00"
+    }
+  ],
+  "617fc6d262de43dba7157bd11b093250": [
+    {
+      "id": "1c49bfb568a440c3b5eeeb8116bb3280",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "177"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (146 rows, 82%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (72 rows, 41%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "93.6"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 88"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 1"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "DIAMANTOPOULOS: 99.5"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "SEA: 61.8"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 97.17"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 90.99"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 119"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 1"
+          }
+        ],
+        "narrative": "The analysis of 177 cold\u2011chain shipments shows an overall compliance rate of 93.6\u202f% with South Africa accounting for 82\u202f% of origins and January representing 41\u202f% of arrivals. Carrier performance varies widely, as DIAMANTOPOULOS achieved a 99.5\u202f% in\u2011spec rate while SEA fell to 61.8\u202f%. February recorded the strongest monthly compliance at 97.17\u202f%, and the Grapes product from Southern Cross Marketing ZA drove the highest shipment volume with 88 rows."
+      },
+      "created_at": "2026-09-13T19:13:28+00:00"
+    },
+    {
+      "id": "cc7aa08f30dc42f09c3c4098e42bcb2f",
+      "kind": "drill_down",
+      "label": "Drill-Down Suggestions",
+      "content": [
+        "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 88 shipments (top volume)",
+        "Investigate Carrier=SEA \u2013 61.8% In Spec on 6 transports (lowest compliance)",
+        "Compare Arrival Month=January (90.99% In Spec, 72 transports) vs February (97.17% In Spec, 64 transports) to spot compliance drivers",
+        "Examine Mode Of Transportation=Rail \u2013 only 1 shipment to understand minimal rail usage"
+      ],
+      "created_at": "2026-09-13T19:13:36+00:00"
+    },
+    {
+      "id": "e0ea8694ba234f84bd1e2f4ec8891aca",
+      "kind": "formula_result",
+      "label": "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 88 shipments (top volume)",
+      "content": {
+        "mode": "template",
+        "id": "ask_a17d369a",
+        "name": "Drill into Product=Table Grapes & Origin=Southern Cross Mark",
+        "description": "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 88 shipments (top volume)",
+        "group_by": [
+          "Trip ID"
+        ],
+        "metric_labels": [
+          "Shipments"
+        ],
+        "rows": [
+          {
+            "Trip ID": 3298281,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298320,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298296,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298287,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298286,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3397167,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298407,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3397164,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298373,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298341,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298355,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298326,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298323,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298394,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3556924,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298363,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298368,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298361,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298362,
+            "Shipments": 2
+          },
+          {
+            "Trip ID": 3298278,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298277,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298283,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298279,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298319,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298318,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298325,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298338,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298315,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298300,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298295,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298297,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298299,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298298,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298292,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298293,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298294,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298284,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298354,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298347,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298346,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298345,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298343,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298344,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298339,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298340,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298321,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298322,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298370,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298369,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298356,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298360,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298357,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298358,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298392,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298376,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298375,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298374,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298372,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298393,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298395,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298396,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298400,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298399,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298398,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298397,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3397165,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3298406,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3397166,
+            "Shipments": 1
+          },
+          {
+            "Trip ID": 3397168,
+            "Shipments": 1
+          }
+        ],
+        "row_count": 69,
+        "filterable_columns": [],
+        "filter_options": {},
+        "filter_combinations": []
+      },
+      "created_at": "2026-09-13T19:13:41+00:00"
+    },
+    {
+      "id": "72bf10eae3f743bc930aa201d9f7362f",
+      "kind": "formula_result",
+      "label": "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 88 shipments (top volume)",
+      "content": {
+        "mode": "template",
+        "id": "ask_869223cf",
+        "name": "Drill into Product=Table Grapes & Origin=Southern Cross Mark",
+        "description": "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 88 shipments (top volume)",
+        "group_by": [
+          "Trip ID"
+        ],
+        "metric_labels": [
+          "Shipment Count"
+        ],
+        "rows": [
+          {
+            "Trip ID": 3298281,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298320,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298296,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298287,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298286,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3397167,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298407,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3397164,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298373,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298341,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298355,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298326,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298323,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298394,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3556924,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298363,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298368,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298361,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298362,
+            "Shipment Count": 2
+          },
+          {
+            "Trip ID": 3298278,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298277,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298283,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298279,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298319,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298318,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298325,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298338,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298315,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298300,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298295,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298297,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298299,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298298,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298292,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298293,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298294,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298284,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298354,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298347,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298346,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298345,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298343,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298344,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298339,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298340,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298321,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298322,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298370,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298369,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298356,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298360,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298357,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298358,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298392,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298376,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298375,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298374,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298372,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298393,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298395,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298396,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298400,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298399,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298398,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298397,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3397165,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3298406,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3397166,
+            "Shipment Count": 1
+          },
+          {
+            "Trip ID": 3397168,
+            "Shipment Count": 1
+          }
+        ],
+        "row_count": 69,
+        "filterable_columns": [],
+        "filter_options": {},
+        "filter_combinations": []
+      },
+      "created_at": "2026-09-13T19:13:45+00:00"
+    }
+  ],
+  "5bb205a3267a4932b058048d7ad4f06b": [
+    {
+      "id": "9c83aa5d1be74e1ea7c5c535ea6621ce",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "303"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Clementines/Easy Peelers / Poulis Larisa: 2"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 191"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          },
+          {
+            "label": "Highest Above Ideal Hours (Exception Hours by Carrier)",
+            "value": "None: 4362.5"
+          },
+          {
+            "label": "Lowest Above Ideal Hours (Exception Hours by Carrier)",
+            "value": "FREJA: 53.5"
+          },
+          {
+            "label": "Highest Avg Days (Average Segment Length by Transport Mode)",
+            "value": "None: 30.3"
+          },
+          {
+            "label": "Lowest Avg Days (Average Segment Length by Transport Mode)",
+            "value": "Rail: 2.01"
+          },
+          {
+            "label": "Highest Below Low Hours (Temperature Compliance by Product)",
+            "value": "Table Grapes: 13759.0"
+          },
+          {
+            "label": "Lowest Below Low Hours (Temperature Compliance by Product)",
+            "value": "Spargel: 0.0"
+          }
+        ],
+        "narrative": "The shipment portfolio is heavily skewed toward Table Grapes from Southern Cross Marketing ZA, which generated the highest volume at 140 shipments and also recorded the greatest temperature\u2011compliance shortfall with 13,759 below\u2011low hours. Rail remains a marginal transport mode, contributing only two shipments and the shortest average segment length of 2.01 days, while the \u201cNone\u201d category dominates both total shipments (191) and exception hours (4,362.5 above\u2011ideal hours). In contrast, the lowest performers\u2014Clementines/Easy Peelers from Poulis Larisa and the carrier FREJA\u2014registered just two shipments and 53.5 exception hours respectively, underscoring a clear concentration of activity and risk in a few product\u2011carrier combinations."
+      },
+      "created_at": "2026-09-14T13:26:42+00:00"
+    },
+    {
+      "id": "b853fad04bbc4340982f867721764784",
+      "kind": "chart_interpretation",
+      "label": "Exception Hours by Carrier",
+      "content": "MSC generates the largest share of both above\u2011ideal (2,704\u202fhrs) and above\u2011high (1,421\u202fhrs) exception hours, highlighting a key operational hotspot, while LAVORTA\u202fTRUCK\u202fEOOD records zero above\u2011high hours despite 28 shipments, suggesting more consistent temperature control for that carrier. The \u201cNone\u201d category accounts for the highest totals overall, likely reflecting uncategorized or data\u2011entry exceptions.",
+      "created_at": "2026-09-14T13:26:43+00:00"
+    },
+    {
+      "id": "018cec57bbd743d3a8a42121b375a22c",
+      "kind": "chart_interpretation",
+      "label": "Average Segment Length by Transport Mode",
+      "content": "The \u201cNone\u201d category spikes at 30.3\u202faverage days, far above any defined mode and likely reflects missing or mis\u2011classified data, while ocean shipments average 23.8\u202fdays and both road and rail hover around 2\u202fdays, underscoring the speed advantage of land transport.",
+      "created_at": "2026-09-14T13:26:44+00:00"
+    },
+    {
+      "id": "beba559295c6439fab942cc94c114590",
+      "kind": "drill_down",
+      "label": "Drill-Down Suggestions",
+      "content": [
+        "Drill into Carrier=None in Exception Hours by Carrier \u2013 4362.5 above\u2011ideal hours on 150 shipments",
+        "Inspect Table Grapes shipments from Origin=Southern Cross Marketing ZA \u2013 140 shipments (largest product\u2011origin combo)",
+        "Compare Avg Days for Mode Of Transportation=None (30.3 days) versus Ocean (23.78 days) in Average Segment Length table",
+        "Review Temperature Compliance for Product=Table Grapes \u2013 13,759 Below Low Hours and 3,368.5 Above High Hours"
+      ],
+      "created_at": "2026-09-14T13:26:45+00:00"
+    },
+    {
+      "id": "c5ca5aadc5e94fa382e5124482797788",
+      "kind": "formula_result",
+      "label": "What is the average excursion time by supplier, and are longer transit times associated with temperature excursions?",
+      "content": {
+        "mode": "custom_python",
+        "value": "{\"avg_excursion_by_supplier\": \"                          Origin  avg_excursion_hours\\n0                    Balakanakis            25.646552\\n1          Cape Town Port (Dole)           384.800000\\n2    Cape Town Port (Stemsfruit)           272.444444\\n3  Cape Town Port (The Grape Co)           494.888889\\n4            El Ciruelo - Alhama            46.218750\\n5                  Poulis Larisa            40.000000\\n6    Southern Cross Marketing ZA           400.457143\", \"transit_excursion_correlation\": 0.47156499312207467}"
+      },
+      "created_at": "2026-09-14T13:27:21+00:00"
+    }
+  ],
+  "772702163f53491192b87a9f9d4970df": [
+    {
+      "id": "15e7d6cb9bbe47f48dadc38a6f15e905",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa dominates the supply chain, accounting for 80\u202f% of rows and driving the highest product volume with 140 grape shipments from Southern Cross Marketing ZA. Overall compliance remains solid at an average of 83.2\u202f% in\u2011spec, though carrier performance varies widely\u2014from a perfect 100\u202f% for LAVORTA TRUCK EOOD to a low of 59.4\u202f% for KARANIKOLAS DIMITRIOS. February posted the strongest monthly compliance at 84.45\u202f%, while January lagged slightly at 82.34\u202f%."
+      },
+      "created_at": "2026-09-14T13:37:36+00:00"
+    }
+  ],
+  "1a9f4d0b687c4690a3ed7592e3d8ef16": [
+    {
+      "id": "fe4dbbb113b44d4490e89286a759419e",
+      "kind": "drill_down",
+      "label": "Shipments by Product & Origin",
+      "content": [
+        "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 140 shipments (top line)",
+        "Compare Table Grapes shipments across Cape Town Port (Dole) 50, Cape Town Port (The Grape Co) 34, and El Ciruelo - Alhama 8 to assess origin spread",
+        "Investigate the low\u2011volume line Product=Clementines/Easy Peelers & Origin=Poulis Larisa \u2013 only 2 shipments",
+        "Review why the highest shipment mode shows \u2018None\u2019 with 191 shipments \u2013 potential data capture issue"
+      ],
+      "created_at": "2026-09-14T13:55:19+00:00"
+    },
+    {
+      "id": "0fbf1a29ac8c4feba4ac693d6e8ce86d",
+      "kind": "formula_result",
+      "label": "Compare shipment counts for Table Grapes across each Origin",
+      "content": {
+        "mode": "template",
+        "id": "ask_cf411a5d",
+        "name": "Compare shipment counts for Table Grapes across each Origin",
+        "description": "Compare shipment counts for Table Grapes across each Origin",
+        "group_by": [
+          "Origin"
+        ],
+        "metric_labels": [
+          "Shipment Count"
+        ],
+        "rows": [
+          {
+            "Origin": "Southern Cross Marketing ZA",
+            "Shipment Count": 140
+          },
+          {
+            "Origin": "Cape Town Port (Dole)",
+            "Shipment Count": 50
+          },
+          {
+            "Origin": "Cape Town Port (The Grape Co)",
+            "Shipment Count": 34
+          },
+          {
+            "Origin": "El Ciruelo - Alhama",
+            "Shipment Count": 8
+          }
+        ],
+        "row_count": 4,
+        "filterable_columns": [],
+        "filter_options": {},
+        "filter_combinations": []
+      },
+      "created_at": "2026-09-14T13:55:27+00:00"
+    },
+    {
+      "id": "e3cac4918e4a49539b29181308400f10",
+      "kind": "chart_interpretation",
+      "label": "Compare shipment counts for Table Grapes across each Origin",
+      "content": "The Southern Cross Marketing ZA origin dominates the grape shipments with 140 counts, dwarfing the next highest Cape Town Port (Dole) at 50 and indicating it as the primary supply hub, while the modest 8 shipments from El\u202fCiruelo\u202f\u2013\u202fAlhama suggest a very limited or niche contribution.",
+      "created_at": "2026-09-14T13:55:44+00:00"
+    }
+  ],
+  "fac27a1a3abe484ea9ecdfe4c9bad426": [
+    {
+      "id": "a4c6803287984bceae31d21afd43faad",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for the overwhelming majority of origin, representing 80% of the data set, with January alone contributing 40% of arrivals. Overall compliance remains solid at an average of 83.2% in\u2011spec, peaking at 84.45% in February, while the carrier LAVORTA TRUCK EOOD achieved a perfect 100% compliance rate. The most active product\u2011origin pairing is Table Grapes from Southern Cross Marketing ZA (140 shipments), contrasted by a minimal two\u2011shipment run of Nectarines from Cape Town Port."
+      },
+      "created_at": "2026-09-14T14:18:29+00:00"
+    },
+    {
+      "id": "72f3e90bb1cd4f0abe8bbbf7d92101b7",
+      "kind": "chart_interpretation",
+      "label": "Shipments by Product & Origin",
+      "content": "Table grapes from Southern Cross Marketing ZA dominate the cold\u2011chain volume with 140 shipments, dwarfing all other product\u2011origin pairs, while the remaining origins\u2014including kiwi, other table\u2011grape ports, and the small fruit categories\u2014stay under 50 shipments each, highlighting a heavy reliance on a single supplier.",
+      "created_at": "2026-09-14T14:18:35+00:00"
+    },
+    {
+      "id": "1bdfc0e173f743dab371db74c4ca7290",
+      "kind": "drill_down",
+      "label": "Shipments by Product & Origin",
+      "content": [
+        "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 it's the top\u2011shipper with 140 rows",
+        "Compare Carrier compliance: LAVORTA TRUCK EOOD (100%) vs KARANIKOLAS DIMITRIOS (59.4%)",
+        "Review Monthly compliance trend: February (84.45%) versus January (82.34%)",
+        "Check the low\u2011volume mode: Rail shows only 2 shipments in the Shipment Mix table"
+      ],
+      "created_at": "2026-09-14T14:18:36+00:00"
+    },
+    {
+      "id": "900d4cf73bc64aa8addc757b5d56212e",
+      "kind": "drill_down",
+      "label": "Shipments by Product & Origin",
+      "content": [
+        "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 140 shipments dominate the mix",
+        "Analyze Product=Nectarines & Origin=Cape Town Port (The Grape Co) \u2013 only 2 shipments, the lowest",
+        "Compare carrier compliance for LAVORTA TRUCK EOOD (100% in spec) vs KARANIKOLAS DIMITRIOS (59.4%)",
+        "Review January arrivals \u2013 lowest % in spec (82.34%) despite being the most common arrival month"
+      ],
+      "created_at": "2026-09-14T14:18:37+00:00"
+    },
+    {
+      "id": "7ed48911c5b1445eb0105ca1af8d4068",
+      "kind": "formula_result",
+      "label": "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 140 shipments dominate the mix",
+      "content": {
+        "mode": "template",
+        "id": "ask_f92b66c6",
+        "name": "Drill into Product=Table Grapes & Origin=Southern Cross Mark",
+        "description": "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 140 shipments dominate the mix",
+        "group_by": [
+          "Product",
+          "Origin"
+        ],
+        "metric_labels": [
+          "Shipment Count"
+        ],
+        "rows": [
+          {
+            "Product": "Table Grapes",
+            "Origin": "Southern Cross Marketing ZA",
+            "Shipment Count": 140
+          }
+        ],
+        "row_count": 1,
+        "filterable_columns": [],
+        "filter_options": {},
+        "filter_combinations": []
+      },
+      "created_at": "2026-09-14T14:18:53+00:00"
+    },
+    {
+      "id": "240aeae4e63a4558b51a2c5cb61164cc",
+      "kind": "chart_interpretation",
+      "label": "Drill into Product=Table Grapes & Origin=Southern Cross Mark",
+      "content": "Table grapes shipped from Southern Cross Marketing ZA total 140 shipments, making this the sole and dominant source in the dataset and indicating a strong, consistent supply line for this product.",
+      "created_at": "2026-09-14T14:18:58+00:00"
+    },
+    {
+      "id": "61fd9cbae17e471aa7c274ac7c6dcde0",
+      "kind": "drill_down",
+      "label": "Drill into Product=Table Grapes & Origin=Southern Cross Mark",
+      "content": [
+        "Drill into Country of Origin=South Africa to see monthly shipment distribution",
+        "Zoom into Arrival Month=January to check its % In Spec versus other months",
+        "Compare carrier compliance for LAVORTA TRUCK EOOD vs KARANIKOLAS DIMITRIOS",
+        "Inspect Mode of Transportation=None (189 shipments) to understand why no mode is recorded"
+      ],
+      "created_at": "2026-09-14T14:18:58+00:00"
+    },
+    {
+      "id": "62931bf5c4b74cc99ba186dec9cae836",
+      "kind": "drill_down",
+      "label": "Drill into Product=Table Grapes & Origin=Southern Cross Mark",
+      "content": [
+        "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA to view monthly shipment trends",
+        "Review Carrier=KARANIKOLAS DIMITRIOS compliance details to see why its % In Spec is only 59.4",
+        "Analyze Arrival Month=January shipments to understand the lowest % In Spec (82.34) in the Monthly Compliance Trend",
+        "Inspect Mode=Rail shipments (2 total) to identify reasons for the lowest shipment count"
+      ],
+      "created_at": "2026-09-14T14:19:00+00:00"
+    },
+    {
+      "id": "396ee9ed21834853bf661fbc2129eb10",
+      "kind": "drill_down",
+      "label": "Drill-Down Suggestions",
+      "content": [
+        "Drill into the Table Grapes \u2192 Southern Cross Marketing ZA group (140 shipments) to see its contribution to overall % In Spec",
+        "Compare carrier compliance for Carrier=None (82.88% on 150 transports) versus MSC (77.31% on 45 transports) to spot why the largest carrier has lower compliance",
+        "Investigate the January compliance dip (82.34% on 118 transports) by breaking out its shipments by carrier",
+        "Examine the Rail mode shipments (2 shipments) \u2013 they match the lowest\u2011volume product/origin (Nectarines \u2192 Cape Town Port (The Grape Co))"
+      ],
+      "created_at": "2026-09-14T14:19:09+00:00"
+    },
+    {
+      "id": "0ec7b3890e3e465aacb88cdca871f557",
+      "kind": "chart_interpretation",
+      "label": "Carrier Performance: Time Above Ideal",
+      "content": "The \u201cNone\u201d carrier accounts for by far the most time above ideal\u20144,362.5 hours across 150 shipments\u2014suggesting a large volume of untracked or internal moves that are driving the bulk of temperature\u2011risk exposure, while MSC is the next biggest contributor at 2,704 hours. In contrast, carriers like FREJA and NIKOLAIDIS KONSTANTINOS show minimal above\u2011ideal hours but also handle very few shipments, indicating that the bulk of the issue is concentrated with the unassigned carrier group.",
+      "created_at": "2026-09-14T14:19:47+00:00"
+    },
+    {
+      "id": "37566b0b673e48e28f36171bbcbb39fc",
+      "kind": "drill_down",
+      "label": "Carrier Performance: Time Above Ideal",
+      "content": [
+        "Drill into Carrier=None in the Carrier Performance pivot \u2013 it accounts for 150 shipments and 4,362.5 above\u2011ideal hours, the biggest driver of delay",
+        "Compare MSC\u2019s 2,704 above\u2011ideal hours across 45 shipments to MAERSK\u2019s 1,253 hours across 22 shipments to see per\u2011shipment impact",
+        "Inspect the \u201cNone\u201d transportation mode row (189 shipments) in the Shipment Mix pivot to understand why the most shipments lack a mode label",
+        "Look at the January row in the Monthly Compliance Trend (lowest %\u202fIn\u202fSpec at 82.34%) to pinpoint the cause of the dip"
+      ],
+      "created_at": "2026-09-14T14:19:48+00:00"
+    },
+    {
+      "id": "a7bc51d181ff4bf98f4b23a9ce5e3f90",
+      "kind": "drill_down",
+      "label": "Carrier Performance: Time Above Ideal",
+      "content": [
+        "Examine Carrier=None (150 shipments) \u2013 it accounts for the highest Above Ideal Hours (4362.5) in the Carrier Performance table",
+        "Compare MSC\u2019s 45 shipments and 2704.0 Above Ideal Hours to other carriers to see why it\u2019s the second biggest contributor",
+        "Review shipments from South Africa (235 rows, 80%) to assess its impact on overall % In Spec (83.2)",
+        "Analyze January arrivals (118 rows, 40%) since it has the lowest monthly compliance (82.34%)"
+      ],
+      "created_at": "2026-09-14T14:19:51+00:00"
+    }
+  ],
+  "c5d280bb33c0435198b6181f300f36c8": [
+    {
+      "id": "22558debcaf94c53aa8b2b15be3f41e3",
+      "kind": "formula_result",
+      "label": "Average segment length by mode of transportation",
+      "content": {
+        "mode": "template",
+        "id": "ask_9079ef68",
+        "name": "Average segment length by mode of transportation",
+        "description": "Average segment length by mode of transportation",
+        "group_by": [
+          "Mode Of Transportation"
+        ],
+        "metric_labels": [
+          "Avg Segment Length (Days)"
+        ],
+        "rows": [
+          {
+            "Mode Of Transportation": "Ocean",
+            "Avg Segment Length (Days)": 23.78
+          },
+          {
+            "Mode Of Transportation": "Rail",
+            "Avg Segment Length (Days)": 2.01
+          },
+          {
+            "Mode Of Transportation": "Road",
+            "Avg Segment Length (Days)": 2.05
+          },
+          {
+            "Mode Of Transportation": null,
+            "Avg Segment Length (Days)": 30.3
+          }
+        ],
+        "row_count": 4,
+        "filterable_columns": [],
+        "filter_options": {},
+        "filter_combinations": []
+      },
+      "created_at": "2026-09-14T14:29:30+00:00"
+    }
+  ],
+  "4cee8aba8880432e92773e44fc54020f": [
+    {
+      "id": "38112ca14d23441b80e7c94eb043d0c4",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows South Africa as the dominant country of origin, representing 80% of rows, and January accounting for 40% of arrivals. Overall compliance held at an average 83.2% in\u2011spec, reaching a high of 84.45% in February and a low of 82.34% in January. Carrier performance ranged widely, with LAVORTA TRUCK EOOD achieving a perfect 100% compliance rate while KARANIKOLAS DIMITRIOS slipped to 59.4%."
+      },
+      "created_at": "2026-09-14T14:37:22+00:00"
+    }
+  ],
+  "a8291be86d934ea1bac6f21dbfd1f9d2": [
+    {
+      "id": "d58e06d3ef8247b19bc9a57b571ccd42",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows a strong South African origin concentration, with 80\u202f% (235 rows) and a January arrival peak accounting for 40\u202f% of the volume. Overall compliance remains solid at an average of 83.2\u202f% in\u2011spec, though carrier performance varies widely\u2014from LAVORTA TRUCK EOOD achieving a perfect 100\u202f% compliance to KARANIKOLAS DIMITRIOS slipping to 59.4\u202f%. Shipment volume is heavily skewed toward grapes handled by Southern Cross Marketing ZA (140 shipments), while the smallest volume is seen for nectarines from Cape Town Port (2 shipments)."
+      },
+      "created_at": "2026-09-14T15:06:25+00:00"
+    }
+  ],
+  "11f9846557094539a08efa6c2725811a": [
+    {
+      "id": "8a90f0e2d1d9418a976c9a7a280afb7b",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "303"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 78%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 39%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.3"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "566.2"
+          },
+          {
+            "label": "Avg Arrival Delay",
+            "value": "-9.3"
+          },
+          {
+            "label": "Most common Actual Arrival Month",
+            "value": "January (118 rows, 39%)"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Clementines/Easy Peelers / Poulis Larisa: 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 191"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          },
+          {
+            "label": "Highest Avg % In Spec (% In Spec by Carrier)",
+            "value": "ECO INTERNATIONAL: 100.0"
+          },
+          {
+            "label": "Lowest Avg % In Spec (% In Spec by Carrier)",
+            "value": "ONE: 84.03"
+          },
+          {
+            "label": "Highest Hours Above Ideal (Total Hours Above Ideal by Product)",
+            "value": "Table Grapes: 8873.5"
+          },
+          {
+            "label": "Lowest Hours Above Ideal (Total Hours Above Ideal by Product)",
+            "value": "Clementines/Easy Peelers: 47.5"
+          },
+          {
+            "label": "Highest Avg Arrival Delay (hrs) (Arrival Delay by Origin Country)",
+            "value": "None: -9.28"
+          }
+        ],
+        "narrative": "Out of the 303 rows analyzed, 78\u202f% of shipments originate from South Africa and 39\u202f% arrive in January, with an average arrival ahead of schedule by 9.3\u202fhours. Overall compliance is 83.3\u202f% in\u2011spec, highlighted by LAVORTA TRUCK EOOD achieving a perfect 100\u202f% while KARANIKOLAS DIMITRIOS trails at 59.4\u202f%. The dominant product\u2011origin pair is Table Grapes from Southern Cross Marketing ZA (140 shipments), which also generates the highest total hours above ideal (8,873.5\u202fhours), whereas Clementines/Easy Peelers represent the smallest volume (2 shipments) and the lowest hours above ideal (47.5\u202fhours)."
+      },
+      "created_at": "2026-09-14T15:21:26+00:00"
+    },
+    {
+      "id": "13fc5963d7c64473a4858bef8d22c885",
+      "kind": "chart_interpretation",
+      "label": "% In Spec by Carrier",
+      "content": "While most carriers\u2014especially high\u2011volume LAVORTA TRUCK EOOD (28 shipments)\u2014maintain perfect compliance, ONE stands out with the lowest average at 84.03% across eight shipments, suggesting potential temperature\u2011control gaps that merit investigation.",
+      "created_at": "2026-09-14T15:21:36+00:00"
+    },
+    {
+      "id": "6dec2d9a08c44d7297c563068bb164a3",
+      "kind": "chart_interpretation",
+      "label": "Total Hours Above Ideal by Product",
+      "content": "Table Grapes dominate the report, generating 8,873.5 hours above ideal across 232 shipments and indicating a systemic temperature\u2011control issue for that product line, while the other items\u2014especially Clementines/Easy Peelers with only 47.5 excess hours in two shipments\u2014show comparatively minimal exposure.",
+      "created_at": "2026-09-14T15:21:37+00:00"
+    },
+    {
+      "id": "2f50deb7ce3b44d9944e6a95ceb61b79",
+      "kind": "formula_result",
+      "label": "What is the total Time Above High Hours for each Parent Supplier?",
+      "content": {
+        "mode": "template",
+        "id": "ask_28add8a6",
+        "name": "What is the total Time Above High Hours for each Parent Supp",
+        "description": "What is the total Time Above High Hours for each Parent Supplier?",
+        "group_by": [
+          "Parent Supplier"
+        ],
+        "metric_labels": [
+          "Total Time Above High Hours"
+        ],
+        "rows": [
+          {
+            "Parent Supplier": null,
+            "Total Time Above High Hours": 3900.0
+          }
+        ],
+        "row_count": 1,
+        "filterable_columns": [],
+        "filter_options": {},
+        "filter_combinations": []
+      },
+      "created_at": "2026-09-14T15:22:19+00:00"
+    },
+    {
+      "id": "f0c9d2977f344409999592dfc24eaee1",
+      "kind": "formula_result",
+      "label": "How does the Segment Length (Days) vary across months of actual arrival (trend by actual arrival month)?",
+      "content": {
+        "mode": "template",
+        "id": "ask_f25e1d6e",
+        "name": "How does the Segment Length (Days) vary across months of act",
+        "description": "How does the Segment Length (Days) vary across months of actual arrival (trend by actual arrival month)?",
+        "group_by": [
+          "actual_arrival_month"
+        ],
+        "metric_labels": [
+          "Avg Segment Length (Days)"
+        ],
+        "rows": [
+          {
+            "actual_arrival_month": "March",
+            "Avg Segment Length (Days)": 17.64
+          },
+          {
+            "actual_arrival_month": "January",
+            "Avg Segment Length (Days)": 25.42
+          },
+          {
+            "actual_arrival_month": "February",
+            "Avg Segment Length (Days)": 26.07
+          }
+        ],
+        "row_count": 3,
+        "filterable_columns": [],
+        "filter_options": {},
+        "filter_combinations": []
+      },
+      "created_at": "2026-09-14T15:22:39+00:00"
+    },
+    {
+      "id": "ce7e223c46a4491d9f7e0de76c3f542f",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "303"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 78%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 39%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.3"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "566.2"
+          },
+          {
+            "label": "Avg Arrival Delay",
+            "value": "-9.3"
+          },
+          {
+            "label": "Most common Actual Arrival Month",
+            "value": "January (118 rows, 39%)"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Clementines/Easy Peelers / Poulis Larisa: 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 191"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          },
+          {
+            "label": "Highest Avg % In Spec (% In Spec by Carrier)",
+            "value": "ECO INTERNATIONAL: 100.0"
+          },
+          {
+            "label": "Lowest Avg % In Spec (% In Spec by Carrier)",
+            "value": "ONE: 84.03"
+          },
+          {
+            "label": "Highest Hours Above Ideal (Total Hours Above Ideal by Product)",
+            "value": "Table Grapes: 8873.5"
+          },
+          {
+            "label": "Lowest Hours Above Ideal (Total Hours Above Ideal by Product)",
+            "value": "Clementines/Easy Peelers: 47.5"
+          },
+          {
+            "label": "Highest Avg Arrival Delay (hrs) (Arrival Delay by Origin Country)",
+            "value": "None: -9.28"
+          }
+        ],
+        "narrative": "The analysis of 303 shipments shows that South Africa accounts for the overwhelming majority of origins (78%) and that January remains the peak arrival month, yet February delivered the strongest compliance performance with 84.45% of shipments in spec versus 82.34% in January. Table grapes shipped by Southern Cross Marketing ZA dominate the volume profile, representing 140 of the total shipments, while carrier compliance peaked at 100% for both LAVORTA TRUCK EOOD and ECO INTERNATIONAL. Overall, shipments arrived on average 9.3\u202fhours early and maintained an 83.3% in\u2011spec rate across the period."
+      },
+      "created_at": "2026-09-14T15:23:11+00:00"
+    }
+  ],
+  "dfa1e898e42841f8a1face3b77e4e95a": [
+    {
+      "id": "dfb21bed858244da8dd297d33fcc641c",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Departure Delay",
+            "value": "47.8"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 cold\u2011chain shipments shows South Africa accounting for 80% of origins, with grapes from Southern Cross Marketing\u202fZA representing the single largest product\u2011origin pairing at 140 shipments. Overall compliance sits at 83.2%, peaking at 84.45% in February and dipping to 82.34% in January; carrier performance varies widely, with LAVORTA\u202fTRUCK\u202fEOOD achieving a perfect 100% in\u2011spec rate versus a low of 59.4% for KARANIKOLAS\u202fDIMITRIOS. The dominant transport mode handled 189 shipments, while rail contributed only two."
+      },
+      "created_at": "2026-09-14T15:48:55+00:00"
+    }
+  ],
+  "27cc6444b05b40e2bd70901512750673": [
+    {
+      "id": "a4ea96ae9d364ddbbaa8260917151153",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows a strong concentration from South Africa, which accounts for 80% of the rows and drives the January arrival peak at 40% of all shipments. Overall compliance remains solid at an average 83.2% in\u2011spec, with February posting the highest monthly rate (84.45%) and January the lowest (82.34%). Carrier performance varies widely, highlighted by LAVORTA TRUCK EOOD achieving a perfect 100% compliance score, while KARANIKOLAS DIMITRIOS falls to 59.4%."
+      },
+      "created_at": "2026-09-14T16:07:45+00:00"
+    }
+  ],
+  "a00579d8f15740f6b98c056dc15d7d4c": [
+    {
+      "id": "b66516fe741241638609446cfc7f73b2",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Departure Delay Hours",
+            "value": "47.8"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "Out of the 295 rows analyzed, 80% of shipments originated in South Africa, with Grapes shipped by Southern Cross Marketing\u202fZA alone accounting for 140 of those moves. Overall compliance averaged 83.2% in\u2011spec, reaching a high of 84.45% in February and a low of 82.34% in January, while carrier performance ranged from a perfect 100% for LAVORTA\u202fTRUCK\u202fEOOD to just 59.4% for KARANIKOLAS\u202fDIMITRIOS. The average departure delay was 47.8\u202fhours, and the shipment mix was overwhelmingly non\u2011rail (189 shipments) with rail handling only two shipments."
+      },
+      "created_at": "2026-09-14T16:57:07+00:00"
+    },
+    {
+      "id": "95f1aac44be341f2aac408ec06fd5381",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Departure Delay Hours",
+            "value": "47.8"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 cold\u2011chain shipments reveals that South Africa supplies 80% of the product and January accounts for 40% of arrivals, concentrating most of the activity. Overall compliance averages 83.2% in\u2011spec, peaking at 84.45% in February and dipping to 82.34% in January, while carrier performance spans from a perfect 100% for LAVORTA TRUCK EOOD to just 59.4% for KARANIKOLAS DIMITRIOS. Average departure delays remain high at nearly 48\u202fhours, highlighting a continued timeliness challenge."
+      },
+      "created_at": "2026-09-14T17:04:17+00:00"
+    },
+    {
+      "id": "52a014dc0ad645469b7098d6e75b993a",
+      "kind": "chart_interpretation",
+      "label": "Shipments by Product & Origin",
+      "content": "Table\u202fGrapes from Southern\u202fCross\u202fMarketing\u202fZA dominate the cold\u2011chain flow with 140 shipments, far outpacing the next highest volumes (Kiwi and Table\u202fGrapes at Cape\u202fTown\u202fPort at 50 each), suggesting a heavy operational reliance on that single source; the very low counts for Nectarines and Clementines/Easy\u202fPeelers indicate they are niche lines with minimal cold\u2011chain impact.",
+      "created_at": "2026-09-14T17:04:48+00:00"
+    },
+    {
+      "id": "b2504533c3304c7093ec13f3fdc76d59",
+      "kind": "drill_down",
+      "label": "Shipments by Product & Origin",
+      "content": [
+        "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 140 shipments dominate the mix",
+        "Compare January vs February % In Spec in the Monthly Compliance Trend \u2013 lowest (82.34) vs highest (84.45)",
+        "Investigate Carrier KARANIKOLAS DIMITRIOS \u2013 lowest % In Spec (59.4) in the Carrier Compliance Ranking",
+        "Review Rail shipments \u2013 only 2 shipments in the Shipment Mix by Mode of Transportation table"
+      ],
+      "created_at": "2026-09-14T17:04:49+00:00"
+    },
+    {
+      "id": "8cbe2f8bf6d44aefb827e7c589172d91",
+      "kind": "drill_down",
+      "label": "Shipments by Product & Origin",
+      "content": [
+        "Drill into Product=Table Grapes & Origin=Southern Cross Marketing ZA \u2013 140 shipments to understand volume drivers",
+        "Examine Product=Kiwi & Origin=Balakanakis \u2013 50 shipments, the second\u2011largest group",
+        "Investigate the low % in spec for Carrier=KARANIKOLAS DIMITRIOS (59.4%)",
+        "Review January compliance trend (82.34%) as the lowest monthly % in spec"
+      ],
+      "created_at": "2026-09-14T17:04:51+00:00"
+    },
+    {
+      "id": "d6805bbcb1704d419ffbaa14624cee1b",
+      "kind": "chart_interpretation",
+      "label": "Monthly Compliance Trend",
+      "content": "February records the peak compliance at 84.45% despite a moderate shipment volume, while March\u2019s volume drops to 72 transports yet its compliance stays near January\u2019s level, indicating stable performance even as loads decrease.",
+      "created_at": "2026-09-14T17:14:39+00:00"
+    },
+    {
+      "id": "c39e83dc6f5145d9821783c37ebb2e52",
+      "kind": "drill_down",
+      "label": "Monthly Compliance Trend",
+      "content": [
+        "Examine January arrivals (118 shipments) where % In Spec is 82.34, the lowest month",
+        "Compare carrier KARANIKOLAS DIMITRIOS (59.4% In Spec) against top carrier LAVORTA TRUCK EOOD (100%) to identify compliance gaps",
+        "Investigate the Grapes / Southern Cross Marketing ZA product\u2011origin pair (140 shipments) for any patterns in delay hours",
+        "Look at Rail shipments (2 shipments) as the lowest mode volume to assess if mode impacts % In Spec"
+      ],
+      "created_at": "2026-09-14T17:14:39+00:00"
+    },
+    {
+      "id": "b02a11cc7c51467285c9d3f1dda5ca17",
+      "kind": "drill_down",
+      "label": "Monthly Compliance Trend",
+      "content": [
+        "Drill into Arrival Month=January where % In Spec=82.34 (the lowest month)",
+        "Compare carrier KARANIKOLAS DIMITRIOS (59.4% In Spec) against LAVORTA TRUCK EOOD (100% In Spec)",
+        "Analyze the high\u2011volume pair Grapes / Southern Cross Marketing ZA (140 shipments) for delay patterns",
+        "Inspect the Rail mode slice (2 shipments) to understand its minimal volume"
+      ],
+      "created_at": "2026-09-14T17:14:41+00:00"
+    },
+    {
+      "id": "95878e21c33d46a1a9d0c5f77e1288f9",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Departure Delay Hours",
+            "value": "47.8"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 rows shows South Africa accounts for 80% of origins and January captures 40% of arrivals, yet January also records the lowest compliance at 82.34%. Overall compliance averages 83.2%, with LAVORTA TRUCK EOOD achieving a perfect 100% compliance rate while the lowest carrier sits at 59.4%. Shipment mode is heavily skewed toward \u201cNone,\u201d representing 189 shipments, whereas rail accounts for only two shipments."
+      },
+      "created_at": "2026-09-14T17:34:24+00:00"
+    },
+    {
+      "id": "54e94bce174c41a4a378e511812d747c",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Departure Delay Hours",
+            "value": "47.8"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows South Africa accounts for 80% of origins, with January handling the largest share at 40%. Overall compliance is solid at 83.2% in\u2011spec, peaking at 84.45% in February and dipping to 82.34% in January, while the top carrier LAVORTA TRUCK EOOD achieved a perfect 100% compliance. Average departure delays remain high at nearly 48 hours."
+      },
+      "created_at": "2026-09-14T17:39:57+00:00"
+    }
+  ],
+  "3587ae9cf60f480eb6e6d353704299cd": [
+    {
+      "id": "6fcde88ea1d74bd1881311f2267dc996",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments reveals that South Africa dominates the origin profile, representing 80% of rows, and January accounts for the largest share of arrivals at 40%. Overall compliance is solid at an average 83.2% in\u2011spec, reaching a high of 84.45% in February and slipping to a low of 82.34% in January. Carrier performance is uneven, with LAVORTA TRUCK EOOD achieving a perfect 100% compliance rate, while KARANIKOLAS DIMITRIOS trails at 59.4%."
+      },
+      "created_at": "2026-09-16T07:06:03+00:00"
+    }
+  ],
+  "b531b5fe9942436d8939219df2452ba1": [
+    {
+      "id": "eb76ecbaa8c947c3ba112fa90bebb84f",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "303"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Clementines/Easy Peelers / Poulis Larisa: 2"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 191"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Carrier)",
+            "value": "None: 150"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Carrier)",
+            "value": "KIRIAZIS THEODOROS: 4"
+          },
+          {
+            "label": "Highest Avg Mean Temp (Average Temperature Profile by Product)",
+            "value": "Nectarines: 4.65"
+          },
+          {
+            "label": "Lowest Avg Mean Temp (Average Temperature Profile by Product)",
+            "value": "Table Grapes: 1.44"
+          },
+          {
+            "label": "Highest Total Shipments (Alarmed Shipments Count by Carrier)",
+            "value": "None: 150"
+          },
+          {
+            "label": "Lowest Total Shipments (Alarmed Shipments Count by Carrier)",
+            "value": "DIAMANTOPOULOS: 2"
+          }
+        ],
+        "narrative": "Across the 303 rows analyzed, Table Grapes shipped by Southern Cross Marketing ZA dominate the volume with 140 shipments, while Clementines/Easy Peelers from Poulis Larisa represent the smallest flow at just two shipments. Nectarines experience the warmest average temperature profile at 4.65\u202f\u00b0C, contrasted with Table Grapes, which operate at the coolest average of 1.44\u202f\u00b0C. The \u201cNone\u201d transport mode and carrier each account for the highest activity, recording 191 total shipments and 150 alarmed shipments respectively, whereas rail and carriers such as KIRIAZIS THEODOROS and DIAMANTOPOULOS register the lowest counts."
+      },
+      "created_at": "2026-09-16T07:13:24+00:00"
+    },
+    {
+      "id": "0fe00ec32cc54788b1bef01bf4977932",
+      "kind": "chart_interpretation",
+      "label": "Shipments by Carrier",
+      "content": "The chart shows that 150 shipments have no carrier recorded, dwarfing the next highest carrier, MSC, with only 45 shipments, indicating a significant data\u2011capture gap that could mask true carrier performance. This suggests the need to improve carrier tagging in the shipment workflow.",
+      "created_at": "2026-09-16T07:13:25+00:00"
+    },
+    {
+      "id": "4feeea749b904d068671ddf07fff1433",
+      "kind": "chart_interpretation",
+      "label": "Average Temperature Profile by Product",
+      "content": "Table\u202fGrapes account for by far the most exposure, with 8,873.5 hours above the ideal range and 3,368.5 hours above the high\u2011temperature threshold, indicating a significant temperature\u2011control challenge for this product. Nectarines, while far lower in total exposure, have the highest average mean temperature at 4.65\u202f\u00b0C, suggesting they are the most temperature\u2011sensitive among the items listed.",
+      "created_at": "2026-09-16T07:13:26+00:00"
+    }
+  ],
+  "22e4bf49777f48c290661ca0f568384d": [
+    {
+      "id": "55a473db619847caa419a0fb7af46299",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa dominates the origin mix, accounting for 80% of rows, and January remains the busiest arrival month with 40% of entries. Overall compliance sits at 83.2% in\u2011spec, peaking at 84.45% in February and dropping to a low of 82.34% in January, while carrier performance ranges from a perfect 100% for LAVORTA TRUCK EOOD to 59.4% for KARANIKOLAS DIMITRIOS. The most frequent product\u2011origin pairing is Grapes shipped by Southern Cross Marketing ZA (140 shipments), contrasted with only two Nectarine shipments from Cape Town Port (The Grape Co)."
+      },
+      "created_at": "2026-09-16T07:24:58+00:00"
+    },
+    {
+      "id": "1f2b71ab901946feb683adc1d3ce83b8",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with January the busiest arrival month. Overall compliance sits at 83.2% in\u2011spec, peaking at 84.45% in February and dipping to 82.34% in January, while carrier LAVORTA TRUCK EOOD achieved a perfect 100% compliance versus the low of 59.4% for KARANIKOLAS DIMITRIOS. The shipment mix is heavily skewed toward non\u2011specified transport modes, representing 189 of the rows, and the average transit time is 580.4 hours."
+      },
+      "created_at": "2026-09-16T07:30:13+00:00"
+    },
+    {
+      "id": "ccfbce3613104bbdb97dc8d21912faa2",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with January arrivals representing 40% of the volume. Grapes shipped by Southern Cross Marketing ZA dominate the mix, contributing 140 of the total rows, while overall product compliance sits at 83.2% and peaks at 84.45% in February, down from a low of 82.34% in January. Carrier performance is uneven, with LAVORTA TRUCK EOOD achieving a perfect 100% compliance rate, contrasted by the lowest carrier at 59.4%."
+      },
+      "created_at": "2026-09-16T07:30:18+00:00"
+    },
+    {
+      "id": "7d3d9ddebc5b4431ae025eb07c8077f7",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for the overwhelming majority of origins at 80%, with January representing the peak arrival month (40% of entries). Overall compliance remains strong, averaging 83.2% in\u2011spec, and peaks in February at 84.45%, while the top\u2011performing carrier, LAVORTA TRUCK EOOD, achieved a perfect 100% compliance rate. Conversely, the lowest compliance was recorded for KARANIKOLAS DIMITRIOS at 59.4%, and the smallest shipment volume came from rail transport, with only two rows."
+      },
+      "created_at": "2026-09-16T07:30:24+00:00"
+    },
+    {
+      "id": "e1c20d025b32453d816ac1e7e63eeae3",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "In this reporting cycle we examined 295 shipments, with South Africa accounting for 80% of origins and January delivering the largest share of arrivals at 40%. Overall compliance averaged 83.2%, reaching a high of 84.45% in February and a low of 82.34% in January, while LAVORTA TRUCK EOOD achieved a perfect 100% compliance rate. The most frequent product\u2011origin pairing was Grapes from Southern Cross Marketing ZA (140 shipments), and the predominant transport classification was \u201cNone,\u201d covering 189 shipments."
+      },
+      "created_at": "2026-09-16T07:30:29+00:00"
+    },
+    {
+      "id": "9fc78eb2f6c148768949c36e335f4e0e",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with January delivering the bulk of arrivals (40%). Overall compliance remains solid at an average 83.2% in\u2011spec rate, highlighted by LAVORTA TRUCK EOOD achieving a perfect 100% while KARANIKOLAS DIMITRIOS trails at 59.4%. Shipment volume is dominated by grapes from Southern Cross Marketing ZA (140 shipments), and monthly compliance peaked in February at 84.45% before dipping to its lowest in January at 82.34%."
+      },
+      "created_at": "2026-09-16T07:30:36+00:00"
+    },
+    {
+      "id": "dce72944880a42339c55bb5b066e4adc",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with January handling the largest share of arrivals (40%). Overall compliance sits at 83.2% in spec, peaking at 84.45% in February and reaching a perfect 100% for carrier LAVORTA TRUCK EOOD, while the lowest carrier compliance is 59.4% for KARANIKOLAS DIMITRIOS. The most concentrated product flow is grapes shipped by Southern Cross Marketing ZA, representing 140 of the rows, whereas nectarines from Cape Town Port are the least frequent at just two shipments."
+      },
+      "created_at": "2026-09-16T07:30:41+00:00"
+    },
+    {
+      "id": "16658f9066c74098b45b4b761e6c6d4c",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "Out of the 295 shipments reviewed, South Africa was the source for 80% of them and January accounted for 40% of arrivals. Overall compliance averaged 83.2% in\u2011spec, peaking at 84.45% in February and dipping to 82.34% in January. LAVORTA TRUCK EOOD delivered a perfect 100% compliance rate, while KARANIKOLAS DIMITRIOS fell to 59.4%, and the \u201cNone\u201d transport mode dominated with 189 shipments compared with just two by rail."
+      },
+      "created_at": "2026-09-16T07:30:49+00:00"
+    },
+    {
+      "id": "dc5e77492c38486bb9d42b476729b645",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments reveals that South Africa dominates the supply chain, representing 80% of origins, and January accounts for the largest share of arrivals at 40%. Overall compliance averaged 83.2% in\u2011spec, reaching a high of 84.45% in February and a low of 82.34% in January. Carrier performance varied markedly, with LAVORTA TRUCK EOOD achieving a perfect 100% compliance rate while KARANIKOLAS DIMITRIOS lagged at 59.4%."
+      },
+      "created_at": "2026-09-16T07:30:54+00:00"
+    },
+    {
+      "id": "b665df1a20744dd29fe96743029f9ca0",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins and January captures 40% of arrivals, driving the bulk of activity. Overall compliance sits at 83.2% in\u2011spec, with LAVORTA\u202fTRUCK\u202fEOOD achieving a perfect 100% while the monthly trend dips to a low of 82.34% in January. Grapes from Southern Cross Marketing\u202fZA dominate the product mix with 140 rows, whereas rail moves only two shipments."
+      },
+      "created_at": "2026-09-16T07:31:00+00:00"
+    },
+    {
+      "id": "0409b7884b46434793147b01033335c1",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for the overwhelming majority of origins (80%), driven largely by grape shipments from Southern Cross Marketing ZA, which alone represents 140 rows. Overall compliance is solid at an average 83.2% in\u2011spec, with the top carrier LAVORTA TRUCK EOOD achieving a perfect 100% while the lowest performer, KARANIKOLAS DIMITRIOS, falls to 59.4%. Monthly compliance peaks in February at 84.45% and dips in January to 82.34%, highlighting a modest but notable seasonal swing."
+      },
+      "created_at": "2026-09-16T07:31:06+00:00"
+    },
+    {
+      "id": "4379cc47b3354b7ea3115d396ecf259e",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa dominates the supply chain, accounting for 80% of all rows, with grapes from Southern Cross Marketing ZA representing the single largest product\u2011origin pairing at 140 shipments. Overall compliance remains solid at an average 83.2% in\u2011spec, highlighted by LAVORTA TRUCK EOOD achieving a perfect 100% compliance rate, while monthly performance peaked in February at 84.45% and dipped to 82.34% in January. Transit times average 580.4 hours, underscoring the need to monitor lengthy journeys despite strong carrier performance."
+      },
+      "created_at": "2026-09-16T07:31:11+00:00"
+    },
+    {
+      "id": "1788ef017c184193a990a65016668825",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments reveals that South Africa dominates the origin profile, accounting for 80% of rows, and January sees the highest arrival volume at 40% while also posting the lowest monthly compliance at 82.34%. Overall compliance sits at an average of 83.2% in\u2011spec, with LAVORTA TRUCK EOOD standing out as the only carrier achieving a perfect 100% compliance rate. The most frequent product\u2011origin combination is Grapes from Southern Cross Marketing ZA (140 shipments), and the bulk of shipments (189) were logged under an unspecified transport mode."
+      },
+      "created_at": "2026-09-16T07:31:17+00:00"
+    },
+    {
+      "id": "c9ac6d7fa7ea4ea2b00892efab869651",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with January representing the peak arrival month at 40% of entries. Overall compliance is solid, averaging 83.2% in\u2011spec, and peaks in February at 84.45% while dipping to 82.34% in January; the top\u2011performing carrier, LAVORTA TRUCK EOOD, achieved a perfect 100% compliance rate, contrasted by KARANIKOLAS DIMITRIOS at 59.4%. The shipment mix is dominated by non\u2011specified modes (189 shipments), whereas rail contributed the fewest shipments, just two."
+      },
+      "created_at": "2026-09-16T07:31:23+00:00"
+    },
+    {
+      "id": "bfd2a6fd9ae54ce3bbd3197c5a472d33",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with grapes from Southern Cross Marketing ZA driving the volume at 140 shipments, while nectarines from Cape Town Port represent the smallest count at just two. Overall compliance is strong, averaging 83.2% in\u2011spec, peaking at 84.45% in February and dipping to 82.34% in January, and carrier performance ranges from a perfect 100% compliance by LAVORTA TRUCK EOOD to a low of 59.4% by KARANIKOLAS DIMITRIOS."
+      },
+      "created_at": "2026-09-16T07:31:29+00:00"
+    },
+    {
+      "id": "aa2bb2286c554e50b8c55ab7ea44a45d",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows South Africa accounts for 80% of origins, with January delivering the largest volume at 40% of arrivals. Overall compliance sits at 83.2% in\u2011spec, peaking at 84.45% in February and dipping to 82.34% in January. Carrier LAVORTA TRUCK EOOD achieved perfect compliance, while the lowest performer was KARANIKOLAS DIMITRIOS at 59.4%."
+      },
+      "created_at": "2026-09-16T07:31:31+00:00"
+    },
+    {
+      "id": "c84526c8c09749138716579ed1663970",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for the overwhelming majority of origins (80%) and that January remains the peak arrival month, yet February delivers the strongest compliance performance with an 84.45% in\u2011spec rate. Overall, shipments meet specifications at an average of 83.2%, with LAVORTA TRUCK EOOD achieving a perfect 100% compliance score, while the lowest carrier compliance is recorded at 59.4% for KARANIKOLAS DIMITRIOS. The most frequent product\u2011origin pairing is Grapes from Southern Cross Marketing ZA (140 shipments), and the dominant transport mode is \u201cNone,\u201d representing 189 of the shipments."
+      },
+      "created_at": "2026-09-16T07:31:36+00:00"
+    },
+    {
+      "id": "0224be34509a42c08da5f8260a6a2f40",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with grapes from Southern Cross Marketing ZA representing the single largest product\u2011origin pairing at 140 shipments. Overall compliance sits at 83.2%, but carrier performance varies widely\u2014from a perfect 100% compliance by LAVORTA TRUCK EOOD to a low 59.4% by KARANIKOLAS DIMITRIOS. February recorded the strongest monthly compliance at 84.45%, while January lagged slightly at 82.34%."
+      },
+      "created_at": "2026-09-16T07:31:41+00:00"
+    },
+    {
+      "id": "9b2a5cd97dc2444dbfba3ba956e671b1",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with grapes from Southern Cross Marketing ZA driving the volume at 140 shipments. Overall compliance sits at 83.2%, peaking at 100% for carrier LAVORTA TRUCK EOOD and dipping to 59.4% for KARANIKOLAS DIMITRIOS, while February recorded the highest monthly in\u2011spec rate (84.45%) compared with a low of 82.34% in January. The dominant transport mode handled 189 shipments, whereas rail was used for only two shipments."
+      },
+      "created_at": "2026-09-16T07:31:44+00:00"
+    },
+    {
+      "id": "33952c238c294668a284bd9b6a6598a7",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with grapes from Southern Cross Marketing ZA representing the single largest product\u2011origin pair at 140 shipments. Overall compliance remains strong at 83.2% in\u2011spec, peaking at 84.45% in February and driven by carriers such as LAVORTA TRUCK EOOD, which achieved a perfect 100% compliance rate, while the lowest performer recorded 59.4%. Transportation mode is heavily skewed toward non\u2011rail routes, with 189 shipments classified as \u201cNone\u201d versus just two by rail."
+      },
+      "created_at": "2026-09-16T07:31:48+00:00"
+    },
+    {
+      "id": "1a25596d4f1845b5838c368b44e382a9",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that South Africa accounts for 80% of origins, with January handling the largest share of arrivals (40%) but also posting the lowest compliance rate at 82.34%. Overall, 83.2% of shipments meet specifications, driven by top\u2011performing carriers such as LAVORTA TRUCK EOOD, which achieved a perfect 100% compliance, while the lowest\u2011performing carrier fell to 59.4%. The most frequent product\u2011origin pairing was Grapes from Southern Cross Marketing ZA, contributing 140 shipments, whereas rail transport was used for only two shipments."
+      },
+      "created_at": "2026-09-16T07:31:52+00:00"
+    },
+    {
+      "id": "5c560899c9da4bd5948f0fb52569e027",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis of 295 shipments shows that grapes from Southern Cross Marketing ZA dominate the volume, accounting for 140 of the rows, while South Africa supplies the overwhelming majority of origins (80%). Overall compliance remains solid at an average 83.2\u202f% in\u2011spec rate, highlighted by LAVORTA TRUCK EOOD achieving a perfect 100\u202f% but offset by KARANIKOLAS DIMITRIOS at only 59.4\u202f%. Compliance dipped slightly in the peak arrival month of January (82.34\u202f% in\u2011spec) before rising to its best in February at 84.45\u202f%."
+      },
+      "created_at": "2026-09-16T07:31:58+00:00"
+    },
+    {
+      "id": "483ccd31fc494ebcbc57da2e5a498ff6",
+      "kind": "summary",
+      "label": "AI Summary",
+      "content": {
+        "highlights": [
+          {
+            "label": "Total Rows Analyzed",
+            "value": "295"
+          },
+          {
+            "label": "Most common Country of Origin (COO)",
+            "value": "South Africa (235 rows, 80%)"
+          },
+          {
+            "label": "Most common Arrival Month",
+            "value": "January (118 rows, 40%)"
+          },
+          {
+            "label": "Avg % In Spec",
+            "value": "83.2"
+          },
+          {
+            "label": "Avg Transit Duration Hours",
+            "value": "580.4"
+          },
+          {
+            "label": "Highest Shipments (Shipments by Product & Origin)",
+            "value": "Table Grapes / Southern Cross Marketing ZA: 140"
+          },
+          {
+            "label": "Lowest Shipments (Shipments by Product & Origin)",
+            "value": "Nectarines / Cape Town Port (The Grape Co): 2"
+          },
+          {
+            "label": "Highest % In Spec (Carrier Compliance Ranking)",
+            "value": "LAVORTA TRUCK EOOD: 100.0"
+          },
+          {
+            "label": "Lowest % In Spec (Carrier Compliance Ranking)",
+            "value": "KARANIKOLAS DIMITRIOS: 59.4"
+          },
+          {
+            "label": "Highest % In Spec (Monthly Compliance Trend)",
+            "value": "February: 84.45"
+          },
+          {
+            "label": "Lowest % In Spec (Monthly Compliance Trend)",
+            "value": "January: 82.34"
+          },
+          {
+            "label": "Highest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "None: 189"
+          },
+          {
+            "label": "Lowest Shipments (Shipment Mix by Mode of Transportation)",
+            "value": "Rail: 2"
+          }
+        ],
+        "narrative": "The analysis covered 295 shipments, with South Africa accounting for 80% of origins and January representing 40% of arrivals. Overall compliance was solid at an average 83.2% in\u2011spec, peaking at 84.45% in February and dipping to 82.34% in January. Carrier performance varied, with LAVORTA TRUCK EOOD achieving a perfect 100% compliance while KARANIKOLAS DIMITRIOS lagged at 59.4%."
+      },
+      "created_at": "2026-09-16T07:32:04+00:00"
+    }
+  ]
+}

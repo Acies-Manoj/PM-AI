@@ -1,13 +1,24 @@
 """
-Holds whatever feature-definitions JSON was most recently uploaded to the
-"Customer KPI Profile" slot. There is no bundled backend default -- if
-nothing has been uploaded, `store.definitions` is None and feature
-engineering simply cannot run yet. Single-slot, thread-safe -- same scope as
-the other in-memory stores in this app (one demo session at a time).
+Holds the feature-definitions JSON feature engineering runs against --
+whatever was most recently uploaded to the "Customer KPI Profile" slot, or
+this app's own bundled default (DEFAULT_PROFILE_PATH) if nothing has been
+uploaded yet. The default exists so a fresh session can compute features
+immediately instead of blocking on a manual upload step; uploading a
+profile still overrides it for the rest of the process's lifetime (`set`
+below), the same as before. Single-slot, thread-safe -- same scope as the
+other in-memory stores in this app (one demo session at a time).
 """
+import json
+import logging
 import threading
 
+from app.config import RAW_DATA_DIR
+
+logger = logging.getLogger(__name__)
+
 SUPPORTED_TYPES = {"lookup", "extract_month", "ratio", "duration_hours", "custom_formula", "ai_generated"}
+
+DEFAULT_PROFILE_PATH = RAW_DATA_DIR / "customer_kpi_profile_example.json"
 
 
 class FeatureDefinitionsStore:
@@ -15,6 +26,22 @@ class FeatureDefinitionsStore:
         self._lock = threading.Lock()
         self.filename: str | None = None
         self.definitions: list[dict] | None = None
+        self._load_default()
+
+    def _load_default(self) -> None:
+        """Best-effort only: a missing or malformed bundled default just
+        means "no default" (the pre-existing behavior), never a startup
+        crash -- an uploaded profile always still works either way."""
+        if not DEFAULT_PROFILE_PATH.exists():
+            return
+        try:
+            payload = json.loads(DEFAULT_PROFILE_PATH.read_text(encoding="utf-8"))
+            features = validate(payload)
+        except Exception:
+            logger.exception("Could not load the bundled default Customer KPI Profile from %s", DEFAULT_PROFILE_PATH)
+            return
+        self.filename = DEFAULT_PROFILE_PATH.name
+        self.definitions = features
 
     def set(self, filename: str, definitions: list[dict]) -> None:
         with self._lock:
@@ -25,9 +52,6 @@ class FeatureDefinitionsStore:
         with self._lock:
             self.filename = None
             self.definitions = None
-
-
-store = FeatureDefinitionsStore()
 
 
 def validate(payload: dict) -> list[dict]:
@@ -66,3 +90,6 @@ def validate(payload: dict) -> list[dict]:
             raise ValueError(f"Feature '{spec['id']}' (type '{ftype}') is missing: {', '.join(sorted(type_missing))}.")
 
     return features
+
+
+store = FeatureDefinitionsStore()

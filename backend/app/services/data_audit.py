@@ -398,27 +398,15 @@ def run_audit(df: pd.DataFrame) -> list[AuditIssue]:
             ],
         ))
 
-    for col, n in detect_outlier_columns(df):
-        mask = detect_outlier_mask_for_column(df, col)
-        issues.append(AuditIssue(
-            id=_new_id(),
-            category=f"statistical_outliers{NS}{col}",
-            severity="warning",
-            title=col,
-            description=(
-                f"{n} row(s) fall far outside the typical range (beyond "
-                f"{OUTLIER_IQR_MULTIPLIER:.0f}x the interquartile range) for '{col}'. Worth a "
-                f"second look before these feed into KPI calculations."
-            ),
-            affected_row_count=n,
-            sample=_sample(df, mask),
-            requires_decision=True,
-            options=[
-                IssueOption(id="remove_affected_rows", label="Remove the outlier rows"),
-                IssueOption(id="keep", label="Keep them as-is"),
-            ],
-            chart=build_outlier_chart(df, col),
-        ))
+    # Generic per-column ("variable") statistical outlier check intentionally
+    # removed from this audit: Segment Days (see anomaly_detection.py's lane
+    # duration fences, surfaced on the Audit page's own tab) and Step 3's
+    # temperature screening now cover outliers with domain-aware logic
+    # instead of a blind IQR pass over every numeric column. detect_outlier_
+    # columns/detect_outlier_mask_for_column/build_outlier_chart are kept
+    # (not deleted) only so detect_mask_for_category's "view full rows" path
+    # still resolves for any issue of this category already stored on an
+    # older, in-memory session.
 
     id_col = detect_id_column(df)
     for col, n in detect_missing_identifier_columns(df, id_col):

@@ -14,17 +14,7 @@ interface AuditReportProps {
   onTabChange: (tab: Tab) => void;
 }
 
-export type Tab = "quality" | "suggestions" | "summary";
-
-// The variable-level tab holds per-column checks (outlier detection, missing
-// identifiers); everything else -- structural problems, duplicates, logic
-// violations, and column cleanliness -- is an overall data-quality question
-// that blocks confident analysis.
-export function classifyIssue(issue: AuditIssue): Tab {
-  if (issue.category.startsWith("statistical_outliers::")) return "suggestions";
-  if (issue.category.startsWith("missing_identifier::")) return "suggestions";
-  return "quality";
-}
+export type Tab = "quality" | "summary";
 
 // Resolution text is always machine-generated (see backend apply_decision) so
 // the leading count is safe to parse back out for a rollup, rather than
@@ -92,11 +82,7 @@ export default function AuditReport({
   const criticalCount = report.issues.filter((i) => i.severity === "critical").length;
   const warningCount = report.issues.filter((i) => i.severity === "warning").length;
 
-  const qualityIssues = useMemo(() => report.issues.filter((i) => classifyIssue(i) === "quality"), [report.issues]);
-  const suggestionIssues = useMemo(
-    () => report.issues.filter((i) => classifyIssue(i) === "suggestions"),
-    [report.issues]
-  );
+  const qualityIssues = report.issues;
   const resolvedIssues = useMemo(
     () => decisionIssues.filter((i) => i.status === "resolved" && i.resolution),
     [decisionIssues]
@@ -108,7 +94,7 @@ export default function AuditReport({
   const [columnDropdownOpen, setColumnDropdownOpen] = useState(false);
   const columnSearchRef = useRef<HTMLDivElement | null>(null);
 
-  const activeIssues = activeTab === "quality" ? qualityIssues : activeTab === "suggestions" ? suggestionIssues : [];
+  const activeIssues = activeTab === "quality" ? qualityIssues : [];
   const visibleIssues = useMemo(
     () => activeIssues.filter((i) => issueMatchesColumnQuery(i, columnQuery)),
     [activeIssues, columnQuery]
@@ -218,17 +204,6 @@ export default function AuditReport({
               >
                 Overall Checks
                 <span className="audit-report__tab-count">{qualityIssues.length}</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "suggestions"}
-                className={`audit-report__tab ${activeTab === "suggestions" ? "audit-report__tab--active" : ""}`}
-                disabled={bulkApplying}
-                onClick={() => onTabChange("suggestions")}
-              >
-                Variable-Level Checks
-                <span className="audit-report__tab-count">{suggestionIssues.length}</span>
               </button>
               <button
                 type="button"
@@ -364,9 +339,7 @@ export default function AuditReport({
               ) : columnQuery ? (
                 <p className="audit-report__empty-tab">No findings match column "{columnQuery}".</p>
               ) : (
-                <p className="audit-report__empty-tab">
-                  {activeTab === "quality" ? "No overall issues found." : "No variable-level issues found."}
-                </p>
+                <p className="audit-report__empty-tab">No issues found.</p>
               )}
             </div>
           )}

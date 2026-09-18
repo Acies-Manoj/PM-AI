@@ -15,6 +15,12 @@ frontend/dist-ssr/
 
 # Generated output (not source)
 backend/generated_reports/
+# The user's own saved KPIs/analyses (see custom_library_store.py) -- runtime
+# state that grows as they use the app, not something to check in.
+backend/data/custom_library.json
+# Same reasoning -- the KPI Store registry (see kpi_store.py) grows with
+# every feature the app creates or reuses; it's runtime state, not source.
+backend/data/kpi_store.json
 
 # Editor/OS
 .vscode/*
@@ -22,3 +28,13 @@ backend/generated_reports/
 .idea/
 .DS_Store
 ~$*
+
+# Sibling scratch/experiment projects and deployment configs not meant for
+# this repo's history -- dataiku*/ each carry their own venv/node_modules
+# (thousands of files), and AI-Summary-Process/ is a full nested copy of
+# this repo (its own .git, .claude, etc.), not something to ever commit.
+/dataiku/
+/dataiku-dss/
+/dataiku-react/
+/AI-Summary-Process/
+/amplify.yml

@@ -12,6 +12,7 @@ import re
 import pandas as pd
 
 from app.services.groq_client import chat_text
+from app.services.llm_context import columns_block as _columns_block
 
 SYSTEM_PROMPT = """You are a data engineer writing a short Python snippet \
 to compute one new column on an operational cold-chain shipment dataset.
@@ -34,15 +35,6 @@ every row of that group (e.g. with `.transform(...)` or `.map(...)`), \
 since `result` must have exactly one value per row.
 - Respond with ONLY the Python code. No markdown fences, no explanation, \
 no comments."""
-
-
-def _columns_block(df: pd.DataFrame) -> str:
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
 
 
 def _strip_code_fence(text: str) -> str:

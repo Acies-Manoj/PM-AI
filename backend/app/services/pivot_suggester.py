@@ -13,6 +13,7 @@ import pandas as pd
 
 from app.schemas import PivotSuggestion
 from app.services.groq_client import chat_json
+from app.services.llm_context import columns_block as _columns_block
 from app.services.pivot_definitions_store import SUPPORTED_AGGS
 
 SYSTEM_PROMPT = """You are a data analyst proposing pivot tables for an \
@@ -51,15 +52,6 @@ commentary:
     "top_n": 10
   }
 ]}"""
-
-
-def _columns_block(df: pd.DataFrame) -> str:
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
 
 
 def _valid_metric(spec: dict, available_columns: set[str]) -> bool:

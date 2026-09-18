@@ -13,6 +13,7 @@ import pandas as pd
 
 from app.schemas import FeatureSuggestion
 from app.services.groq_client import chat_json
+from app.services.llm_context import columns_block as _columns_block
 
 VALID_TYPES = {"duration_hours", "ratio", "extract_month"}
 
@@ -47,15 +48,6 @@ commentary:
     ... the required fields for that type ...
   }
 ]}"""
-
-
-def _columns_block(df: pd.DataFrame) -> str:
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
 
 
 def _formula_text(spec: dict) -> str:

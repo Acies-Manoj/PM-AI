@@ -36,6 +36,7 @@ import pandas as pd
 from app.schemas import PivotResult
 from app.services import formula_agent
 from app.services.groq_client import chat_json
+from app.services.llm_context import columns_block as _columns_block
 
 ANALYSIS_BRIEF_SYSTEM_PROMPT = """You read a client's plain-language brief \
 for a cold-chain shipment analytics tool and extract every DISTINCT \
@@ -68,15 +69,6 @@ class AnalysisRequirementOutcome:
     status: str  # "reused" | "created" | "failed"
     pivot_id: str | None = None
     error: str | None = None
-
-
-def _columns_block(df: pd.DataFrame) -> str:
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
 
 
 def extract_analysis_requirements(brief: str, df: pd.DataFrame) -> list[dict]:

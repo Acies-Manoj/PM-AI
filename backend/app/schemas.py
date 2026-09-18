@@ -549,14 +549,119 @@ class OrchestratorRouteRequest(BaseModel):
     brief: str
 
 
+class PlannedFeatureItem(BaseModel):
+    """One feature the Planner Agent identified in the brief -- same shape
+    as ClientRequirement below, minus `type`/`source` (those are only
+    meaningful once it reaches feature_orchestrator.py, which is what turns
+    this bare name+description into a KpiFeatureOutcome)."""
+    feature_name: str
+    description: str
+
+
+class PlannedAnalysisItem(BaseModel):
+    """One analysis the Planner Agent identified in the brief -- same shape
+    as AnalysisRequirement below."""
+    analysis_name: str
+    description: str
+
+
 class OrchestratorRouteResponse(BaseModel):
-    path: Literal["feature_request", "analysis_question"]
-    cleaned_request: str
-    rationale: str
-    # Both None when the brief was already English (or DeepL couldn't be
-    # reached) -- nothing to show the user in that case.
+    """Translation only now -- see generate_recommendations()/
+    RecommendationResponse below for the actual "what does this brief need"
+    classification, which superseded the simpler features/analyses split
+    this endpoint used to also return. Kept as its own cheap (DeepL, not
+    Groq) step on the Upload page so the language-review UI there doesn't
+    have to wait on the richer recommendation call to know what was
+    detected. Both fields None when the brief was already English (or
+    DeepL couldn't be reached) -- nothing to show the user in that case."""
     detected_language: str | None = None
     translated_text: str | None = None
+
+
+# -- AI Recommendation page ---------------------------------------------------
+# Upload -> AI Recommendation -> Audit -> Features/Analysis. See
+# services/orchestrator_agent.py's generate_recommendations(): ONE Groq call
+# reads the brief (now knowing what features/analyses already exist, so it
+# can tell "Existing -- Reuse" apart from "New ... Required") and returns
+# every recommendation for the user to review/edit/approve/reject here,
+# BEFORE anything is created -- unlike PlannedFeatureItem/PlannedAnalysisItem
+# above (which this page still ends up producing, from whichever
+# recommendations the user approved) this is shown to and editable by the
+# user, not auto-applied.
+
+RecommendationType = Literal["feature", "analysis", "feature_and_analysis", "configuration"]
+RecommendationStatus = Literal["existing", "create_new", "needs_clarification"]
+
+
+class FeatureDefinitionDraft(BaseModel):
+    feature_name: str = ""
+    formula: str = ""
+    input_fields: list[str] = []
+    dimensions: list[str] = []
+    filters: list[str] = []
+    business_rules: list[str] = []
+
+
+class AnalysisDefinitionDraft(BaseModel):
+    analysis_name: str = ""
+    objective: str = ""
+    metrics: list[str] = []
+    dimensions: list[str] = []
+    filters: list[str] = []
+    visualization: str = ""
+    group_by: list[str] = []
+    sort_by: list[str] = []
+
+
+class ConfigurationDraft(BaseModel):
+    required: bool = False
+    parameters: list[str] = []
+
+
+class DataRequirementsDraft(BaseModel):
+    required_fields: list[str] = []
+    missing_fields: list[str] = []
+
+
+class ValidationDraft(BaseModel):
+    """Rule-based, not another Groq call -- re-checked client-side (and
+    mirrored here for API callers) every time the user edits a card, so
+    correcting a recommendation doesn't cost another round-trip, let alone
+    another slice of the Groq rate-limit budget every keystroke."""
+    issues: list[str] = []
+    warnings: list[str] = []
+    clarifications_required: list[str] = []
+
+
+class Recommendation(BaseModel):
+    id: str
+    type: RecommendationType
+    status: RecommendationStatus
+    name: str
+    description: str
+    reason: str
+    confidence: int = 0
+    feature_definition: FeatureDefinitionDraft | None = None
+    analysis_definition: AnalysisDefinitionDraft | None = None
+    configuration: ConfigurationDraft | None = None
+    data_requirements: DataRequirementsDraft = DataRequirementsDraft()
+    validation: ValidationDraft = ValidationDraft()
+
+
+class ClientRequirementSummary(BaseModel):
+    original_input: str
+    interpreted_requirement: str
+    business_objective: str
+
+
+class RecommendationRequest(BaseModel):
+    brief: str
+
+
+class RecommendationResponse(BaseModel):
+    client_requirement: ClientRequirementSummary
+    recommendations: list[Recommendation] = []
+    errors: list[str] = []
 
 
 # -- Step 2: user-requested feature (plain language) -------------------------
@@ -592,6 +697,12 @@ class ClientRequirement(BaseModel):
 class ClientBriefFeatureRequest(BaseModel):
     session_id: str
     brief: str
+    # When given (the normal case now -- see UploadPage's Planner call),
+    # these ARE the client_requirements: extraction is skipped entirely and
+    # this list is used as-is. None falls back to extracting from `brief`
+    # here instead, for any caller that hasn't run the Planner first (a
+    # direct API caller, tests, ...).
+    planned_features: list[PlannedFeatureItem] | None = None
 
 
 class KpiFeatureOutcome(BaseModel):
@@ -708,6 +819,12 @@ class AnalysisRequirementOutcome(BaseModel):
 class AnalysisBriefRequest(BaseModel):
     session_id: str
     brief: str
+    # When given (the normal case now -- see UploadPage's Planner call),
+    # these ARE the analysis requirements: extraction is skipped entirely
+    # and this list is used as-is. None falls back to extracting from
+    # `brief` here instead, for any caller that hasn't run the Planner
+    # first (a direct API caller, tests, a bare "Ask a Question").
+    planned_analyses: list[PlannedAnalysisItem] | None = None
 
 
 class AnalysisBriefResponse(BaseModel):

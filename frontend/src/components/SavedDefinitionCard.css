@@ -1,0 +1,106 @@
+.saved-def {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.saved-def__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.saved-def__name {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.saved-def__scope {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+}
+
+.saved-def__scope--regular {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+.saved-def__desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.saved-def__detail {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--carrier-blue);
+  background: var(--carrier-blue-tint);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+}
+
+.saved-def__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.saved-def__btn {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.saved-def__btn:hover:not(:disabled) {
+  border-color: var(--carrier-light-blue);
+}
+
+.saved-def__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.saved-def__btn--primary {
+  color: #fff;
+  background: var(--carrier-blue);
+  border-color: var(--carrier-blue);
+}
+
+.saved-def__btn--primary:disabled {
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.saved-def__btn--danger {
+  color: var(--color-error);
+}
+
+.saved-def__btn--danger:hover:not(:disabled) {
+  border-color: var(--color-error);
+  background: var(--color-error-bg);
+}

@@ -1,0 +1,556 @@
+{
+  "features": [
+    {
+      "id": "client_ce08ae96f7",
+      "name": "total_transit_duration_hours",
+      "description": "Calculate the total transit duration in hours from the actual departure time to the actual arrival time.",
+      "source": "CLIENT_REQUESTED",
+      "output_column": "transit_duration_hours",
+      "type": "duration_hours",
+      "source_columns": [
+        "Actual Arrival Time CET",
+        "Actual Departure Time CET"
+      ],
+      "formula": "Actual Arrival Time CET minus Actual Departure Time CET, in hours",
+      "python_code": null,
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-14T15:16:07+00:00",
+      "updated_at": "2026-09-14T15:16:07+00:00",
+      "spec": {
+        "id": "client_ce08ae96f7",
+        "name": "Transit Duration Hours",
+        "description": "Total transit duration in hours from actual departure to actual arrival",
+        "output_column": "transit_duration_hours",
+        "type": "duration_hours",
+        "formula": "Actual Arrival Time CET minus Actual Departure Time CET, in hours",
+        "summary": "stats",
+        "start_column": "Actual Departure Time CET",
+        "end_column": "Actual Arrival Time CET",
+        "unit": "hours"
+      }
+    },
+    {
+      "id": "client_434ff88d5c",
+      "name": "arrival_delay_hours",
+      "description": "Compute the delay in hours as the difference between actual arrival time and planned arrival time.",
+      "source": "CLIENT_REQUESTED",
+      "output_column": "arrival_delay_hours",
+      "type": "duration_hours",
+      "source_columns": [
+        "Actual Arrival Time CET",
+        "Planned Arrival Time CET"
+      ],
+      "formula": "Actual Arrival Time CET minus Planned Arrival Time CET, in hours",
+      "python_code": null,
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-14T15:16:29+00:00",
+      "updated_at": "2026-09-14T15:16:29+00:00",
+      "spec": {
+        "id": "client_434ff88d5c",
+        "name": "Arrival Delay",
+        "description": "Delay in hours between actual arrival time and planned arrival time",
+        "output_column": "arrival_delay_hours",
+        "type": "duration_hours",
+        "formula": "Actual Arrival Time CET minus Planned Arrival Time CET, in hours",
+        "summary": "stats",
+        "start_column": "Planned Arrival Time CET",
+        "end_column": "Actual Arrival Time CET",
+        "unit": "hours"
+      }
+    },
+    {
+      "id": "client_598e10e12e",
+      "name": "origin_country",
+      "description": "Extract the country of origin from the Origin field.",
+      "source": "CLIENT_REQUESTED",
+      "output_column": "origin_country",
+      "type": "ai_generated",
+      "source_columns": [
+        "Origin"
+      ],
+      "formula": "For each row, take the value in the Origin column (object). If the string contains a two\u2011letter code after the last space (e.g., \"Southern Cross Marketing ZA\" -> \"ZA\"), return that code. If not, look for a country name or code inside parentheses (e.g., \"Cape Town Port (Dole)\" -> extract the text inside the parentheses or return null if not a country). If neither pattern matches, set the result to null.",
+      "python_code": "first = df['Origin'].str.extract(r'\\s+([A-Za-z]{2})\\s*$')[0]\nsecond = df['Origin'].str.extract(r'\\(([^)]+)\\)')[0]\nresult = first.where(first.notna(), second)",
+      "data_type": "categorical",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-14T15:17:05+00:00",
+      "updated_at": "2026-09-14T15:17:05+00:00",
+      "spec": {
+        "id": "client_598e10e12e",
+        "name": "origin_country",
+        "description": "Extracts the country code from the Origin field",
+        "output_column": "origin_country",
+        "type": "ai_generated",
+        "formula": "For each row, take the value in the Origin column (object). If the string contains a two\u2011letter code after the last space (e.g., \"Southern Cross Marketing ZA\" -> \"ZA\"), return that code. If not, look for a country name or code inside parentheses (e.g., \"Cape Town Port (Dole)\" -> extract the text inside the parentheses or return null if not a country). If neither pattern matches, set the result to null.",
+        "summary": "stats",
+        "calculation_prompt": "For each row, take the value in the Origin column (object). If the string contains a two\u2011letter code after the last space (e.g., \"Southern Cross Marketing ZA\" -> \"ZA\"), return that code. If not, look for a country name or code inside parentheses (e.g., \"Cape Town Port (Dole)\" -> extract the text inside the parentheses or return null if not a country). If neither pattern matches, set the result to null.",
+        "generated_code": "first = df['Origin'].str.extract(r'\\s+([A-Za-z]{2})\\s*$')[0]\nsecond = df['Origin'].str.extract(r'\\(([^)]+)\\)')[0]\nresult = first.where(first.notna(), second)"
+      }
+    },
+    {
+      "id": "client_2b0f0ece32",
+      "name": "arrival_month",
+      "description": "Determine the calendar month (1\u201112) of the actual arrival date.",
+      "source": "CLIENT_REQUESTED",
+      "output_column": "actual_arrival_month",
+      "type": "extract_month",
+      "source_columns": [
+        "Actual Arrival Time CET"
+      ],
+      "formula": "Calendar month of Actual Arrival Time CET",
+      "python_code": null,
+      "data_type": "categorical",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-14T15:17:24+00:00",
+      "updated_at": "2026-09-14T15:17:24+00:00",
+      "spec": {
+        "id": "client_2b0f0ece32",
+        "name": "Actual Arrival Month",
+        "description": "Extracts the calendar month (1-12) from the Actual Arrival Time CET column",
+        "output_column": "actual_arrival_month",
+        "type": "extract_month",
+        "formula": "Calendar month of Actual Arrival Time CET",
+        "summary": "distribution",
+        "source_columns": [
+          "Actual Arrival Time CET"
+        ]
+      }
+    },
+    {
+      "id": "client_57e86c2719",
+      "name": "temperature_ideal_range_percentage",
+      "description": "Compute the percentage of temperature sensor readings that fall within the ideal temperature range relative to all temperature readings.",
+      "source": "CLIENT_REQUESTED",
+      "output_column": "ideal_temp_pct",
+      "type": "ai_generated",
+      "source_columns": [
+        "Limit High",
+        "Limit Low",
+        "Mean Value",
+        "Sensor Type"
+      ],
+      "formula": "Filter rows where `Sensor Type` is \"Temperature`. For each of those rows, consider a reading to be within the ideal range if `Mean Value` is greater than or equal to `Limit Low` and less than or equal to `Limit High`. Count the number of rows that meet this condition (within_count) and the total number of temperature\u2011sensor rows (total_count). Compute the percentage as (within_count / total_count) * 100 and store the result in a new column named `ideal_temp_pct` (the same value can be repeated for all rows or grouped as needed).",
+      "python_code": "temp_mask = df['Sensor Type'] == 'Temperature'\nwithin_mask = temp_mask & (df['Mean Value'] >= df['Limit Low']) & (df['Mean Value'] <= df['Limit High'])\ntotal = temp_mask.sum()\nwithin = within_mask.sum()\npct = (within / total * 100) if total != 0 else pd.NA\nresult = pd.Series(pct, index=df.index)",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-14T15:19:05+00:00",
+      "updated_at": "2026-09-14T15:19:05+00:00",
+      "spec": {
+        "id": "client_57e86c2719",
+        "name": "Ideal Temp Reading Percentage",
+        "description": "Percentage of temperature sensor readings that fall within the ideal temperature range",
+        "output_column": "ideal_temp_pct",
+        "type": "ai_generated",
+        "formula": "Filter rows where `Sensor Type` is \"Temperature`. For each of those rows, consider a reading to be within the ideal range if `Mean Value` is greater than or equal to `Limit Low` and less than or equal to `Limit High`. Count the number of rows that meet this condition (within_count) and the total number of temperature\u2011sensor rows (total_count). Compute the percentage as (within_count / total_count) * 100 and store the result in a new column named `ideal_temp_pct` (the same value can be repeated for all rows or grouped as needed).",
+        "summary": "stats",
+        "calculation_prompt": "Filter rows where `Sensor Type` is \"Temperature`. For each of those rows, consider a reading to be within the ideal range if `Mean Value` is greater than or equal to `Limit Low` and less than or equal to `Limit High`. Count the number of rows that meet this condition (within_count) and the total number of temperature\u2011sensor rows (total_count). Compute the percentage as (within_count / total_count) * 100 and store the result in a new column named `ideal_temp_pct` (the same value can be repeated for all rows or grouped as needed).",
+        "generated_code": "temp_mask = df['Sensor Type'] == 'Temperature'\nwithin_mask = temp_mask & (df['Mean Value'] >= df['Limit Low']) & (df['Mean Value'] <= df['Limit High'])\ntotal = temp_mask.sum()\nwithin = within_mask.sum()\npct = (within / total * 100) if total != 0 else pd.NA\nresult = pd.Series(pct, index=df.index)"
+      }
+    },
+    {
+      "id": "ai_a41d0bcea5",
+      "name": "temperature_excursion_hours",
+      "description": "Sum of all time\u2011outside\u2011ideal temperature periods (below low, below ideal, above ideal, above high) to quantify total exposure risk during the trip",
+      "source": "AI_SUGGESTED",
+      "output_column": "total_outside_ideal_hours",
+      "type": "ai_generated",
+      "source_columns": [
+        "Time Above High Hours",
+        "Time Above Ideal Hours",
+        "Time Below Ideal Hours",
+        "Time Below Low Hours"
+      ],
+      "formula": "For each row, compute the sum of the columns \"Time Below Low Hours\", \"Time Below Ideal Hours\", \"Time Above Ideal Hours\", and \"Time Above High Hours\" (treat missing values as 0) and store the result in a new column named total_outside_ideal_hours.",
+      "python_code": "result = df[['Time Below Low Hours', 'Time Below Ideal Hours', 'Time Above Ideal Hours', 'Time Above High Hours']].fillna(0).sum(axis=1)",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-14T15:19:38+00:00",
+      "updated_at": "2026-09-14T15:19:38+00:00",
+      "spec": {
+        "id": "ai_a41d0bcea5",
+        "name": "Total Outside Ideal Temperature Hours",
+        "description": "Sum of hours where temperature was below low, below ideal, above ideal, or above high for each trip",
+        "output_column": "total_outside_ideal_hours",
+        "type": "ai_generated",
+        "formula": "For each row, compute the sum of the columns \"Time Below Low Hours\", \"Time Below Ideal Hours\", \"Time Above Ideal Hours\", and \"Time Above High Hours\" (treat missing values as 0) and store the result in a new column named total_outside_ideal_hours.",
+        "summary": "stats",
+        "calculation_prompt": "For each row, compute the sum of the columns \"Time Below Low Hours\", \"Time Below Ideal Hours\", \"Time Above Ideal Hours\", and \"Time Above High Hours\" (treat missing values as 0) and store the result in a new column named total_outside_ideal_hours.",
+        "generated_code": "result = df[['Time Below Low Hours', 'Time Below Ideal Hours', 'Time Above Ideal Hours', 'Time Above High Hours']].fillna(0).sum(axis=1)"
+      }
+    },
+    {
+      "id": "ai_0141a88723",
+      "name": "transit_duration_vs_planned_ratio",
+      "description": "Ratio of actual transit duration (hours) to the planned segment length (converted to hours) to highlight shipments that ran significantly longer or shorter than expected",
+      "source": "AI_SUGGESTED",
+      "output_column": "duration_ratio",
+      "type": "ai_generated",
+      "source_columns": [
+        "Actual Arrival Time CET",
+        "Actual Departure Time CET",
+        "Segment Length (Days)"
+      ],
+      "formula": "For each shipment row, compute the actual transit duration in hours as the difference between \"Actual Arrival Time CET\" and \"Actual Departure Time CET\" (convert the timedelta to total seconds and divide by 3600). Compute the planned duration in hours by multiplying the \"Segment Length (Days)\" value by 24. Then calculate the ratio: actual_duration_hours / planned_duration_hours. Store this value in the new column \"duration_ratio\".",
+      "python_code": "actual_hours = (df[\"Actual Arrival Time CET\"] - df[\"Actual Departure Time CET\"]).dt.total_seconds() / 3600\nplanned_hours = df[\"Segment Length (Days)\"] * 24\nresult = actual_hours / planned_hours",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-14T15:20:20+00:00",
+      "updated_at": "2026-09-14T15:20:20+00:00",
+      "spec": {
+        "id": "ai_0141a88723",
+        "name": "Actual vs Planned Duration Ratio",
+        "description": "Ratio of actual transit duration in hours to planned segment length in hours",
+        "output_column": "duration_ratio",
+        "type": "ai_generated",
+        "formula": "For each shipment row, compute the actual transit duration in hours as the difference between \"Actual Arrival Time CET\" and \"Actual Departure Time CET\" (convert the timedelta to total seconds and divide by 3600). Compute the planned duration in hours by multiplying the \"Segment Length (Days)\" value by 24. Then calculate the ratio: actual_duration_hours / planned_duration_hours. Store this value in the new column \"duration_ratio\".",
+        "summary": "stats",
+        "calculation_prompt": "For each shipment row, compute the actual transit duration in hours as the difference between \"Actual Arrival Time CET\" and \"Actual Departure Time CET\" (convert the timedelta to total seconds and divide by 3600). Compute the planned duration in hours by multiplying the \"Segment Length (Days)\" value by 24. Then calculate the ratio: actual_duration_hours / planned_duration_hours. Store this value in the new column \"duration_ratio\".",
+        "generated_code": "actual_hours = (df[\"Actual Arrival Time CET\"] - df[\"Actual Departure Time CET\"]).dt.total_seconds() / 3600\nplanned_hours = df[\"Segment Length (Days)\"] * 24\nresult = actual_hours / planned_hours"
+      }
+    },
+    {
+      "id": "ai_e6fece3122",
+      "name": "weekend_arrival_flag",
+      "description": "Binary indicator (1 if actual arrival date falls on Saturday or Sunday, 0 otherwise) because weekend arrivals may affect handling and downstream logistics",
+      "source": "AI_SUGGESTED",
+      "output_column": "arrival_weekend_flag",
+      "type": "ai_generated",
+      "source_columns": [
+        "Actual Arrival Time CET"
+      ],
+      "formula": "In pandas, create a new column `arrival_weekend_flag` by evaluating the `Actual Arrival Time CET` column: `df['arrival_weekend_flag'] = df['Actual Arrival Time CET'].dt.weekday.isin([5,6]).astype(int)`. This sets the value to 1 for Saturday (weekday 5) or Sunday (weekday 6) and 0 otherwise.",
+      "python_code": "result = df['Actual Arrival Time CET'].dt.weekday.isin([5, 6]).astype(int)",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-14T15:20:54+00:00",
+      "updated_at": "2026-09-14T15:20:54+00:00",
+      "spec": {
+        "id": "ai_e6fece3122",
+        "name": "Weekend Arrival Indicator",
+        "description": "Binary flag set to 1 when the actual arrival date falls on Saturday or Sunday, otherwise 0",
+        "output_column": "arrival_weekend_flag",
+        "type": "ai_generated",
+        "formula": "In pandas, create a new column `arrival_weekend_flag` by evaluating the `Actual Arrival Time CET` column: `df['arrival_weekend_flag'] = df['Actual Arrival Time CET'].dt.weekday.isin([5,6]).astype(int)`. This sets the value to 1 for Saturday (weekday 5) or Sunday (weekday 6) and 0 otherwise.",
+        "summary": "stats",
+        "calculation_prompt": "In pandas, create a new column `arrival_weekend_flag` by evaluating the `Actual Arrival Time CET` column: `df['arrival_weekend_flag'] = df['Actual Arrival Time CET'].dt.weekday.isin([5,6]).astype(int)`. This sets the value to 1 for Saturday (weekday 5) or Sunday (weekday 6) and 0 otherwise.",
+        "generated_code": "result = df['Actual Arrival Time CET'].dt.weekday.isin([5, 6]).astype(int)"
+      }
+    },
+    {
+      "id": "ai_dcfdd439ec",
+      "name": "parent_supplier_time_above_high_pct",
+      "description": "percentage of total trip hours that were above the high temperature limit for each parent supplier, helping to gauge severity relative to overall shipment time",
+      "source": "AI_SUGGESTED",
+      "output_column": "pct_hours_above_high",
+      "type": "ai_generated",
+      "source_columns": [
+        "Parent Supplier",
+        "Segment End Date Time",
+        "Segment Start Date Time",
+        "Time Above High Hours"
+      ],
+      "formula": "For each record compute the trip duration in hours as (Segment End Date Time - Segment Start Date Time).total_seconds() / 3600. Then group the data by the Parent Supplier column, summing the computed trip durations to get total_trip_hours and summing the Time Above High Hours column to get above_high_hours. Finally calculate pct_hours_above_high = (above_high_hours / total_trip_hours) * 100 for each Parent Supplier.",
+      "python_code": "trip_hours = (df['Segment End Date Time'] - df['Segment Start Date Time']).dt.total_seconds() / 3600\ntotal = trip_hours.groupby(df['Parent Supplier']).transform('sum')\nabove = df['Time Above High Hours'].groupby(df['Parent Supplier']).transform('sum')\nresult = (above / total) * 100",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-16T06:49:48+00:00",
+      "updated_at": "2026-09-16T06:49:48+00:00",
+      "spec": {
+        "id": "ai_dcfdd439ec",
+        "name": "% Trip Hours Above High Temp",
+        "description": "Percentage of total trip duration spent above the high temperature limit, aggregated by Parent Supplier",
+        "output_column": "pct_hours_above_high",
+        "type": "ai_generated",
+        "formula": "For each record compute the trip duration in hours as (Segment End Date Time - Segment Start Date Time).total_seconds() / 3600. Then group the data by the Parent Supplier column, summing the computed trip durations to get total_trip_hours and summing the Time Above High Hours column to get above_high_hours. Finally calculate pct_hours_above_high = (above_high_hours / total_trip_hours) * 100 for each Parent Supplier.",
+        "summary": "stats",
+        "calculation_prompt": "For each record compute the trip duration in hours as (Segment End Date Time - Segment Start Date Time).total_seconds() / 3600. Then group the data by the Parent Supplier column, summing the computed trip durations to get total_trip_hours and summing the Time Above High Hours column to get above_high_hours. Finally calculate pct_hours_above_high = (above_high_hours / total_trip_hours) * 100 for each Parent Supplier.",
+        "generated_code": "trip_hours = (df['Segment End Date Time'] - df['Segment Start Date Time']).dt.total_seconds() / 3600\ntotal = trip_hours.groupby(df['Parent Supplier']).transform('sum')\nabove = df['Time Above High Hours'].groupby(df['Parent Supplier']).transform('sum')\nresult = (above / total) * 100"
+      }
+    },
+    {
+      "id": "ai_44fbfc5ab1",
+      "name": "parent_supplier_trip_count_with_high",
+      "description": "number of distinct trips where Time Above High Hours > 0 for each parent supplier, indicating how often high\u2011temp excursions occur",
+      "source": "AI_SUGGESTED",
+      "output_column": "high_temp_trip_count",
+      "type": "ai_generated",
+      "source_columns": [
+        "Parent Supplier",
+        "Time Above High Hours",
+        "Trip ID"
+      ],
+      "formula": "Group the data by the Parent Supplier column. Within each group, filter rows where the Time Above High Hours column is greater than 0. Count the number of unique Trip ID values in the filtered rows. The result is the number of distinct trips with high\u2011temp excursions for each parent supplier.",
+      "python_code": "result = df['Parent Supplier'].map(df.loc[df['Time Above High Hours'] > 0].groupby('Parent Supplier')['Trip ID'].nunique()).fillna(0).astype(int)",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-16T06:50:26+00:00",
+      "updated_at": "2026-09-16T06:50:26+00:00",
+      "spec": {
+        "id": "ai_44fbfc5ab1",
+        "name": "High Temp Trips per Supplier",
+        "description": "Count of distinct Trip ID where Time Above High Hours > 0 for each Parent Supplier",
+        "output_column": "high_temp_trip_count",
+        "type": "ai_generated",
+        "formula": "Group the data by the Parent Supplier column. Within each group, filter rows where the Time Above High Hours column is greater than 0. Count the number of unique Trip ID values in the filtered rows. The result is the number of distinct trips with high\u2011temp excursions for each parent supplier.",
+        "summary": "stats",
+        "calculation_prompt": "Group the data by the Parent Supplier column. Within each group, filter rows where the Time Above High Hours column is greater than 0. Count the number of unique Trip ID values in the filtered rows. The result is the number of distinct trips with high\u2011temp excursions for each parent supplier.",
+        "generated_code": "result = df['Parent Supplier'].map(df.loc[df['Time Above High Hours'] > 0].groupby('Parent Supplier')['Trip ID'].nunique()).fillna(0).astype(int)"
+      }
+    },
+    {
+      "id": "ai_bbe9f9fe0a",
+      "name": "parent_supplier_avg_time_above_high_per_trip",
+      "description": "Calculate the mean Time Above High Hours per trip for each parent supplier, providing a typical exposure per shipment.",
+      "source": "AI_SUGGESTED",
+      "output_column": "mean_time_above_high_per_trip",
+      "type": "ai_generated",
+      "source_columns": [
+        "Origin",
+        "Parent Supplier",
+        "Time Above High Hours",
+        "Trip ID"
+      ],
+      "formula": "1. Ensure the column \"Parent Supplier\" is treated as a categorical identifier (it may contain nulls; rows with null parent supplier can be excluded or labeled as \"Unknown\").\n2. Group the dataset by \"Trip ID\" and compute the mean of the numeric column \"Time Above High Hours\" within each trip. This yields a per\u2011trip value called trip_mean_time_above_high.\n3. Merge the per\u2011trip values back onto the original rows (or keep a separate table) so each trip is associated with its parent supplier (use the \"Parent Supplier\" value from any row of that trip, e.g., the first non\u2011null).\n4. Group the per\u2011trip results by \"Parent Supplier\" and compute the average of trip_mean_time_above_high for each supplier.\n5. The final result is a table with two columns: \"Parent Supplier\" and the new column \"mean_time_above_high_per_trip\" containing the computed average. Return this as the new engineered column (or as a summary table as needed).",
+      "python_code": "df['_parent'] = df['Parent Supplier'].fillna('Unknown')\ntrip_stats = df.groupby('Trip ID').agg(trip_mean=('Time Above High Hours','mean'), parent=('_parent','first'))\nsupplier_mean = trip_stats.groupby('parent')['trip_mean'].mean()\nresult = df['_parent'].map(supplier_mean)",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-16T06:51:42+00:00",
+      "updated_at": "2026-09-16T06:51:42+00:00",
+      "spec": {
+        "id": "ai_bbe9f9fe0a",
+        "name": "Mean Time Above High Hours per Trip by Parent Supplier",
+        "description": "Average of Time Above High Hours for each trip, then averaged across trips for each parent supplier",
+        "output_column": "mean_time_above_high_per_trip",
+        "type": "ai_generated",
+        "formula": "1. Ensure the column \"Parent Supplier\" is treated as a categorical identifier (it may contain nulls; rows with null parent supplier can be excluded or labeled as \"Unknown\").\n2. Group the dataset by \"Trip ID\" and compute the mean of the numeric column \"Time Above High Hours\" within each trip. This yields a per\u2011trip value called trip_mean_time_above_high.\n3. Merge the per\u2011trip values back onto the original rows (or keep a separate table) so each trip is associated with its parent supplier (use the \"Parent Supplier\" value from any row of that trip, e.g., the first non\u2011null).\n4. Group the per\u2011trip results by \"Parent Supplier\" and compute the average of trip_mean_time_above_high for each supplier.\n5. The final result is a table with two columns: \"Parent Supplier\" and the new column \"mean_time_above_high_per_trip\" containing the computed average. Return this as the new engineered column (or as a summary table as needed).",
+        "summary": "stats",
+        "calculation_prompt": "1. Ensure the column \"Parent Supplier\" is treated as a categorical identifier (it may contain nulls; rows with null parent supplier can be excluded or labeled as \"Unknown\").\n2. Group the dataset by \"Trip ID\" and compute the mean of the numeric column \"Time Above High Hours\" within each trip. This yields a per\u2011trip value called trip_mean_time_above_high.\n3. Merge the per\u2011trip values back onto the original rows (or keep a separate table) so each trip is associated with its parent supplier (use the \"Parent Supplier\" value from any row of that trip, e.g., the first non\u2011null).\n4. Group the per\u2011trip results by \"Parent Supplier\" and compute the average of trip_mean_time_above_high for each supplier.\n5. The final result is a table with two columns: \"Parent Supplier\" and the new column \"mean_time_above_high_per_trip\" containing the computed average. Return this as the new engineered column (or as a summary table as needed).",
+        "generated_code": "df['_parent'] = df['Parent Supplier'].fillna('Unknown')\ntrip_stats = df.groupby('Trip ID').agg(trip_mean=('Time Above High Hours','mean'), parent=('_parent','first'))\nsupplier_mean = trip_stats.groupby('parent')['trip_mean'].mean()\nresult = df['_parent'].map(supplier_mean)"
+      }
+    },
+    {
+      "id": "client_11d5e736ff",
+      "name": "monitoring_device_count",
+      "description": "Count of distinct monitoring devices (e.g., sensor types or IDs) used by each supplier",
+      "source": "CLIENT_REQUESTED",
+      "output_column": "supplier_device_count",
+      "type": "ai_generated",
+      "source_columns": [
+        "Origin",
+        "Sensor Type"
+      ],
+      "formula": "For each row, compute the count of distinct values in the 'Sensor Type' column for all rows that share the same 'Origin' value. In pandas, you can group the dataframe by 'Origin', apply nunique() on 'Sensor Type' to get a Series mapping each supplier to its distinct device count, then map/merge this Series back to the original dataframe as a new column named 'supplier_device_count'.",
+      "python_code": "result = df.groupby('Origin')['Sensor Type'].transform('nunique')",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-16T07:07:52+00:00",
+      "updated_at": "2026-09-16T07:07:52+00:00",
+      "spec": {
+        "id": "client_11d5e736ff",
+        "name": "Distinct Monitoring Devices per Supplier",
+        "description": "Counts the number of unique sensor types used for each supplier (Origin)",
+        "output_column": "supplier_device_count",
+        "type": "ai_generated",
+        "formula": "For each row, compute the count of distinct values in the 'Sensor Type' column for all rows that share the same 'Origin' value. In pandas, you can group the dataframe by 'Origin', apply nunique() on 'Sensor Type' to get a Series mapping each supplier to its distinct device count, then map/merge this Series back to the original dataframe as a new column named 'supplier_device_count'.",
+        "summary": "stats",
+        "calculation_prompt": "For each row, compute the count of distinct values in the 'Sensor Type' column for all rows that share the same 'Origin' value. In pandas, you can group the dataframe by 'Origin', apply nunique() on 'Sensor Type' to get a Series mapping each supplier to its distinct device count, then map/merge this Series back to the original dataframe as a new column named 'supplier_device_count'.",
+        "generated_code": "result = df.groupby('Origin')['Sensor Type'].transform('nunique')"
+      }
+    },
+    {
+      "id": "client_1543eae8d8",
+      "name": "temperature_compliance_status",
+      "description": "Flag indicating whether a shipment is compliant or problematic based on whether any temperature readings fell outside the defined low/high limits",
+      "source": "CLIENT_REQUESTED",
+      "output_column": "compliance_flag",
+      "type": "ai_generated",
+      "source_columns": [
+        "Internal Trip ID",
+        "Time Above High Hours",
+        "Time Below Low Hours",
+        "Trip ID"
+      ],
+      "formula": "For each shipment (group by a unique identifier such as Trip ID or Internal Trip ID), create a flag column that is set to \"Problematic\" if either the column \"Time Below Low Hours\" is greater than 0 or the column \"Time Above High Hours\" is greater than 0; otherwise set the flag to \"Compliant\". If multiple rows belong to the same shipment, the flag should be \"Problematic\" if any row meets the condition.",
+      "python_code": "cond = (df['Time Below Low Hours'] > 0) | (df['Time Above High Hours'] > 0)\ngroup_flag = cond.groupby(df['Internal Trip ID']).transform('any')\nresult = group_flag.map({True: 'Problematic', False: 'Compliant'})",
+      "data_type": "categorical",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-16T07:08:33+00:00",
+      "updated_at": "2026-09-16T07:08:33+00:00",
+      "spec": {
+        "id": "client_1543eae8d8",
+        "name": "Shipment compliance flag",
+        "description": "Indicates whether any temperature reading fell outside the defined low or high limits for the shipment",
+        "output_column": "compliance_flag",
+        "type": "ai_generated",
+        "formula": "For each shipment (group by a unique identifier such as Trip ID or Internal Trip ID), create a flag column that is set to \"Problematic\" if either the column \"Time Below Low Hours\" is greater than 0 or the column \"Time Above High Hours\" is greater than 0; otherwise set the flag to \"Compliant\". If multiple rows belong to the same shipment, the flag should be \"Problematic\" if any row meets the condition.",
+        "summary": "stats",
+        "calculation_prompt": "For each shipment (group by a unique identifier such as Trip ID or Internal Trip ID), create a flag column that is set to \"Problematic\" if either the column \"Time Below Low Hours\" is greater than 0 or the column \"Time Above High Hours\" is greater than 0; otherwise set the flag to \"Compliant\". If multiple rows belong to the same shipment, the flag should be \"Problematic\" if any row meets the condition.",
+        "generated_code": "cond = (df['Time Below Low Hours'] > 0) | (df['Time Above High Hours'] > 0)\ngroup_flag = cond.groupby(df['Internal Trip ID']).transform('any')\nresult = group_flag.map({True: 'Problematic', False: 'Compliant'})"
+      }
+    },
+    {
+      "id": "ai_3c665c54c4",
+      "name": "supplier_compliance_rate",
+      "description": "Calculate the proportion of a supplier's shipments that are marked compliant, helping to rank suppliers by overall temperature performance",
+      "source": "AI_SUGGESTED",
+      "output_column": "supplier_compliance_rate",
+      "type": "ai_generated",
+      "source_columns": [
+        "Origin"
+      ],
+      "formula": "Group the data by the Origin column (the supplier identifier). For each group, count the total number of rows and count the rows where compliance_flag equals \"Compliant\". Divide the compliant count by the total count to get the compliance proportion for that supplier. Merge this proportion back to the original dataframe so every row has a new column supplier_compliance_rate containing the supplier's compliance proportion.",
+      "python_code": "result = df.groupby('Origin')['compliance_flag'].transform(lambda s: (s == 'Compliant').mean())",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-16T07:09:09+00:00",
+      "updated_at": "2026-09-16T07:09:09+00:00",
+      "spec": {
+        "id": "ai_3c665c54c4",
+        "name": "Supplier compliance proportion",
+        "description": "Proportion of a supplier's shipments that are marked compliant",
+        "output_column": "supplier_compliance_rate",
+        "type": "ai_generated",
+        "formula": "Group the data by the Origin column (the supplier identifier). For each group, count the total number of rows and count the rows where compliance_flag equals \"Compliant\". Divide the compliant count by the total count to get the compliance proportion for that supplier. Merge this proportion back to the original dataframe so every row has a new column supplier_compliance_rate containing the supplier's compliance proportion.",
+        "summary": "stats",
+        "calculation_prompt": "Group the data by the Origin column (the supplier identifier). For each group, count the total number of rows and count the rows where compliance_flag equals \"Compliant\". Divide the compliant count by the total count to get the compliance proportion for that supplier. Merge this proportion back to the original dataframe so every row has a new column supplier_compliance_rate containing the supplier's compliance proportion.",
+        "generated_code": "result = df.groupby('Origin')['compliance_flag'].transform(lambda s: (s == 'Compliant').mean())"
+      }
+    },
+    {
+      "id": "client_eeff16c86c",
+      "name": "monitoring_devices_per_supplier",
+      "description": "Calculate the number of distinct monitoring devices (e.g., unique Serial Number) used by each supplier.",
+      "source": "CLIENT_REQUESTED",
+      "output_column": "unique_devices_per_supplier",
+      "type": "ai_generated",
+      "source_columns": [
+        "Origin",
+        "Serial Number"
+      ],
+      "formula": "Group the dataset by the 'Origin' column and compute the number of distinct values in the 'Serial Number' column for each group. The result should be a table with one row per Origin and a column named 'unique_devices_per_supplier' containing the distinct count.",
+      "python_code": "result = df.groupby('Origin')['Serial Number'].transform('nunique').rename('unique_devices_per_supplier')",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-16T07:10:25+00:00",
+      "updated_at": "2026-09-16T07:10:25+00:00",
+      "spec": {
+        "id": "client_eeff16c86c",
+        "name": "Distinct Devices per Supplier",
+        "description": "Counts the unique Serial Number values for each supplier (Origin)",
+        "output_column": "unique_devices_per_supplier",
+        "type": "ai_generated",
+        "formula": "Group the dataset by the 'Origin' column and compute the number of distinct values in the 'Serial Number' column for each group. The result should be a table with one row per Origin and a column named 'unique_devices_per_supplier' containing the distinct count.",
+        "summary": "stats",
+        "calculation_prompt": "Group the dataset by the 'Origin' column and compute the number of distinct values in the 'Serial Number' column for each group. The result should be a table with one row per Origin and a column named 'unique_devices_per_supplier' containing the distinct count.",
+        "generated_code": "result = df.groupby('Origin')['Serial Number'].transform('nunique').rename('unique_devices_per_supplier')"
+      }
+    },
+    {
+      "id": "ai_79c86312cb",
+      "name": "supplier_compliance_rate",
+      "description": "Calculate the percentage of a supplier's shipments flagged as 'compliant' versus total shipments, highlighting which suppliers most often meet temperature limits.",
+      "source": "AI_SUGGESTED",
+      "output_column": "compliant_pct",
+      "type": "ai_generated",
+      "source_columns": [
+        "Carrier",
+        "Is Alarmed"
+      ],
+      "formula": "In pandas, create a boolean column compliant = df['Is Alarmed'] == 'No'. Then group by the supplier column (e.g., 'Carrier'), aggregating total_shipments = count of rows and compliant_shipments = sum of compliant (True counts as 1). Compute compliant_pct = (compliant_shipments / total_shipments) * 100. Return a DataFrame with 'Carrier' and 'compliant_pct', sorted descending to highlight suppliers with the highest compliance.",
+      "python_code": "result = df.groupby('Carrier')['Is Alarmed'].transform(lambda s: (s == 'No').mean() * 100)",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-16T07:10:59+00:00",
+      "updated_at": "2026-09-16T07:10:59+00:00",
+      "spec": {
+        "id": "ai_79c86312cb",
+        "name": "Supplier compliance rate",
+        "description": "Percentage of each supplier's shipments that are compliant (Is Alarmed = 'No')",
+        "output_column": "compliant_pct",
+        "type": "ai_generated",
+        "formula": "In pandas, create a boolean column compliant = df['Is Alarmed'] == 'No'. Then group by the supplier column (e.g., 'Carrier'), aggregating total_shipments = count of rows and compliant_shipments = sum of compliant (True counts as 1). Compute compliant_pct = (compliant_shipments / total_shipments) * 100. Return a DataFrame with 'Carrier' and 'compliant_pct', sorted descending to highlight suppliers with the highest compliance.",
+        "summary": "stats",
+        "calculation_prompt": "In pandas, create a boolean column compliant = df['Is Alarmed'] == 'No'. Then group by the supplier column (e.g., 'Carrier'), aggregating total_shipments = count of rows and compliant_shipments = sum of compliant (True counts as 1). Compute compliant_pct = (compliant_shipments / total_shipments) * 100. Return a DataFrame with 'Carrier' and 'compliant_pct', sorted descending to highlight suppliers with the highest compliance.",
+        "generated_code": "result = df.groupby('Carrier')['Is Alarmed'].transform(lambda s: (s == 'No').mean() * 100)"
+      }
+    },
+    {
+      "id": "ai_46512ec466",
+      "name": "total_temperature_violation_hours",
+      "description": "Sum the hours a shipment spent above the ideal and high temperature limits (Time Above Ideal Hours + Time Above High Hours) to quantify the severity of temperature excursions beyond simple compliance flagging",
+      "source": "AI_SUGGESTED",
+      "output_column": "total_time_above_hours",
+      "type": "ai_generated",
+      "source_columns": [
+        "Time Above High Hours",
+        "Time Above Ideal Hours"
+      ],
+      "formula": "For each row, add the values in the columns \"Time Above Ideal Hours\" and \"Time Above High Hours\" (treat nulls as 0) and store the result in a new column named total_time_above_hours.",
+      "python_code": "result = df[\"Time Above Ideal Hours\"].fillna(0) + df[\"Time Above High Hours\"].fillna(0)",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-16T07:12:16+00:00",
+      "updated_at": "2026-09-16T07:12:16+00:00",
+      "spec": {
+        "id": "ai_46512ec466",
+        "name": "Total Time Above Limits",
+        "description": "Total hours a shipment spent above the ideal or high temperature limits",
+        "output_column": "total_time_above_hours",
+        "type": "ai_generated",
+        "formula": "For each row, add the values in the columns \"Time Above Ideal Hours\" and \"Time Above High Hours\" (treat nulls as 0) and store the result in a new column named total_time_above_hours.",
+        "summary": "stats",
+        "calculation_prompt": "For each row, add the values in the columns \"Time Above Ideal Hours\" and \"Time Above High Hours\" (treat nulls as 0) and store the result in a new column named total_time_above_hours.",
+        "generated_code": "result = df[\"Time Above Ideal Hours\"].fillna(0) + df[\"Time Above High Hours\"].fillna(0)"
+      }
+    },
+    {
+      "id": "ai_8f33faf57e",
+      "name": "transit_vs_segment_ratio",
+      "description": "Divide total_transit_duration_hours by (Segment Length (Days) * 24) to get a ratio indicating whether the actual transit time aligns with the planned segment length, useful for spotting unusually slow or fast trips.",
+      "source": "AI_SUGGESTED",
+      "output_column": "transit_duration_ratio",
+      "type": "ai_generated",
+      "source_columns": [
+        "Actual Arrival Time CET",
+        "Actual Departure Time CET",
+        "Segment Length (Days)"
+      ],
+      "formula": "Calculate the actual transit duration in hours by taking the difference between `Actual Arrival Time CET` and `Actual Departure Time CET`. Then compute the planned segment length in hours as `Segment Length (Days)` multiplied by 24. Finally, divide the actual transit duration (hours) by the planned segment length (hours) to obtain the ratio. Return null if any required value is missing.",
+      "python_code": "result = ((df['Actual Arrival Time CET'] - df['Actual Departure Time CET']).dt.total_seconds() / 3600) / (df['Segment Length (Days)'] * 24)",
+      "data_type": "numeric",
+      "dependencies": [],
+      "version": 1,
+      "created_at": "2026-09-17T08:03:12+00:00",
+      "updated_at": "2026-09-17T08:03:12+00:00",
+      "spec": {
+        "id": "ai_8f33faf57e",
+        "name": "Transit Duration Ratio",
+        "description": "Ratio of actual transit time (hours) to planned segment length (hours)",
+        "output_column": "transit_duration_ratio",
+        "type": "ai_generated",
+        "formula": "Calculate the actual transit duration in hours by taking the difference between `Actual Arrival Time CET` and `Actual Departure Time CET`. Then compute the planned segment length in hours as `Segment Length (Days)` multiplied by 24. Finally, divide the actual transit duration (hours) by the planned segment length (hours) to obtain the ratio. Return null if any required value is missing.",
+        "summary": "stats",
+        "calculation_prompt": "Calculate the actual transit duration in hours by taking the difference between `Actual Arrival Time CET` and `Actual Departure Time CET`. Then compute the planned segment length in hours as `Segment Length (Days)` multiplied by 24. Finally, divide the actual transit duration (hours) by the planned segment length (hours) to obtain the ratio. Return null if any required value is missing.",
+        "generated_code": "result = ((df['Actual Arrival Time CET'] - df['Actual Departure Time CET']).dt.total_seconds() / 3600) / (df['Segment Length (Days)'] * 24)"
+      }
+    }
+  ]
+}

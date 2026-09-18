@@ -144,6 +144,32 @@
   padding: 8px 12px;
 }
 
+.audit-page__audit-error-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.audit-page__audit-error-row .audit-page__audit-error {
+  flex: 1;
+}
+
+.audit-page__retry-btn {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-error);
+  background: #fff;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.audit-page__retry-btn:hover {
+  background: var(--color-error-bg);
+}
+
 .audit-page__actions {
   display: flex;
   justify-content: space-between;
@@ -213,4 +239,270 @@
   padding: 40px 0;
   color: var(--color-text-muted);
   font-size: 14px;
+}
+
+.audit-page__view-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.audit-page__view-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 14px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.audit-page__view-tab--active {
+  color: var(--carrier-blue);
+  border-bottom-color: var(--carrier-blue);
+}
+
+.audit-page__segment-days-hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.audit-page__segment-days-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.audit-page__segment-days-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.audit-page__segment-days-table th,
+.audit-page__segment-days-table td {
+  text-align: left;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.audit-page__segment-days-table th {
+  background: var(--color-surface-alt, #F7F9FC);
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+}
+
+.audit-page__segment-days-table tbody tr:hover {
+  background: var(--color-surface-alt, #F7F9FC);
+}
+
+/* -- Outlier Screening tab (moved here from the old Upload/Raw Data page) -- */
+
+.audit-page__screening-hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.audit-page__screening-subheading {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.audit-page__screening-flag-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-error, #C0392B);
+  background: rgba(192, 57, 43, 0.1);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.audit-page__screening-outlier-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 4px;
+}
+
+.audit-page__screening-outlier-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.audit-page__screening-outlier-table th,
+.audit-page__screening-outlier-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.audit-page__screening-outlier-table th {
+  background: var(--color-surface-alt, #F7F9FC);
+  font-weight: 700;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+}
+
+.audit-page__screening-outlier-table tbody tr:hover {
+  background: var(--color-surface-alt, #F7F9FC);
+}
+
+.audit-page__screening-outlier-row--open {
+  background: var(--carrier-blue-tint, #EAF1FD);
+}
+
+.audit-page__screening-trip-detail {
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.audit-page__screening-chart {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 12px;
+}
+
+.audit-page__screening-rca {
+  margin-top: 16px;
+}
+
+.audit-page__screening-rca-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.audit-page__screening-rca-list > li {
+  margin-bottom: 10px;
+}
+
+.audit-page__screening-rca-list ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.audit-page__screening-limit-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.audit-page__screening-limit-tile {
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+}
+
+.audit-page__screening-limit-tile--low {
+  color: #1891F6;
+  border-color: #1891F6;
+  background: rgba(24, 145, 246, 0.08);
+}
+
+.audit-page__screening-limit-tile--ideal {
+  color: #10B981;
+  border-color: #10B981;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.audit-page__screening-limit-tile--high {
+  color: var(--color-error, #C0392B);
+  border-color: var(--color-error, #C0392B);
+  background: rgba(192, 57, 43, 0.08);
+}
+
+.audit-page__screening-product-chart {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.audit-page__screening-product-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.audit-page__screening-product-chart-title {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--carrier-blue);
+}
+
+.audit-page__screening-chart-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.audit-page__screening-chip {
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text-muted);
+  opacity: 0.55;
+}
+
+.audit-page__screening-chip--active {
+  opacity: 1;
+  color: #fff;
+}
+
+.audit-page__screening-chip--temp.audit-page__screening-chip--active {
+  background: #C0392B;
+  border-color: #C0392B;
+}
+
+.audit-page__screening-chip--light.audit-page__screening-chip--active {
+  background: #0EA5A5;
+  border-color: #0EA5A5;
+}
+
+.audit-page__screening-chip--clear {
+  opacity: 1;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.audit-page__screening-chip--clear:hover {
+  border-color: var(--color-text-muted);
 }

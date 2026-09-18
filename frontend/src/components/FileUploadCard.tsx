@@ -1,10 +1,20 @@
 import { useRef, useState } from "react";
 import type { DragEvent } from "react";
-import type { UploadSlotConfig } from "../types/upload";
 import "./FileUploadCard.css";
 
+// Deliberately narrower than UploadSlotConfig (no `id`) -- this component
+// never reads an id, so any slot config shape (including ones outside the
+// global UploadSlotId union, like RawDataPage's) can be passed straight in.
+export interface FileUploadCardConfig {
+  title: string;
+  description: string;
+  required: boolean;
+  accept: string;
+  acceptLabel: string;
+}
+
 interface FileUploadCardProps {
-  config: UploadSlotConfig;
+  config: FileUploadCardConfig;
   file: File | null;
   error?: string;
   highlighted?: boolean;

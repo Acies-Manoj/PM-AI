@@ -77,6 +77,7 @@ export default function FeatureCard({ feature, colorIndex = 0, formula, onExpand
           <span className="feature-card__column">{feature.output_column}</span>
         </div>
         <div className="feature-card__badges">
+          {feature.id.startsWith("client_") && <span className="feature-card__client-badge">Client</span>}
           {feature.id.startsWith("ai_") && <span className="feature-card__ai-badge">AI</span>}
           {feature.id.startsWith("custom_") && <span className="feature-card__custom-badge">Custom</span>}
         </div>

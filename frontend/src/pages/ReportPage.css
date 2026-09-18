@@ -377,3 +377,123 @@
   color: var(--color-text-muted);
   font-size: 14px;
 }
+
+/* -- report language ------------------------------------------------- */
+
+.report-page__language-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 20px;
+}
+
+.report-page__language-picker label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.report-page__language-picker select {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.report-page__language-hint {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+/* -- planned slide list + preview ------------------------------------ */
+
+.report-page__included-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.report-page__included-busy {
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.report-page__included-empty,
+.report-page__slide-none {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.report-page__slide-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.report-page__slide-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.report-page__slide-pick:hover {
+  background: var(--carrier-blue-tint);
+}
+
+.report-page__slide-pick--off .report-page__slide-name,
+.report-page__slide-pick--off .report-page__slide-label {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.report-page__slide-name {
+  font-size: 12.5px;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.report-page__preview-hint {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.report-page__preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .report-page__preview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.report-page__language-warn {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+}
+
+.report-page__language-warn code {
+  font-size: 11px;
+}

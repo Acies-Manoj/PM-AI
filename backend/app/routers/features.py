@@ -135,28 +135,41 @@ def request_feature(body: RequestFeatureRequest) -> FeatureSuggestion:
 @router.post("/client-brief", response_model=ClientBriefFeatureResponse)
 def submit_client_brief(body: ClientBriefFeatureRequest) -> ClientBriefFeatureResponse:
     """Feature Engineering's main entry point (sections 1-3, 7, 9, 11-12 of
-    the spec): a natural-language Client Brief -> structured requirements ->
-    explicit-client + AI-suggested features -> created or reused via the
-    Feature Agent -> registered in the KPI Store. See feature_orchestrator.py
-    for the full pipeline; this endpoint just wires it to the session and
-    recomputes the Features page's report so the result shows up immediately,
-    the same way accepting an AI suggestion already does."""
+    the spec): structured requirements -> explicit-client + AI-suggested
+    features -> created or reused via the Feature Agent -> registered in
+    the KPI Store. See feature_orchestrator.py for the full pipeline; this
+    endpoint just wires it to the session and recomputes the Features
+    page's report so the result shows up immediately, the same way
+    accepting an AI suggestion already does.
+
+    `body.planned_features` is the normal path now -- the Planner Agent
+    (orchestrator_agent.py) already decided this list once, up front, and
+    the caller (FeaturesPage) is just handing it over rather than asking
+    this endpoint to re-derive it from `body.brief`. Extraction only runs
+    here as a fallback when planned_features is omitted (a direct API
+    caller, tests)."""
     session = audit_store.get(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Audit session not found.")
     base_df = session.pre_feature_df if session.pre_feature_df is not None else session.df
 
-    try:
-        client_requirements = feature_orchestrator.extract_client_requirements(body.brief, base_df)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Client brief agent (Groq) is unavailable: {exc}") from exc
+    if body.planned_features is not None:
+        client_requirements = [
+            {"feature_name": f.feature_name, "description": f.description, "type": "derived_feature", "source": "CLIENT_REQUESTED"}
+            for f in body.planned_features
+        ]
+    else:
+        try:
+            client_requirements = feature_orchestrator.extract_client_requirements(body.brief, base_df)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Client brief agent (Groq) is unavailable: {exc}") from exc
     if not client_requirements:
         # Nothing feature-shaped in this brief -- an entirely normal outcome
         # now that every Client Brief always passes through here first (the
-        # Planner Agent routes to BOTH Feature Engineering and Analysis, not
+        # Planner Agent plans for BOTH Feature Engineering and Analysis, not
         # one or the other -- see UploadPage/AuditPage). A pure "what does
         # the data show" question just has nothing for this endpoint to do;
-        # the SAME brief continues on to Analysis's own extraction right
+        # the SAME plan's `analyses` half continues on to Analysis right
         # after (see FeaturesPage's prefillClientBrief effect), which is
         # where it actually gets resolved. Not a failure.
         return ClientBriefFeatureResponse(
@@ -176,7 +189,16 @@ def submit_client_brief(body: ClientBriefFeatureRequest) -> ClientBriefFeatureRe
             ),
         )
 
-    ai_suggested = feature_orchestrator.suggest_additional_features(body.brief, client_requirements, base_df)
+    # AI-suggested extras (features beyond what was explicitly asked for)
+    # only make sense for the OLD self-extraction path -- when the Planner
+    # Agent already ran (planned_features given), the user already reviewed
+    # and approved an exact list on the Recommendation page; layering in
+    # more here would create features nobody approved. `create_or_reuse_
+    # features` still needs a `source` per item, so ai_suggested just stays
+    # an empty list rather than skipping the call.
+    ai_suggested: list[dict] = [] if body.planned_features is not None else feature_orchestrator.suggest_additional_features(
+        body.brief, client_requirements, base_df
+    )
 
     outcomes, accepted_specs, _working = feature_orchestrator.create_or_reuse_features(
         client_requirements + ai_suggested, base_df

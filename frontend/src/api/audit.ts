@@ -74,6 +74,7 @@ export interface FeatureReport {
   columns: string[];
   features: FeatureResult[];
   skipped_notes: string[];
+  excluded_feature_ids: string[];
 }
 
 export interface DataPreview {
@@ -169,6 +170,7 @@ export interface PivotReport {
   pivots: PivotResult[];
   skipped_notes: string[];
   pivot_filters: Record<string, PivotFilter[]>;
+  excluded_pivot_ids: string[];
 }
 
 export interface PivotDefinitionsSummary {
@@ -254,19 +256,53 @@ export async function revertIssue(sessionId: string, issueId: string): Promise<A
   return response.json();
 }
 
+// Outlier Screening's "Exclude from analysis" -- drops every row for this
+// trip from the audit session's dataframe and records it as an
+// already-resolved AuditIssue (see routers/audit.py's exclude_trip), so the
+// same resolvingIssueId/onRevertIssue plumbing as any other finding applies.
+export async function excludeTrip(sessionId: string, serial: string, tripId: number): Promise<AuditReport> {
+  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/exclude-trip`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ serial, trip_id: tripId }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
 export function downloadCleansedFileUrl(sessionId: string): string {
   return `${API_BASE_URL}/api/audit/${sessionId}/download`;
 }
 
-export function downloadReportUrl(sessionId: string): string {
-  return `${API_BASE_URL}/api/analysis/${sessionId}/report`;
+/** `language` is one of fetchSupportedLanguages()' codes; "en" (the
+ * default) skips translation entirely. */
+export function downloadReportUrl(sessionId: string, language = "en"): string {
+  const query = language && language !== "en" ? `?language=${encodeURIComponent(language)}` : "";
+  return `${API_BASE_URL}/api/analysis/${sessionId}/report${query}`;
 }
 
-export async function applyFeatures(sessionId: string, extraFeatures: FeatureSuggestion[] = []): Promise<FeatureReport> {
+/** `excludedFeatureIds` omitted (undefined) leaves the session's exclusion
+ * set as it was -- only pass it when actually changing which "Defined"/
+ * "Client-Requested" features are checked (see the Features page). */
+export async function applyFeatures(
+  sessionId: string,
+  extraFeatures?: FeatureSuggestion[],
+  excludedFeatureIds?: string[]
+): Promise<FeatureReport> {
+  // extraFeatures omitted means "leave whatever this session already has
+  // applied alone" (the backend now remembers it in extra_feature_defs) --
+  // a bare recompute (e.g. on page load) must NOT send `[]`, or it would
+  // wipe out every AI/custom/client-requested feature this session already
+  // has. Same convention as excludedFeatureIds just below.
   const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/features`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ extra_features: extraFeatures }),
+    body: JSON.stringify({
+      ...(extraFeatures !== undefined ? { extra_features: extraFeatures } : {}),
+      ...(excludedFeatureIds !== undefined ? { excluded_feature_ids: excludedFeatureIds } : {}),
+    }),
   });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
@@ -294,6 +330,87 @@ export async function suggestFeatures(sessionId: string): Promise<FeatureSuggest
   return response.json();
 }
 
+/** Step 2's "User Requests a Feature": a plain-language ask turned into a
+ * ready-to-apply spec by the Feature Agent (see feature_request_agent.py) --
+ * shaped exactly like an AI suggestion, so the caller applies/saves it the
+ * same way (applyFeatures / saveCustomFeature). */
+export async function requestFeature(sessionId: string, requestText: string): Promise<FeatureSuggestion> {
+  const response = await fetch(`${API_BASE_URL}/api/features/request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, request_text: requestText }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+// -- Client Brief -> multi-feature creation pipeline (see feature_orchestrator.py, kpi_store.py) --
+
+export type FeatureSource = "CLIENT_REQUESTED" | "AI_SUGGESTED" | "USER_REQUESTED";
+
+export interface ClientRequirement {
+  feature_name: string;
+  description: string;
+  type: string;
+  source: FeatureSource;
+}
+
+export interface KpiFeatureOutcome {
+  feature_name: string;
+  description: string;
+  source: FeatureSource;
+  status: "reused" | "created" | "failed";
+  kpi_id: string | null;
+  output_column: string | null;
+  error: string | null;
+}
+
+export interface ClientBriefFeatureResponse {
+  session_id: string;
+  client_requirements: ClientRequirement[];
+  ai_suggested: ClientRequirement[];
+  outcomes: KpiFeatureOutcome[];
+  accepted_specs: FeatureSuggestion[];
+  feature_report: FeatureReport;
+}
+
+// Same shape as api/orchestrator.ts's PlannedFeatureItem/PlannedAnalysisItem
+// -- declared locally (not imported) to avoid a circular import, since
+// orchestrator.ts already imports AuditApiError from this file.
+export interface PlannedFeatureItem {
+  feature_name: string;
+  description: string;
+}
+
+/** The Client Brief entry point for Feature Engineering: creates or reuses
+ * (see kpi_store.py) every feature the Planner Agent already identified via
+ * `plannedFeatures` (the normal case -- see UploadPage/orchestrator.ts), lets
+ * the AI propose a few more that would help (AI_SUGGESTED), via the same
+ * Feature Agent + execution engine as requestFeature above. Omitting
+ * `plannedFeatures` falls back to extracting from `brief` on the backend
+ * instead, for a caller that hasn't run the Planner first. */
+export async function submitClientBrief(
+  sessionId: string,
+  brief: string,
+  plannedFeatures?: PlannedFeatureItem[]
+): Promise<ClientBriefFeatureResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/features/client-brief`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      brief,
+      ...(plannedFeatures !== undefined ? { planned_features: plannedFeatures } : {}),
+    }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
 export interface IssueRowsResponse {
   issue_id: string;
   total_matching: number;
@@ -304,6 +421,33 @@ export interface IssueRowsResponse {
 
 export async function fetchIssueRows(sessionId: string, issueId: string): Promise<IssueRowsResponse> {
   const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/issues/${issueId}/rows`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+// -- Audit page: Segment Days (per-trip transit-duration outliers) ---------
+
+export interface SegmentDaysRow {
+  serial: string | null;
+  trip_id: number | null;
+  origin: string;
+  destination: string;
+  segment_days: number;
+  lower_fence_days: number | null;
+  upper_fence_days: number | null;
+  status: string;
+}
+
+export interface SegmentDaysResponse {
+  session_id: string;
+  total_trips: number;
+  rows: SegmentDaysRow[];
+}
+
+export async function fetchSegmentDays(sessionId: string): Promise<SegmentDaysResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/segment-days`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -390,6 +534,21 @@ export async function applyPivots(
       ...(extraPivots !== undefined ? { extra_pivots: extraPivots } : {}),
       pivot_filters: pivotFilters,
     }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+/** The Analysis page's "Defined" checkboxes -- replaces the whole excluded
+ * set (same "always send the full current selection" convention as
+ * applyPivots' extraPivots). */
+export async function setPivotSelection(sessionId: string, excludedIds: string[]): Promise<PivotReport> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/pivot-selection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ excluded_ids: excludedIds }),
   });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
@@ -505,4 +664,316 @@ export async function fetchOverallAnalysis(sessionId: string): Promise<OverallAn
     throw new AuditApiError(await parseErrorDetail(response));
   }
   return response.json();
+}
+
+// -- Step 3, 2/3/4: chart interpretation, drill-down suggestions, formula agent
+
+export interface ChartInterpretationResponse {
+  session_id: string;
+  pivot_id: string;
+  interpretation: string;
+}
+
+/** `refresh=false` (the default) returns the most recent interpretation
+ * already logged for this pivot -- e.g. one the Client Brief pipeline
+ * computed automatically -- instead of another Groq call. Pass `true` for
+ * the "Re-interpret" button's own explicit ask for a fresh take. */
+export async function fetchChartInterpretation(
+  sessionId: string,
+  pivotId: string,
+  refresh = false
+): Promise<ChartInterpretationResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/analysis/${sessionId}/pivots/${pivotId}/interpretation?refresh=${refresh}`
+  );
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export interface DrillDownSuggestionsResponse {
+  session_id: string;
+  suggestions: string[];
+}
+
+export type FormulaMode = "template" | "custom_python";
+
+export interface FormulaAnswerResponse {
+  session_id: string;
+  question: string;
+  mode: FormulaMode;
+  pivot: PivotResult | null;
+  table: Record<string, unknown>[] | null;
+  value: string | null;
+  explanation: string;
+}
+
+/** Step 3, 5: the Formula Agent. A drill-down suggestion or the user's own
+ * plain-language question either land here the same way -- tries a pivot
+ * template first, falls back to sandboxed generated Python. */
+export async function askQuestion(sessionId: string, question: string): Promise<FormulaAnswerResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, question }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+// -- Per-chart drill-down: "click an analysis" -> suggestions from THAT
+// chart's own rows -> "Add" turns one into a new, first-class analysis ------
+
+/** Drill-down suggestions scoped to one chart's own rows (not the whole
+ * session) -- see routers/analysis.py's GET .../drill-down-suggestions. */
+export async function fetchPivotDrillDownSuggestions(sessionId: string, pivotId: string): Promise<DrillDownSuggestionsResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/pivots/${pivotId}/drill-down-suggestions`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+/** "Add" on a per-chart drill-down suggestion -- answers it via the Formula
+ * Agent and, when it comes back as a chart, keeps it as a new pivot (with
+ * its own interpretation and its own further drill-downs) rather than just
+ * showing the answer once. */
+export async function applyPivotDrillDown(
+  sessionId: string,
+  pivotId: string,
+  suggestion: string
+): Promise<FormulaAnswerResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/pivots/${pivotId}/drill-down/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ suggestion }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+// -- Client Brief -> Step 3's AI-Assisted Analysis, run in one shot ---------
+
+export interface AnalysisRequirement {
+  analysis_name: string;
+  description: string;
+}
+
+export interface AnalysisRequirementOutcome {
+  analysis_name: string;
+  description: string;
+  status: "reused" | "created" | "failed";
+  pivot_id: string | null;
+  error: string | null;
+}
+
+export interface AnalysisBriefResponse {
+  session_id: string;
+  overall: OverallAnalysisReport | null;
+  suggested_pivots: PivotSuggestion[];
+  applied_pivot_ids: string[];
+  interpretations: Record<string, string>;
+  formula_answer: FormulaAnswerResponse | null;
+  client_requirements: AnalysisRequirement[];
+  outcomes: AnalysisRequirementOutcome[];
+  pivot_report: PivotReport;
+  errors: string[];
+}
+
+export interface PlannedAnalysisItem {
+  analysis_name: string;
+  description: string;
+}
+
+/** Step 3's whole "AI-Assisted Analysis, one step at a time" flow, run for a
+ * Client Brief in one call instead of a click per stop: Chart Suggestion
+ * (applied automatically, up to a few -- AI-Suggested), AI Summary, Chart
+ * Interpretation for what was just applied, and every analysis the Planner
+ * Agent already identified via `plannedAnalyses` (the normal case -- see
+ * UploadPage/orchestrator.ts) resolved through the Formula Agent and added
+ * (Client-Requested -- guaranteed present, not merely suggested). Omitting
+ * `plannedAnalyses` falls back to extracting from `brief` on the backend
+ * instead -- and, only if THAT finds nothing distinct either, answering the
+ * whole brief directly as a single question. */
+export async function submitAnalysisBrief(
+  sessionId: string,
+  brief: string,
+  plannedAnalyses?: PlannedAnalysisItem[]
+): Promise<AnalysisBriefResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/client-brief`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      brief,
+      ...(plannedAnalyses !== undefined ? { planned_analyses: plannedAnalyses } : {}),
+    }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+// -- Saved custom definitions (the persistent library) ------------------------
+// A KPI or analysis the user built by hand, kept on disk between sessions.
+// `scope` is the only thing separating the two save options the Add forms
+// offer: "regular" is merged into every future run automatically, "suggested"
+// just sits in their list until they add it.
+
+export type SavedScope = "regular" | "suggested";
+
+export interface SavedDefinition<TSpec> {
+  id: string;
+  name: string;
+  description: string;
+  scope: SavedScope;
+  saved_at: string;
+  /** The definition verbatim -- the same shape this client already sends as
+   * an extra_features / extra_pivots entry, so it can be echoed straight
+   * back into either path with no reshaping. */
+  spec: TSpec;
+}
+
+export type SavedFeature = SavedDefinition<FeatureSuggestion>;
+export type SavedPivot = SavedDefinition<PivotSuggestion>;
+
+async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+function jsonBody(body: unknown): RequestInit {
+  return { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+}
+
+export async function fetchSavedFeatures(): Promise<{ items: SavedFeature[] }> {
+  return jsonRequest(`${API_BASE_URL}/api/features/custom-features`);
+}
+
+export async function saveCustomFeature(definition: FeatureSuggestion, scope: SavedScope): Promise<SavedFeature> {
+  return jsonRequest(`${API_BASE_URL}/api/features/custom-features`, jsonBody({ definition, scope }));
+}
+
+export async function setSavedFeatureScope(definitionId: string, scope: SavedScope): Promise<SavedFeature> {
+  return jsonRequest(`${API_BASE_URL}/api/features/custom-features/${definitionId}/scope`, jsonBody({ scope }));
+}
+
+export async function deleteSavedFeature(definitionId: string): Promise<{ items: SavedFeature[] }> {
+  return jsonRequest(`${API_BASE_URL}/api/features/custom-features/${definitionId}`, { method: "DELETE" });
+}
+
+export async function fetchSavedPivots(): Promise<{ items: SavedPivot[] }> {
+  return jsonRequest(`${API_BASE_URL}/api/analysis/custom-pivots`);
+}
+
+export async function saveCustomPivot(definition: PivotSuggestion, scope: SavedScope): Promise<SavedPivot> {
+  return jsonRequest(`${API_BASE_URL}/api/analysis/custom-pivots`, jsonBody({ definition, scope }));
+}
+
+export async function setSavedPivotScope(definitionId: string, scope: SavedScope): Promise<SavedPivot> {
+  return jsonRequest(`${API_BASE_URL}/api/analysis/custom-pivots/${definitionId}/scope`, jsonBody({ scope }));
+}
+
+export async function deleteSavedPivot(definitionId: string): Promise<{ items: SavedPivot[] }> {
+  return jsonRequest(`${API_BASE_URL}/api/analysis/custom-pivots/${definitionId}`, { method: "DELETE" });
+}
+
+// -- Report translation -------------------------------------------------------
+
+export interface LanguageOption {
+  code: string;
+  name: string;
+}
+
+export interface SupportedLanguagesResponse {
+  languages: LanguageOption[];
+  /** False when the backend can't actually translate -- no DEEPL_API_KEY, or
+   * the `deepl` package isn't installed in the environment serving the API.
+   * Picking a language would silently return English, so the Report page
+   * says so instead. */
+  available: boolean;
+}
+
+export async function fetchSupportedLanguages(): Promise<SupportedLanguagesResponse> {
+  return jsonRequest(`${API_BASE_URL}/api/analysis/languages`);
+}
+
+// -- Report preview / slide selection -----------------------------------------
+// The backend hands back the exact slide plan the .pptx is built from (see
+// report_generator.plan_report), so the preview can't drift from the file.
+
+export type ReportSlideChart =
+  | {
+      type: "grouped_bar";
+      /** level1 -> [(level2, value), ...] -- one bar per pair, grouped on a
+       * two-level category axis, same as the deck's own chart. */
+      groups: [string, [string, number][]][];
+      y_axis_title: string;
+      category_axis_title: string;
+    }
+  | {
+      type: "combo";
+      categories: string[];
+      category_axis_title: string;
+      bar_name: string;
+      bar_values: number[];
+      line_name: string;
+      line_values: number[];
+    }
+  | {
+      type: "simple";
+      categories: string[];
+      category_axis_title: string;
+      metric_label: string;
+      values: number[];
+      is_trend: boolean;
+    };
+
+export interface ReportSlide {
+  /** Stable across re-plans (pivot id + filter combo, not position), so a
+   * deselected slide stays deselected while filters are edited around it. */
+  key: string;
+  kind: "cover" | "chart" | "summary";
+  title: string;
+  subtitle: string | null;
+  chart: ReportSlideChart | null;
+  narrative: string | null;
+  bullets: string[];
+  pivot_id: string | null;
+  combo_label: string | null;
+  included: boolean;
+}
+
+export interface ReportPreviewResponse {
+  session_id: string;
+  language: string;
+  slides: ReportSlide[];
+}
+
+export async function fetchReportPreview(sessionId: string, language = "en"): Promise<ReportPreviewResponse> {
+  return jsonRequest(`${API_BASE_URL}/api/analysis/${sessionId}/report-preview?language=${encodeURIComponent(language)}`);
+}
+
+export interface ReportSlidesResponse {
+  session_id: string;
+  excluded_keys: string[];
+}
+
+export async function fetchReportSlides(sessionId: string): Promise<ReportSlidesResponse> {
+  return jsonRequest(`${API_BASE_URL}/api/analysis/${sessionId}/report-slides`);
+}
+
+/** Replaces the deselected set wholesale -- always send the full current
+ * selection, not a delta. */
+export async function saveReportSlides(sessionId: string, excludedKeys: string[]): Promise<ReportSlidesResponse> {
+  return jsonRequest(`${API_BASE_URL}/api/analysis/${sessionId}/report-slides`, jsonBody({ excluded_keys: excludedKeys }));
 }

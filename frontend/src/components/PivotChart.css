@@ -11,7 +11,8 @@
   text-align: center;
 }
 
-.pivot-chart__toggle {
+.pivot-chart__toggle,
+.pivot-chart__type-toggle {
   display: flex;
   gap: 6px;
 }

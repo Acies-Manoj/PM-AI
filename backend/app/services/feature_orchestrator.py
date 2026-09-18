@@ -40,6 +40,7 @@ import pandas as pd
 from app.schemas import FeatureSuggestion
 from app.services import feature_engineering, feature_request_agent, kpi_store
 from app.services.groq_client import chat_json
+from app.services.llm_context import columns_block as _columns_block
 
 MAX_PASSES = 6
 
@@ -91,15 +92,6 @@ class RequirementOutcome:
     kpi_id: str | None = None
     output_column: str | None = None
     error: str | None = None
-
-
-def _columns_block(df: pd.DataFrame) -> str:
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
 
 
 def _parse_requirement_items(raw: str, key: str) -> list[dict]:

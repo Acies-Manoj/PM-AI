@@ -31,6 +31,7 @@ import pandas as pd
 from app.schemas import PivotResult
 from app.services import ai_code_executor, analysis_store, pivot_engine
 from app.services.groq_client import chat_json, chat_text
+from app.services.llm_context import columns_block as _columns_block
 from app.services.pivot_definitions_store import SUPPORTED_AGGS
 
 TEMPLATE_SYSTEM_PROMPT = """You answer ONE specific analysis question about \
@@ -84,15 +85,6 @@ class FormulaAnswer:
     value: str | None = None
     explanation: str = ""
     skipped_reason: str | None = None
-
-
-def _columns_block(df: pd.DataFrame) -> str:
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
 
 
 def _strip_code_fence(text: str) -> str:

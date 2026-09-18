@@ -373,16 +373,7 @@ def submit_analysis_brief(body: AnalysisBriefRequest) -> AnalysisBriefResponse:
     shot from a Client Brief instead of a click per stop -- every piece is
     the existing agent/endpoint above:
 
-      1. Chart Suggestion (pivot_suggester) -- up to MAX_AUTO_PIVOTS new
-         pivots not already covered by one this session has are applied via
-         the same pivot_engine every pivot in this app runs through. This is
-         the AI-Suggested side -- driven by the data's own shape, not the
-         brief's text.
-      2. AI Summary (overall_analysis + overall_analysis_agent) -- same as
-         GET /overall, recomputed over the now-current pivot set.
-      3. Chart Interpretation (chart_interpretation_agent) -- for up to
-         MAX_INTERPRETATIONS of the newly-applied pivots.
-      4. Client-Requested Analyses (analysis_orchestrator) -- every DISTINCT
+      1. Client-Requested Analyses (analysis_orchestrator) -- every DISTINCT
          analysis/chart/breakdown the brief explicitly asked for is
          extracted and resolved through formula_agent.answer_question (a
          pivot template first, sandboxed Python otherwise -- the SAME engine
@@ -392,7 +383,20 @@ def submit_analysis_brief(body: AnalysisBriefRequest) -> AnalysisBriefResponse:
          guarantee for an explicit client-requested feature. If the brief
          didn't parse into any distinct requirement (e.g. it's really just
          one short question), it falls back to answering the whole brief
-         directly instead, same as before this existed.
+         directly instead, same as before this existed. Runs FIRST,
+         deliberately: this is what the client explicitly asked for, so it
+         gets first claim on Groq's per-minute token budget -- see 2-4
+         below, which are auto-generated extras that shouldn't get to spend
+         that budget before the client's own request has had its turn.
+      2. Chart Suggestion (pivot_suggester) -- up to MAX_AUTO_PIVOTS new
+         pivots not already covered by one this session has are applied via
+         the same pivot_engine every pivot in this app runs through. This is
+         the AI-Suggested side -- driven by the data's own shape, not the
+         brief's text.
+      3. AI Summary (overall_analysis + overall_analysis_agent) -- same as
+         GET /overall, recomputed over the now-current pivot set.
+      4. Chart Interpretation (chart_interpretation_agent) -- for up to
+         MAX_INTERPRETATIONS of the newly-applied pivots.
 
     One step's agent being unavailable (Groq down/rate-limited) is caught
     and recorded in `errors` rather than aborting the rest -- whatever
@@ -400,11 +404,68 @@ def submit_analysis_brief(body: AnalysisBriefRequest) -> AnalysisBriefResponse:
     session = _get_session_or_404(body.session_id)
     errors: list[str] = []
 
+    client_requirements: list[dict] = []
+    if body.planned_analyses is not None:
+        # The normal path now: the Planner Agent (orchestrator_agent.py)
+        # already decided this list once, up front -- the caller
+        # (AnalysisPage) is handing it over rather than asking this
+        # endpoint to re-derive it from `body.brief`. An explicitly empty
+        # list means the Planner decided there's nothing analysis-shaped
+        # here, which is a real answer, not "extraction found nothing yet
+        # so fall back to single-question mode" below.
+        client_requirements = [{"analysis_name": a.analysis_name, "description": a.description} for a in body.planned_analyses]
+    else:
+        try:
+            client_requirements = analysis_orchestrator.extract_analysis_requirements(body.brief, session.df)
+        except Exception as exc:
+            errors.append(f"Analysis requirement extraction unavailable: {exc}")
+
+    outcomes = []
+    formula_answer: FormulaAnswerResponse | None = None
+    if client_requirements:
+        outcomes, new_pivots = analysis_orchestrator.resolve_analysis_requirements(
+            session.session_id, client_requirements, session.df, session.pivots + session.drill_down_pivots
+        )
+        session.drill_down_pivots.extend(new_pivots)
+        errors.extend(o.error for o in outcomes if o.status == "failed" and o.error)
+    elif body.planned_analyses is None:
+        # Self-extraction (no Planner list given) found nothing distinct --
+        # likely a single short question, not a multi-part brief -- so fall
+        # back to answering it directly, same behavior as before this
+        # existed. Skipped entirely when planned_analyses was given (even
+        # empty): that's the Planner's own considered "nothing here", not a
+        # signal to re-treat the whole original brief as one ad-hoc question.
+        try:
+            answer = formula_agent.answer_question(session.session_id, body.brief, session.df)
+            answer_pivot = answer.pivot
+            if answer_pivot is not None:
+                # Same treatment as /ask below: a brief's own direct question
+                # that resolves to a chart is a User-Requested Analysis, not
+                # a throwaway answer -- it stays on the page after this call.
+                answer_pivot = answer_pivot.model_copy(update={"id": f"custom_pivot_{uuid.uuid4().hex[:8]}"})
+                session.drill_down_pivots.append(answer_pivot)
+            formula_answer = FormulaAnswerResponse(
+                session_id=session.session_id, question=body.brief, mode=answer.mode,
+                pivot=answer_pivot, table=answer.table, value=answer.value, explanation=answer.explanation,
+            )
+        except ValueError as exc:
+            errors.append(f"Formula agent could not answer the brief directly: {exc}")
+        except Exception as exc:
+            errors.append(f"Formula agent unavailable: {exc}")
+
+    # Chart Suggestion (pivots beyond what was explicitly asked for) only
+    # makes sense for the OLD self-extraction path -- when the Planner
+    # Agent already ran (planned_analyses given), the user already reviewed
+    # and approved an exact list on the Recommendation page; adding more
+    # here would show analyses nobody approved. The manual "Suggest
+    # Analyses" button elsewhere on this page is unaffected -- that's a
+    # deliberate click, not a side effect of submitting a brief.
     suggested_pivots: list = []
-    try:
-        suggested_pivots = pivot_suggester.suggest_pivots(session.df)
-    except Exception as exc:
-        errors.append(f"Chart suggestion agent unavailable: {exc}")
+    if body.planned_analyses is None:
+        try:
+            suggested_pivots = pivot_suggester.suggest_pivots(session.df)
+        except Exception as exc:
+            errors.append(f"Chart suggestion agent unavailable: {exc}")
 
     to_apply = [s for s in suggested_pivots if not _pivot_is_duplicate(s, session.pivots)][:MAX_AUTO_PIVOTS]
     if to_apply:
@@ -440,42 +501,6 @@ def submit_analysis_brief(body: AnalysisBriefRequest) -> AnalysisBriefResponse:
             analysis_store.store.add(session.session_id, "chart_interpretation", pivot.name, text)
         except Exception as exc:
             errors.append(f"Chart interpretation unavailable for '{pivot.name}': {exc}")
-
-    client_requirements: list[dict] = []
-    try:
-        client_requirements = analysis_orchestrator.extract_analysis_requirements(body.brief, session.df)
-    except Exception as exc:
-        errors.append(f"Analysis requirement extraction unavailable: {exc}")
-
-    outcomes = []
-    formula_answer: FormulaAnswerResponse | None = None
-    if client_requirements:
-        outcomes, new_pivots = analysis_orchestrator.resolve_analysis_requirements(
-            session.session_id, client_requirements, session.df, session.pivots + session.drill_down_pivots
-        )
-        session.drill_down_pivots.extend(new_pivots)
-        errors.extend(o.error for o in outcomes if o.status == "failed" and o.error)
-    else:
-        # The brief didn't parse into any distinct requirement -- likely a
-        # single short question, not a multi-part brief -- so fall back to
-        # answering it directly, same behavior as before this existed.
-        try:
-            answer = formula_agent.answer_question(session.session_id, body.brief, session.df)
-            answer_pivot = answer.pivot
-            if answer_pivot is not None:
-                # Same treatment as /ask below: a brief's own direct question
-                # that resolves to a chart is a User-Requested Analysis, not
-                # a throwaway answer -- it stays on the page after this call.
-                answer_pivot = answer_pivot.model_copy(update={"id": f"custom_pivot_{uuid.uuid4().hex[:8]}"})
-                session.drill_down_pivots.append(answer_pivot)
-            formula_answer = FormulaAnswerResponse(
-                session_id=session.session_id, question=body.brief, mode=answer.mode,
-                pivot=answer_pivot, table=answer.table, value=answer.value, explanation=answer.explanation,
-            )
-        except ValueError as exc:
-            errors.append(f"Formula agent could not answer the brief directly: {exc}")
-        except Exception as exc:
-            errors.append(f"Formula agent unavailable: {exc}")
 
     return AnalysisBriefResponse(
         session_id=body.session_id,

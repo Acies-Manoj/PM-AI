@@ -1,11 +1,15 @@
 import { useRef, useState } from "react";
-import type { FeatureSuggestion } from "../api/audit";
+import SaveScopePicker from "./SaveScopePicker";
+import type { FeatureSuggestion, SavedScope } from "../api/audit";
 import "./AddKpiForm.css";
 
 interface AddKpiFormProps {
   columns: string[];
   busy: boolean;
-  onAdd: (kpi: FeatureSuggestion) => void;
+  /** `scope` is which of the two save options the user picked -- see
+   * SaveScopePicker. The KPI is computed for this session either way; the
+   * scope only decides how it comes back next time. */
+  onAdd: (kpi: FeatureSuggestion, scope: SavedScope) => void;
   onCancel: () => void;
 }
 
@@ -25,6 +29,7 @@ export default function AddKpiForm({ columns, busy, onAdd, onCancel }: AddKpiFor
   const [name, setName] = useState("");
   const [formula, setFormula] = useState("");
   const [calculationPrompt, setCalculationPrompt] = useState("");
+  const [scope, setScope] = useState<SavedScope>("suggested");
   const [error, setError] = useState<string | null>(null);
   const formulaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -67,7 +72,7 @@ export default function AddKpiForm({ columns, busy, onAdd, onCancel }: AddKpiFor
         source_columns: null,
         calculation_prompt: null,
         generated_code: null,
-      });
+      }, scope);
       return;
     }
 
@@ -89,7 +94,7 @@ export default function AddKpiForm({ columns, busy, onAdd, onCancel }: AddKpiFor
       source_columns: null,
       calculation_prompt: calculationPrompt.trim(),
       generated_code: null,
-    });
+    }, scope);
   };
 
   return (
@@ -157,6 +162,8 @@ export default function AddKpiForm({ columns, busy, onAdd, onCancel }: AddKpiFor
           </p>
         </label>
       )}
+
+      <SaveScopePicker noun="KPI" value={scope} onChange={setScope} disabled={busy} />
 
       {error && <p className="add-kpi-form__error">{error}</p>}
 

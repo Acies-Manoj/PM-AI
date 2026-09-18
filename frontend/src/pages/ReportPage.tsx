@@ -1,25 +1,33 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
 import StatTile from "../components/StatTile";
+import Modal from "../components/Modal";
 import PivotFilterBar from "../components/PivotFilterBar";
+import ReportSlidePreview from "../components/ReportSlidePreview";
 import { IconClipboard, IconChevronLeft, IconDoc, IconDownload, IconGrid, IconLayers, IconSparkle, IconWarnTriangle } from "../components/icons";
 import {
   downloadReportUrl,
   fetchPivotReport,
   fetchReportFilters,
   fetchReportFilterScope,
+  fetchReportPreview,
+  fetchReportSlides,
   fetchReportTitles,
+  fetchSupportedLanguages,
   saveReportFilters,
   saveReportFilterScope,
+  saveReportSlides,
   saveReportTitle,
   uploadReportTemplate,
   AuditApiError,
+  type LanguageOption,
   type PivotFilter,
   type PivotReport,
   type PivotResult,
+  type ReportSlide,
   type ReportTemplateSummary,
 } from "../api/audit";
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
@@ -36,13 +44,12 @@ type PivotReportsState = Partial<Record<UploadSlotId, PivotReport>>;
 type ReportFiltersState = Partial<Record<UploadSlotId, PivotFilter[]>>;
 type LoadingState = Partial<Record<UploadSlotId, boolean>>;
 type ErrorsState = Partial<Record<UploadSlotId, string>>;
+type SlidePlansState = Partial<Record<UploadSlotId, ReportSlide[]>>;
 
 // The raw column the data uses for a shipment's departure -- not one of the
 // categorical filterable_columns slicers, so it gets its own date-range
 // control alongside them.
 const DEPARTURE_COLUMN = "Actual Departure Time CET";
-// Mirrors the backend's report_generator.MAX_COMBOS_PER_PIVOT.
-const MAX_COMBOS = 12;
 
 function selectionsFromFilters(filters: PivotFilter[], filterableColumns: string[]): Record<string, string[] | undefined> {
   const selections: Record<string, string[] | undefined> = {};
@@ -93,20 +100,15 @@ function columnLabel(column: string): string {
   return column === DEPARTURE_COLUMN ? "Departure time" : column;
 }
 
-// Mirrors the backend's report_generator._report_filter_combos + _combo_label
-// exactly, so the UI shows one row per ACTUAL output slide instead of
-// collapsing them into a single "N slides" summary -- e.g. 2 selected
-// Origins -> 2 rows, each labeled with the specific Origin it resolves to.
-function pivotSlidePreviews(filters: PivotFilter[], allowed: string[] | undefined): string[] {
-  const scoped = allowed === undefined ? filters : filters.filter((f) => allowed.includes(f.column));
-  const multipliers = scoped.filter((f) => f.op === "in" && Array.isArray(f.value) && f.value.length > 1);
-  if (multipliers.length === 0) return [""];
-  let combos: string[][] = [[]];
-  for (const f of multipliers) {
-    const values = (f.value as unknown[]).map(String);
-    combos = combos.flatMap((c) => values.map((v) => [...c, v]));
+/** Deck position of each included slide, so the numbering the user sees
+ * matches the exported file rather than counting slides they switched off. */
+function slideNumbers(slides: ReportSlide[]): Map<string, number> {
+  const numbers = new Map<string, number>();
+  let n = 0;
+  for (const slide of slides) {
+    if (slide.included) numbers.set(slide.key, ++n);
   }
-  return combos.slice(0, MAX_COMBOS).map((c) => c.join(" / "));
+  return numbers;
 }
 
 export default function ReportPage({ files, auditReports }: ReportPageProps) {
@@ -133,6 +135,36 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const hasTemplateFile = !!files.reportTemplate;
+
+  const [languages, setLanguages] = useState<LanguageOption[]>([{ code: "en", name: "English" }]);
+  const [language, setLanguage] = useState("en");
+  const [translationAvailable, setTranslationAvailable] = useState(true);
+
+  // The planned deck itself, straight from the backend (see
+  // report_generator.plan_report) -- the same plan the .pptx is built from,
+  // so the slide list and the preview below can't drift from the file.
+  const [plans, setPlans] = useState<SlidePlansState>({});
+  const [planLoading, setPlanLoading] = useState<LoadingState>({});
+  const [savingSlides, setSavingSlides] = useState<LoadingState>({});
+  const [previewOpen, setPreviewOpen] = useState<UploadSlotId | null>(null);
+  // Bumped whenever something the plan depends on is saved (a filter, a
+  // scope toggle, a slide title), to trigger a re-plan.
+  const [planVersion, setPlanVersion] = useState(0);
+  const bumpPlan = () => setPlanVersion((v) => v + 1);
+
+  // The language list only ever needs fetching once -- unlike everything
+  // else on this page it isn't per-session/per-slot, just a fixed catalog of
+  // what the backend's translation_service currently supports. Falling back
+  // to English-only (the initial state above) if this fails is fine -- the
+  // report always downloads, just without the picker filled in.
+  useEffect(() => {
+    fetchSupportedLanguages()
+      .then((res) => {
+        setLanguages(res.languages);
+        setTranslationAvailable(res.available);
+      })
+      .catch(() => {});
+  }, []);
 
   // Optional -- when a Report Template file was selected on the Upload page,
   // send it once so every download for the rest of this session uses it as
@@ -214,11 +246,105 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slotsReady, auditReports]);
 
+  // Re-planning re-runs every pivot on the backend, so it deliberately keys
+  // off an explicit `planVersion` bump rather than every filter/title state
+  // change -- one plan per actual save, not one per keystroke.
+  //
+  // A re-plan is never skipped just because one is already in flight: the
+  // first plan for a slot takes seconds (every pivot is recomputed), and
+  // switching language inside that window is exactly when a user does it.
+  // Instead each request carries a token, and only the newest one for a slot
+  // is allowed to write -- so an earlier, slower response can't land on top
+  // of a newer language's plan.
+  const planToken = useRef<Partial<Record<UploadSlotId, number>>>({});
+  const planSeq = useRef(0);
+
+  const loadPlan = useCallback(
+    (id: UploadSlotId) => {
+      const sessionId = auditReports[id]!.session_id;
+      const token = ++planSeq.current;
+      planToken.current[id] = token;
+      const isCurrent = () => planToken.current[id] === token;
+
+      setPlanLoading((prev) => ({ ...prev, [id]: true }));
+      fetchReportPreview(sessionId, language)
+        .then((res) => {
+          if (isCurrent()) setPlans((prev) => ({ ...prev, [id]: res.slides }));
+        })
+        .catch((err) => {
+          if (isCurrent()) {
+            setErrors((prev) => ({
+              ...prev,
+              [id]: err instanceof AuditApiError ? err.message : "Could not build the report preview.",
+            }));
+          }
+        })
+        .finally(() => {
+          // Leave the spinner up if a newer request is still running -- it
+          // owns the loading state now.
+          if (isCurrent()) setPlanLoading((prev) => ({ ...prev, [id]: false }));
+        });
+    },
+    [auditReports, language]
+  );
+
+  useEffect(() => {
+    for (const id of slotsReady) loadPlan(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slotsReady.join(","), planVersion, language]);
+
+  // The saved deselections are read once per slot, purely to reconcile:
+  // /report-preview already applies them to the plan it returns, so this is
+  // only here to catch a key for a slide that no longer exists and clear it.
+  // Keyed on the slide keys themselves rather than `plans`, since only a
+  // change to the SET of slides can strand one -- ticking a checkbox
+  // rewrites `plans` too, and re-reading the server on every tick would be
+  // pure noise.
+  const planKeySignature = slotsReady.map((id) => `${id}:${(plans[id] ?? []).map((s) => s.key).join("|")}`).join(";;");
+
+  useEffect(() => {
+    for (const id of slotsReady) {
+      const plan = plans[id];
+      if (!plan) continue;
+      const sessionId = auditReports[id]!.session_id;
+      fetchReportSlides(sessionId)
+        .then((res) => {
+          const live = new Set(plan.map((s) => s.key));
+          const stale = res.excluded_keys.filter((key) => !live.has(key));
+          if (stale.length > 0) {
+            saveReportSlides(sessionId, res.excluded_keys.filter((key) => live.has(key))).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planKeySignature]);
+
+  const handleToggleSlide = (id: UploadSlotId, key: string) => {
+    const plan = plans[id];
+    if (!plan) return;
+    // Flip it locally first -- re-planning from the backend just to learn
+    // the answer to a checkbox would re-run every pivot for no new
+    // information. A failed save re-plans and puts it back.
+    const nextPlan = plan.map((s) => (s.key === key ? { ...s, included: !s.included } : s));
+    setPlans((prev) => ({ ...prev, [id]: nextPlan }));
+
+    const sessionId = auditReports[id]!.session_id;
+    setSavingSlides((prev) => ({ ...prev, [id]: true }));
+    saveReportSlides(sessionId, nextPlan.filter((s) => !s.included).map((s) => s.key))
+      .catch((err) => {
+        setErrors((prev) => ({ ...prev, [id]: err instanceof AuditApiError ? err.message : "Could not save the slide selection." }));
+        loadPlan(id);
+      })
+      .finally(() => setSavingSlides((prev) => ({ ...prev, [id]: false })));
+  };
+
   const handleSaveTitle = (id: UploadSlotId, pivotId: string, title: string) => {
     const sessionId = auditReports[id]!.session_id;
     setSavingTitle((prev) => ({ ...prev, [pivotId]: true }));
     saveReportTitle(sessionId, pivotId, title)
       .then((res) => setTitles((prev) => ({ ...prev, [id]: res.titles })))
+      .then(bumpPlan)
       .catch((err) =>
         setErrors((prev) => ({ ...prev, [id]: err instanceof AuditApiError ? err.message : "Could not rename the slide." }))
       )
@@ -240,6 +366,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
     setSavingScope((prev) => ({ ...prev, [pivotId]: true }));
     saveReportFilterScope(sessionId, pivotId, next)
       .then((res) => setFilterScope((prev) => ({ ...prev, [id]: res.scope })))
+      .then(bumpPlan)
       .catch((err) =>
         setErrors((prev) => ({ ...prev, [id]: err instanceof AuditApiError ? err.message : "Could not save filter scope." }))
       )
@@ -251,6 +378,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
     setSavingFilters((prev) => ({ ...prev, [id]: true }));
     saveReportFilters(sessionId, filters)
       .then((res) => setReportFilters((prev) => ({ ...prev, [id]: res.filters })))
+      .then(bumpPlan)
       .catch((err) =>
         setErrors((prev) => ({ ...prev, [id]: err instanceof AuditApiError ? err.message : "Could not save filters." }))
       )
@@ -346,8 +474,30 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
         <PageHeader
           icon={<IconClipboard />}
           title="Report"
-          subtitle="One shared filter for the whole report -- pick 2+ values for a column (e.g. Origin) and every table below gets one slide per value instead of one slide combining them."
+          subtitle="One shared filter for the whole report -- pick 2+ values for a column (e.g. Origin) and every table below gets one slide per value instead of one slide combining them. Preview the deck and untick anything you don't want before downloading."
         />
+
+        <div className="report-page__language-picker">
+          <label htmlFor="report-language">Report language</label>
+          <select id="report-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
+            {languages.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+          {language !== "en" &&
+            (translationAvailable ? (
+              <span className="report-page__language-hint">
+                Slide headings, captions and the summary are translated -- data values (names, categories) are not.
+              </span>
+            ) : (
+              <span className="report-page__language-warn">
+                Translation is switched off on the server, so the report will download in English. It needs
+                DEEPL_API_KEY set and the <code>deepl</code> package installed in the environment running the API.
+              </span>
+            ))}
+        </div>
 
         {hasTemplateFile && (
           <p className="report-page__template-status">
@@ -364,6 +514,10 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           const customPivotCount = report.pivots.filter((p) => p.id.startsWith("custom_pivot_")).length;
           const globalColumns = globalColumnsFor(report.pivots);
           const filters = reportFilters[id] ?? [];
+          const plan = plans[id] ?? [];
+          const numbers = slideNumbers(plan);
+          const includedCount = plan.filter((s) => s.included).length;
+          const summarySlide = plan.find((s) => s.kind === "summary");
 
           return (
             <section className="report-page__card" key={id}>
@@ -439,21 +593,36 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
               })()}
 
               <div className="report-page__included">
-                <p className="report-page__included-title">This report will include:</p>
+                <div className="report-page__included-head">
+                  <p className="report-page__included-title">
+                    This report will include {includedCount} slide{includedCount === 1 ? "" : "s"}
+                    {planLoading[id] && <span className="report-page__included-busy"> · rebuilding…</span>}
+                  </p>
+                  <button
+                    type="button"
+                    className="report-page__btn report-page__btn--secondary"
+                    disabled={plan.length === 0}
+                    onClick={() => setPreviewOpen(id)}
+                  >
+                    Preview Report
+                  </button>
+                </div>
+
+                {plan.length === 0 && !planLoading[id] && (
+                  <p className="report-page__included-empty">Nothing chartable for the current filters.</p>
+                )}
+
                 <ul className="report-page__included-list">
-                  {report.pivots.flatMap((p, idx) => {
+                  {report.pivots.map((p) => {
                     const active = activeColumns(filters);
                     const override = filterScope[id]?.[p.id];
                     const applied = override ?? active;
                     const currentTitle = titles[id]?.[p.id] ?? p.name;
-                    const previews = pivotSlidePreviews(filters, override);
+                    const pivotSlides = plan.filter((s) => s.pivot_id === p.id);
 
-                    return previews.map((comboLabel, comboIdx) => (
-                      <li key={`${p.id}-${comboIdx}`} className="report-page__included-item-wrap">
+                    return (
+                      <li key={p.id} className="report-page__included-item-wrap">
                         <div className="report-page__included-row">
-                          <span className="report-page__slide-label">
-                            {previews.length > 1 ? `Slide ${idx + 1}.${comboIdx + 1}` : `Slide ${idx + 1}`}
-                          </span>
                           <input
                             key={currentTitle}
                             className="report-page__slide-title"
@@ -467,39 +636,72 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
                           />
                           <span className="report-page__included-metrics">{p.metric_labels.join(", ")}</span>
                         </div>
-                        {(active.length > 0 || comboLabel) && (
+
+                        {active.length > 0 && (
                           <div className="report-page__scope-row">
-                            {active.length > 0 && (
-                              <>
-                                <span className="report-page__scope-label">Filters applied:</span>
-                                {active.map((column) => (
-                                  <button
-                                    key={column}
-                                    type="button"
-                                    className={`report-page__scope-chip ${applied.includes(column) ? "report-page__scope-chip--on" : ""}`}
-                                    disabled={!!savingScope[p.id]}
-                                    onClick={() => handleToggleScope(id, p.id, column, active)}
-                                  >
-                                    {columnLabel(column)}
-                                  </button>
-                                ))}
-                              </>
-                            )}
-                            {comboLabel && <span className="report-page__scope-chip report-page__scope-chip--value">→ {comboLabel}</span>}
+                            <span className="report-page__scope-label">Filters applied:</span>
+                            {active.map((column) => (
+                              <button
+                                key={column}
+                                type="button"
+                                className={`report-page__scope-chip ${applied.includes(column) ? "report-page__scope-chip--on" : ""}`}
+                                disabled={!!savingScope[p.id]}
+                                onClick={() => handleToggleScope(id, p.id, column, active)}
+                              >
+                                {columnLabel(column)}
+                              </button>
+                            ))}
                           </div>
                         )}
+
+                        {pivotSlides.length === 0 ? (
+                          <p className="report-page__slide-none">
+                            {planLoading[id] ? "Checking…" : "No slide -- nothing chartable for the current filters."}
+                          </p>
+                        ) : (
+                          <ul className="report-page__slide-list">
+                            {pivotSlides.map((slide) => (
+                              <li key={slide.key}>
+                                <label className={`report-page__slide-pick ${slide.included ? "" : "report-page__slide-pick--off"}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={slide.included}
+                                    disabled={!!savingSlides[id]}
+                                    onChange={() => handleToggleSlide(id, slide.key)}
+                                  />
+                                  <span className="report-page__slide-label">
+                                    {slide.included ? `Slide ${numbers.get(slide.key)}` : "Left out"}
+                                  </span>
+                                  <span className="report-page__slide-name">{slide.title}</span>
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </li>
-                    ));
+                    );
                   })}
-                  <li className="report-page__included-summary">Overall analysis summary</li>
+
+                  {summarySlide && (
+                    <li className="report-page__included-item-wrap">
+                      <label className={`report-page__slide-pick ${summarySlide.included ? "" : "report-page__slide-pick--off"}`}>
+                        <input
+                          type="checkbox"
+                          checked={summarySlide.included}
+                          disabled={!!savingSlides[id]}
+                          onChange={() => handleToggleSlide(id, summarySlide.key)}
+                        />
+                        <span className="report-page__slide-label">
+                          {summarySlide.included ? `Slide ${numbers.get(summarySlide.key)}` : "Left out"}
+                        </span>
+                        <span className="report-page__slide-name">{summarySlide.title}</span>
+                      </label>
+                    </li>
+                  )}
                 </ul>
               </div>
 
-              <a
-                className="report-page__download-btn"
-                href={downloadReportUrl(auditReports[id]!.session_id)}
-                download
-              >
+              <a className="report-page__download-btn" href={downloadReportUrl(auditReports[id]!.session_id, language)} download>
                 <IconDownload />
                 Download Report (.pptx)
               </a>
@@ -513,6 +715,44 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           </button>
         </div>
       </main>
+
+      {previewOpen &&
+        (() => {
+          const plan = plans[previewOpen] ?? [];
+          const numbers = slideNumbers(plan);
+          const included = plan.filter((s) => s.included).length;
+          return (
+            <Modal
+              title={`Report Preview — ${included} slide${included === 1 ? "" : "s"}`}
+              onClose={() => setPreviewOpen(null)}
+              headerExtra={
+                <a
+                  className="report-page__btn report-page__btn--primary"
+                  href={downloadReportUrl(auditReports[previewOpen]!.session_id, language)}
+                  download
+                >
+                  Download
+                </a>
+              }
+            >
+              <p className="report-page__preview-hint">
+                Every slide the .pptx would contain right now, drawn from the same plan the file is built
+                from. Untick one to leave it out -- the choice sticks until you change it.
+              </p>
+              <div className="report-page__preview-grid">
+                {plan.map((slide) => (
+                  <ReportSlidePreview
+                    key={slide.key}
+                    slide={slide}
+                    number={numbers.get(slide.key) ?? null}
+                    busy={!!savingSlides[previewOpen]}
+                    onToggle={slide.kind === "cover" ? undefined : () => handleToggleSlide(previewOpen, slide.key)}
+                  />
+                ))}
+              </div>
+            </Modal>
+          );
+        })()}
     </div>
   );
 }

@@ -22,6 +22,7 @@ import pandas as pd
 from app.schemas import FeatureSuggestion
 from app.services.feature_suggester import VALID_TYPES, _formula_text, _referenced_columns
 from app.services.groq_client import chat_json
+from app.services.llm_context import columns_block as _columns_block
 
 SYSTEM_PROMPT = """You are a data engineer turning ONE specific request into \
 a new engineered column for an operational cold-chain shipment dataset. \
@@ -57,15 +58,6 @@ commentary:
  "output_column": "short column name for the new field",
  "type": "duration_hours | ratio | extract_month | ai_generated",
  ... the required fields for that type (calculation_prompt for ai_generated) ...}"""
-
-
-def _columns_block(df: pd.DataFrame) -> str:
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
 
 
 def draft_feature_spec(request_text: str, df: pd.DataFrame) -> FeatureSuggestion:

@@ -142,6 +142,16 @@
   padding: 2px 8px;
 }
 
+.feature-card__client-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #10B981;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 .feature-card__description {
   margin: 14px 0 0;
   font-size: 12.5px;

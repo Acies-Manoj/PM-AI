@@ -210,6 +210,11 @@
   color: #fff;
 }
 
+.analysis-page__panel-icon--amber {
+  background: var(--accent-amber);
+  color: #fff;
+}
+
 .analysis-page__panel-btn-row {
   display: flex;
   gap: 8px;
@@ -221,6 +226,11 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+.analysis-page__ai-panel > .analysis-page__panel-btn,
+.analysis-page__custom-pivot > .analysis-page__panel-btn {
+  margin-top: 14px;
 }
 
 .analysis-page__panel-btn-row .analysis-page__panel-btn {
@@ -298,6 +308,110 @@
   line-height: 1.5;
 }
 
+/* -- Client Brief status list (Client-Requested Analyses) -------------- */
+
+.analysis-page__client-brief {
+  border: 1px solid var(--carrier-blue-tint-2);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  margin: 16px 0;
+}
+
+.analysis-page__client-brief-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.analysis-page__client-brief-item {
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding: 10px 12px;
+}
+
+.analysis-page__client-brief-item--created {
+  border-left-color: var(--color-success);
+}
+
+.analysis-page__client-brief-item--reused {
+  border-left-color: var(--carrier-light-blue);
+}
+
+.analysis-page__client-brief-item--failed {
+  border-left-color: var(--color-error);
+}
+
+.analysis-page__client-brief-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.analysis-page__client-brief-item-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.analysis-page__client-brief-status {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.analysis-page__client-brief-status--created {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.analysis-page__client-brief-status--reused {
+  background: var(--carrier-blue-tint);
+  color: var(--carrier-blue);
+}
+
+.analysis-page__client-brief-status--failed {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.analysis-page__client-brief-item-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.analysis-page__client-brief-language {
+  margin-top: 8px;
+}
+
+.analysis-page__client-brief-language summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--carrier-blue);
+}
+
+.analysis-page__client-brief-translation {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
 /* -- pivot grid + skipped -------------------------------------------- */
 
 .analysis-page__none {
@@ -335,67 +449,33 @@
   color: var(--color-text-muted);
 }
 
-/* -- summary of all pivots added ------------------------------------- */
+/* -- Section 1/2/3/4's four analysis buckets (Defined/AI/User/Drill-down) */
 
-.analysis-page__summary {
-  margin-top: 20px;
-  margin-bottom: 20px;
-  border: 1px solid var(--carrier-blue-tint-2);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
+.analysis-page__pivot-section {
+  margin-bottom: 22px;
 }
 
-.analysis-page__summary-title {
-  margin: 0 0 14px;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--carrier-blue);
-}
-
-.analysis-page__summary-group {
-  margin-bottom: 12px;
-}
-
-.analysis-page__summary-group:last-child {
+.analysis-page__pivot-section:last-child {
   margin-bottom: 0;
 }
 
-.analysis-page__summary-group-label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.analysis-page__summary-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.analysis-page__defined-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
-.analysis-page__summary-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--color-text);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  padding: 4px 12px;
+.analysis-page__defined-checkbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--carrier-blue);
   cursor: pointer;
 }
 
-.analysis-page__summary-item:hover {
-  border-color: var(--carrier-blue);
-  background: var(--carrier-blue-tint);
+.analysis-page__defined-row .pivot-card {
+  flex: 1;
+  min-width: 0;
 }
 
 /* -- footer buttons ----------------------------- */
@@ -461,4 +541,87 @@
   padding: 40px 0;
   color: var(--color-text-muted);
   font-size: 14px;
+}
+
+/* -- saved-library sections inside the suggestions modal -------------- */
+
+.analysis-page__saved-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analysis-page__saved-section + .analysis-page__saved-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-border);
+}
+
+.analysis-page__saved-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* -- a Client Brief's own single-question fallback answer (Formula Agent:
+   pivot template first, sandboxed Python fallback), shown in the Client
+   Brief section ----------------------------------------------------------- */
+
+.analysis-page__ask-answer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.analysis-page__ask-mode {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--carrier-blue);
+  background: var(--carrier-blue-tint, #EAF1FD);
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin-bottom: 8px;
+}
+
+.analysis-page__ask-explanation {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  color: var(--color-text);
+}
+
+.analysis-page__ask-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--carrier-blue);
+}
+
+.analysis-page__ask-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.analysis-page__ask-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.analysis-page__ask-table th,
+.analysis-page__ask-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.analysis-page__ask-table th {
+  background: var(--color-surface-alt, #F7F9FC);
+  font-weight: 700;
 }

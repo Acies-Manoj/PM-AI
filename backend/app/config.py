@@ -31,6 +31,15 @@ KPI_STORE_PATH = DATA_DIR / "kpi_store.json"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
+# Optional -- a genuinely separate account/quota from Groq (Groq's own rate
+# limits are enforced per-ORGANIZATION, so a second Groq key would NOT help;
+# OpenRouter is a different provider entirely). Takes priority over Groq
+# when set -- see services/groq_client.py, which every agent in this app
+# already goes through, so setting this one variable is enough to move all
+# of them off Groq at once.
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b")
+
 # Optional -- report translation only (see translation_service.py). A report
 # download still succeeds without this set; it just stays in English.
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY", "")

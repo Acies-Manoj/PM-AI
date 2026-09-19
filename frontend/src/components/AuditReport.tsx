@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AuditIssue, AuditReport as AuditReportData } from "../api/audit";
+import type { AuditIssue, AuditReport as AuditReportData, OutliersResponse } from "../api/audit";
+import { fetchOutliers } from "../api/audit";
 import AuditIssueCard, { COLUMN_SCOPED_CATEGORIES } from "./AuditIssueCard";
+import SegmentOutlierTab from "./SegmentOutlierTab";
+import TemperatureOutlierTab from "./TemperatureOutlierTab";
 import StatTile from "./StatTile";
 import { IconDoc, IconGrid, IconSearch, IconWarnTriangle, IconClipboard, IconInfo } from "./icons";
 import "./AuditReport.css";
@@ -14,22 +17,14 @@ interface AuditReportProps {
   onTabChange: (tab: Tab) => void;
 }
 
-export type Tab = "quality" | "suggestions" | "summary";
+export type Tab = "quality" | "segment" | "temperature" | "summary";
 
-// The variable-level tab holds per-column checks (outlier detection, missing
-// identifiers); everything else -- structural problems, duplicates, logic
-// violations, and column cleanliness -- is an overall data-quality question
-// that blocks confident analysis.
-export function classifyIssue(issue: AuditIssue): Tab {
-  if (issue.category.startsWith("statistical_outliers::")) return "suggestions";
-  if (issue.category.startsWith("missing_identifier::")) return "suggestions";
+// statistical_outliers and missing_identifier issues are now shown under
+// Overall Checks since Variable-Level Checks has been removed.
+export function classifyIssue(_issue: AuditIssue): Tab {
   return "quality";
 }
 
-// Resolution text is always machine-generated (see backend apply_decision) so
-// the leading count is safe to parse back out for a rollup, rather than
-// re-deriving it from selectable_items/affected_row_count which may have
-// shifted since the issue was first detected.
 function parseLeadingCount(resolution: string): number | null {
   const match = resolution.match(/^(?:Dropped|Removed) (\d+)/);
   return match ? Number(match[1]) : null;
@@ -63,12 +58,6 @@ function joinClauses(clauses: string[]): string {
   return `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}.`;
 }
 
-// Matches a typed column name/fragment against a finding: the columns it
-// actually lists (selectable_items), the single column it's namespaced to
-// (e.g. "statistical_outliers::Mean Value"), and finally its description --
-// that last one is what catches categories with no structured column field
-// at all (range_violations, key_duplicate_rows) since they still name the
-// relevant column(s) in the generated text.
 function issueMatchesColumnQuery(issue: AuditIssue, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -92,11 +81,7 @@ export default function AuditReport({
   const criticalCount = report.issues.filter((i) => i.severity === "critical").length;
   const warningCount = report.issues.filter((i) => i.severity === "warning").length;
 
-  const qualityIssues = useMemo(() => report.issues.filter((i) => classifyIssue(i) === "quality"), [report.issues]);
-  const suggestionIssues = useMemo(
-    () => report.issues.filter((i) => classifyIssue(i) === "suggestions"),
-    [report.issues]
-  );
+  const qualityIssues = useMemo(() => report.issues, [report.issues]);
   const resolvedIssues = useMemo(
     () => decisionIssues.filter((i) => i.status === "resolved" && i.resolution),
     [decisionIssues]
@@ -108,10 +93,45 @@ export default function AuditReport({
   const [columnDropdownOpen, setColumnDropdownOpen] = useState(false);
   const columnSearchRef = useRef<HTMLDivElement | null>(null);
 
-  const activeIssues = activeTab === "quality" ? qualityIssues : activeTab === "suggestions" ? suggestionIssues : [];
+  // Outlier data — loaded lazily on first visit to segment or temperature tab.
+  // Reset whenever the session changes (new file uploaded).
+  const [outlierData, setOutlierData] = useState<OutliersResponse | null>(null);
+  const [outlierLoading, setOutlierLoading] = useState(false);
+  const [outlierError, setOutlierError] = useState<string | null>(null);
+  const lastSessionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (report.session_id !== lastSessionRef.current) {
+      lastSessionRef.current = report.session_id;
+      setOutlierData(null);
+      setOutlierError(null);
+    }
+  }, [report.session_id]);
+
+  const loadOutliers = () => {
+    setOutlierLoading(true);
+    setOutlierError(null);
+    fetchOutliers(report.session_id)
+      .then(setOutlierData)
+      .catch((e: Error) => setOutlierError(e.message))
+      .finally(() => setOutlierLoading(false));
+  };
+
+  const refreshOutliers = () => {
+    setOutlierData(null);
+    loadOutliers();
+  };
+
+  useEffect(() => {
+    if (activeTab !== "segment" && activeTab !== "temperature") return;
+    if (outlierData || outlierLoading) return;
+    loadOutliers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, report.session_id, outlierData, outlierLoading]);
+
   const visibleIssues = useMemo(
-    () => activeIssues.filter((i) => issueMatchesColumnQuery(i, columnQuery)),
-    [activeIssues, columnQuery]
+    () => qualityIssues.filter((i) => issueMatchesColumnQuery(i, columnQuery)),
+    [qualityIssues, columnQuery]
   );
   const matchingColumns = useMemo(() => {
     const q = columnQuery.trim().toLowerCase();
@@ -146,20 +166,12 @@ export default function AuditReport({
     setColumnQuery("");
     setColumnDropdownOpen(false);
   };
-  // Bulk-apply only acts on whatever the column search is currently showing --
-  // what you see is what gets applied.
+
   const pendingInActiveTab = useMemo(
     () => visibleIssues.filter((i) => i.requires_decision && i.status === "pending"),
     [visibleIssues]
   );
 
-  // Snapshot the pending list at click time and work through it in order --
-  // each onResolve re-renders the parent with a shrinking `activeIssues`, so
-  // recomputing the work list mid-loop would make it shrink out from under
-  // us. Each finding's own recommended_action/selectable_items are static
-  // audit-time metadata (the backend re-validates them fresh against the
-  // current dataframe on every resolve), so acting on the snapshot is safe
-  // even if an earlier resolve in this same batch changed row/column counts.
   const applyAllRecommendations = async () => {
     const toApply = pendingInActiveTab;
     setBulkApplying(true);
@@ -183,6 +195,12 @@ export default function AuditReport({
   if (changeTotals.rowsRemoved > 0) summaryClauses.push(`removed ${pluralize(changeTotals.rowsRemoved, "row")}`);
   if (changeTotals.keptCount > 0) summaryClauses.push(`kept ${pluralize(changeTotals.keptCount, "finding")} as-is`);
   const summarySentence = joinClauses(summaryClauses);
+
+  const segmentFlagged = outlierData?.segment.flagged_trips ?? null;
+  const tempBreaches =
+    outlierData != null
+      ? outlierData.temperature.too_warm_count + outlierData.temperature.too_cold_count
+      : null;
 
   return (
     <div className="audit-report">
@@ -222,13 +240,28 @@ export default function AuditReport({
               <button
                 type="button"
                 role="tab"
-                aria-selected={activeTab === "suggestions"}
-                className={`audit-report__tab ${activeTab === "suggestions" ? "audit-report__tab--active" : ""}`}
+                aria-selected={activeTab === "segment"}
+                className={`audit-report__tab ${activeTab === "segment" ? "audit-report__tab--active" : ""}`}
                 disabled={bulkApplying}
-                onClick={() => onTabChange("suggestions")}
+                onClick={() => onTabChange("segment")}
               >
-                Variable-Level Checks
-                <span className="audit-report__tab-count">{suggestionIssues.length}</span>
+                Segment Outlier
+                {segmentFlagged !== null && (
+                  <span className="audit-report__tab-count">{segmentFlagged}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "temperature"}
+                className={`audit-report__tab ${activeTab === "temperature" ? "audit-report__tab--active" : ""}`}
+                disabled={bulkApplying}
+                onClick={() => onTabChange("temperature")}
+              >
+                Temperature Outliers
+                {tempBreaches !== null && (
+                  <span className="audit-report__tab-count">{tempBreaches}</span>
+                )}
               </button>
               <button
                 type="button"
@@ -242,7 +275,20 @@ export default function AuditReport({
                 <span className="audit-report__tab-count">{resolvedCount}</span>
               </button>
             </div>
-            {activeTab !== "summary" && (
+
+            {(activeTab === "segment" || activeTab === "temperature") && outlierData !== null && !outlierLoading && (
+              <div className="audit-report__tab-actions">
+                <button
+                  type="button"
+                  className="audit-report__bulk-btn"
+                  onClick={refreshOutliers}
+                >
+                  ↻ Refresh analysis
+                </button>
+              </div>
+            )}
+
+            {activeTab === "quality" && (
               <div className="audit-report__tab-actions">
                 <div className="audit-report__col-search" ref={columnSearchRef}>
                   <span className="audit-report__col-search-icon">
@@ -316,11 +362,11 @@ export default function AuditReport({
                   <div className="audit-report__changes-copy">
                     <p className="audit-report__changes-title">
                       {report.status === "reviewed"
-                        ? "Audit complete -- here's what changed"
+                        ? "Audit complete — here's what changed"
                         : `${resolvedCount} of ${decisionIssues.length} findings resolved so far`}
                     </p>
                     <p className="audit-report__changes-sentence">
-                      {summarySentence || "No changes made yet -- every finding so far was kept as-is."}
+                      {summarySentence || "No changes made yet — every finding so far was kept as-is."}
                       {datasetChanged && (
                         <>
                           {" "}Dataset is now <strong>{report.row_count.toLocaleString()}</strong> rows ×{" "}
@@ -341,8 +387,30 @@ export default function AuditReport({
                 </ul>
               </div>
             ) : (
-              <p className="audit-report__empty-tab">No changes yet -- resolve some findings to see a summary here.</p>
+              <p className="audit-report__empty-tab">No changes yet — resolve some findings to see a summary here.</p>
             )
+          ) : activeTab === "segment" ? (
+            outlierLoading ? (
+              <p className="outlier-tab__loading">Analyzing segment lengths…</p>
+            ) : outlierError ? (
+              <div className="outlier-tab__error">
+                Could not load outlier data: {outlierError}
+                <button type="button" className="outlier-tab__retry" onClick={loadOutliers}>Retry</button>
+              </div>
+            ) : outlierData ? (
+              <SegmentOutlierTab data={outlierData.segment} />
+            ) : null
+          ) : activeTab === "temperature" ? (
+            outlierLoading ? (
+              <p className="outlier-tab__loading">Analyzing temperature data…</p>
+            ) : outlierError ? (
+              <div className="outlier-tab__error">
+                Could not load outlier data: {outlierError}
+                <button type="button" className="outlier-tab__retry" onClick={loadOutliers}>Retry</button>
+              </div>
+            ) : outlierData ? (
+              <TemperatureOutlierTab data={outlierData.temperature} />
+            ) : null
           ) : (
             <div className="audit-report__issues">
               {visibleIssues.length > 0 ? (
@@ -364,9 +432,7 @@ export default function AuditReport({
               ) : columnQuery ? (
                 <p className="audit-report__empty-tab">No findings match column "{columnQuery}".</p>
               ) : (
-                <p className="audit-report__empty-tab">
-                  {activeTab === "quality" ? "No overall issues found." : "No variable-level issues found."}
-                </p>
+                <p className="audit-report__empty-tab">No overall issues found.</p>
               )}
             </div>
           )}

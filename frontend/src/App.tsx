@@ -29,6 +29,8 @@ const EMPTY_FILES: FilesState = {
   customerKpis: null,
   analysisProfile: null,
   reportTemplate: null,
+  rawLight: null,
+  rawTemperature: null,
 };
 
 function App() {

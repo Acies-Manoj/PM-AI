@@ -11,8 +11,10 @@ BACKEND_DIR = APP_DIR.parent
 DATA_DIR = BACKEND_DIR / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+# Low-cost default: google/gemini-2.5-flash-lite (very cheap, fast).
+# Override in .env with any model slug from https://openrouter.ai/models
+LLM_MODEL = os.getenv("LLM_MODEL", "google/gemini-2.5-flash-lite")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")

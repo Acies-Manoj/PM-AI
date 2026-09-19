@@ -1,0 +1,419 @@
+/* Shared base for Segment Outlier and Temperature Outlier tabs */
+.outlier-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.outlier-tab__summary {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--color-surface-raised, #f8f9fa);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 8px;
+}
+
+.outlier-tab__summary-stat {
+  font-size: 13px;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.outlier-tab__summary-stat strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text, #1e293b);
+  margin-right: 4px;
+}
+
+.outlier-tab__summary-stat--flagged strong {
+  color: #dc2626;
+}
+
+.outlier-tab__summary-stat--cold strong {
+  color: #2563eb;
+}
+
+.outlier-tab__missing {
+  padding: 20px;
+  background: var(--color-surface-raised, #f8f9fa);
+  border: 1px dashed var(--color-border, #e2e8f0);
+  border-radius: 8px;
+  color: var(--color-text-secondary, #64748b);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.outlier-tab__all-clear {
+  padding: 16px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  color: #15803d;
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.outlier-tab__loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--color-text-secondary, #64748b);
+  font-size: 13px;
+}
+
+.outlier-tab__error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #dc2626;
+  font-size: 13px;
+}
+
+.outlier-tab__retry {
+  margin-left: auto;
+  padding: 4px 12px;
+  background: none;
+  border: 1px solid #dc2626;
+  border-radius: 6px;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.outlier-tab__retry:hover {
+  background: #dc2626;
+  color: #fff;
+}
+
+/* ── Lane cards (Segment Outlier tab) ─────────────────────────────────── */
+
+.outlier-tab__lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.outlier-lane-card {
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-surface, #fff);
+  transition: box-shadow 0.15s;
+}
+
+.outlier-lane-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* no left-border accent — keep cards visually neutral */
+
+.outlier-lane-card__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font-family: inherit;
+}
+
+.outlier-lane-card__header:hover {
+  background: var(--color-surface-hover, #f8f9fa);
+}
+
+.outlier-lane-card__route {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text, #1e293b);
+  min-width: 200px;
+}
+
+.outlier-lane-card__arrow {
+  color: var(--color-text-secondary, #94a3b8);
+  font-size: 12px;
+}
+
+.outlier-lane-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.outlier-lane-card__status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.outlier-lane-card__status-badge--own_lane {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.outlier-lane-card__status-badge--peer_shrunk {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.outlier-lane-card__status-badge--insufficient {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.outlier-lane-card__fence {
+  font-size: 12px;
+  color: var(--color-text-secondary, #64748b);
+  font-family: monospace;
+}
+
+.outlier-lane-card__count {
+  font-size: 12px;
+  color: var(--color-text-secondary, #64748b);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.outlier-lane-card__count--flagged {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.outlier-lane-card__chevron {
+  font-size: 11px;
+  color: var(--color-text-secondary, #94a3b8);
+  flex-shrink: 0;
+}
+
+/* Trip table */
+.outlier-lane-card__trips {
+  border-top: 1px solid var(--color-border, #e2e8f0);
+  max-height: 320px;
+  overflow: auto;
+}
+
+.outlier-lane-card__table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.outlier-lane-card__table th {
+  padding: 6px 14px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary, #64748b);
+  background: var(--color-surface-raised, #f8f9fa);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+  border-right: 1px solid var(--color-border, #e2e8f0);
+}
+
+.outlier-lane-card__table td {
+  padding: 5px 14px;
+  border-top: 1px solid var(--color-border, #f1f5f9);
+  border-right: 1px solid var(--color-border, #f1f5f9);
+  color: var(--color-text, #334155);
+  white-space: nowrap;
+}
+
+.outlier-lane-card__trips--empty {
+  padding: 12px 16px;
+  color: var(--color-text-secondary, #64748b);
+  font-size: 13px;
+}
+
+/* ── Product cards (Temperature Outlier tab) ───────────────────────────── */
+
+.outlier-tab__products {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.temp-product-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--color-surface, #fff);
+  border: 1.5px solid var(--color-border, #e2e8f0);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.temp-product-card:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.temp-product-card--has-issues {
+  border-left: 3px solid #f59e0b;
+}
+
+.temp-product-card--active {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.temp-product-card__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text, #1e293b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.temp-product-card__counts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.temp-product-card__count {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 9999px;
+}
+
+.temp-product-card__count--ok {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.temp-product-card__count--warm {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.temp-product-card__count--cold {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Mini stacked bar on the card */
+.temp-product-card__bar {
+  display: flex;
+  height: 4px;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: var(--color-border, #e2e8f0);
+}
+
+.temp-product-card__bar-seg {
+  height: 100%;
+}
+
+.temp-product-card__bar-seg--ok {
+  background: #4ade80;
+}
+
+.temp-product-card__bar-seg--warm {
+  background: #f87171;
+}
+
+.temp-product-card__bar-seg--cold {
+  background: #60a5fa;
+}
+
+/* ── Expanded bar chart area ──────────────────────────────────────────── */
+
+.outlier-tab__chart-area {
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 20px;
+  background: var(--color-surface, #fff);
+}
+
+.temp-bar-chart__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text, #1e293b);
+  margin-bottom: 16px;
+}
+
+.temp-bar-chart__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.temp-bar-chart__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.temp-bar-chart__label {
+  width: 80px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary, #64748b);
+  flex-shrink: 0;
+}
+
+.temp-bar-chart__track {
+  flex: 1;
+  height: 22px;
+  background: var(--color-surface-raised, #f1f5f9);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.temp-bar-chart__fill {
+  height: 100%;
+  border-radius: 4px;
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.temp-bar-chart__fill--in-spec {
+  background: #4ade80;
+}
+
+.temp-bar-chart__fill--too-warm {
+  background: #f87171;
+}
+
+.temp-bar-chart__fill--too-cold {
+  background: #60a5fa;
+}
+
+.temp-bar-chart__value {
+  width: 40px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text, #1e293b);
+  flex-shrink: 0;
+}

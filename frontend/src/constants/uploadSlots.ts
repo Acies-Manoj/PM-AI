@@ -49,6 +49,22 @@ export const UPLOAD_SLOTS: UploadSlotConfig[] = [
     accept: ".pptx",
     acceptLabel: "PowerPoint (.pptx)",
   },
+  {
+    id: "rawLight",
+    title: "Raw Light Data",
+    description: "Raw ambient light sensor readings exported from the monitoring device (e.g. lux or on/off log).",
+    required: false,
+    accept: ".xlsx,.xls,.csv",
+    acceptLabel: "Excel or CSV (.xlsx, .xls, .csv)",
+  },
+  {
+    id: "rawTemperature",
+    title: "Raw Temperature Data",
+    description: "Raw temperature sensor readings from the monitoring device, at full recording resolution.",
+    required: false,
+    accept: ".xlsx,.xls,.csv",
+    acceptLabel: "Excel or CSV (.xlsx, .xls, .csv)",
+  },
 ];
 
 // Only the tabular data sources get audited -- duplicate/outlier checks aren't

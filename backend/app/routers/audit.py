@@ -291,3 +291,14 @@ def apply_features(session_id: str, body: ApplyFeaturesRequest | None = None) ->
 @router.get("/{session_id}/features", response_model=FeatureReport)
 def get_features(session_id: str) -> FeatureReport:
     return _to_feature_report(_get_session_or_404(session_id))
+
+
+@router.get("/{session_id}/outliers")
+def get_outliers(session_id: str):
+    from app.services.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
+    session = _get_session_or_404(session_id)
+    return {
+        "session_id": session_id,
+        "segment": detect_segment_outliers(session.df),
+        "temperature": detect_temperature_outliers(session.df),
+    }

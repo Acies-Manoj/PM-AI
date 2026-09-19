@@ -527,3 +527,56 @@ export async function fetchOverallAnalysis(sessionId: string): Promise<OverallAn
   }
   return response.json();
 }
+
+// -- Outlier detection -------------------------------------------------------
+
+export interface LaneResult {
+  origin: string;
+  destination: string;
+  n_trips: number;
+  n_valid: number;
+  n_outliers: number;
+  status_type: "own_lane" | "peer_shrunk" | "insufficient";
+  status_label: string;
+  lower_fence: number | null;
+  upper_fence: number | null;
+  outlier_rows: Record<string, unknown>[];
+}
+
+export interface SegmentOutliersResult {
+  column_found: boolean;
+  total_trips: number;
+  flagged_trips: number;
+  columns: string[];
+  lanes: LaneResult[];
+}
+
+export interface ProductTemperatureResult {
+  product: string;
+  total: number;
+  too_warm: number;
+  too_cold: number;
+  in_spec: number;
+}
+
+export interface TemperatureOutliersResult {
+  columns_found: Record<string, boolean>;
+  total_trips: number;
+  too_warm_count: number;
+  too_cold_count: number;
+  by_product: ProductTemperatureResult[];
+}
+
+export interface OutliersResponse {
+  session_id: string;
+  segment: SegmentOutliersResult;
+  temperature: TemperatureOutliersResult;
+}
+
+export async function fetchOutliers(sessionId: string): Promise<OutliersResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/outliers`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}

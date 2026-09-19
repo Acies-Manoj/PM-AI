@@ -9,22 +9,24 @@ import { IconShieldSearch, IconDownload } from "../components/icons";
 import { downloadCleansedFileUrl } from "../api/audit";
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
-import type { AuditErrorsState, AuditLoadingState, AuditReportsState, FilesState, ResolvingState } from "../App";
+import type { AuditErrorsState, AuditLoadingState, AuditReportsState, FilesState, ResolvingState, UploadedSessionIdsState } from "../App";
 import "./AuditPage.css";
 
 interface AuditPageProps {
   files: FilesState;
+  uploadedSessionIds: UploadedSessionIdsState;
   auditReports: AuditReportsState;
   auditLoading: AuditLoadingState;
   auditErrors: AuditErrorsState;
   resolvingIssueId: ResolvingState;
-  onRunAudit: (id: UploadSlotId, file: File) => void;
+  onRunAudit: (id: UploadSlotId) => void;
   onResolveIssue: (id: UploadSlotId, issueId: string, decisionId: string, selectedItems?: string[]) => Promise<void>;
   onRevertIssue: (id: UploadSlotId, issueId: string) => void;
 }
 
 export default function AuditPage({
   files,
+  uploadedSessionIds,
   auditReports,
   auditLoading,
   auditErrors,
@@ -37,31 +39,31 @@ export default function AuditPage({
   const [activeTabs, setActiveTabs] = useState<Partial<Record<UploadSlotId, Tab>>>({});
   const cardRefs = useRef<Partial<Record<UploadSlotId, HTMLElement | null>>>({});
 
+  const submittedIds = useRef<Set<UploadSlotId>>(new Set());
+
   useEffect(() => {
     for (const id of AUDITED_SLOTS) {
-      const file = files[id];
-      if (!file) continue;
-      if (auditReports[id] || auditLoading[id] || auditErrors[id]) continue;
-      onRunAudit(id, file);
+      if (!uploadedSessionIds[id]) continue;
+      if (submittedIds.current.has(id)) continue;
+      submittedIds.current.add(id);
+      onRunAudit(id);
     }
-    // Only re-scan when the selected files change -- audit state itself is
-    // checked fresh above so this stays idempotent without needing it as a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files]);
+  }, [uploadedSessionIds]);
 
-  const auditedSlotsWithFiles = AUDITED_SLOTS.filter((id) => files[id]);
+  const auditedSlotsWithFiles = AUDITED_SLOTS.filter((id) => uploadedSessionIds[id]);
   const hasAnyFile = UPLOAD_SLOTS.some((s) => files[s.id]);
 
   const anyLoading = auditedSlotsWithFiles.some((id) => auditLoading[id]);
   const anyPending = auditedSlotsWithFiles.some((id) => auditReports[id]?.status === "pending_review");
-  const canContinue = !!files.sensiwatch && !anyLoading && !anyPending;
+  const canContinue = !!uploadedSessionIds.sensiwatch && !anyLoading && !anyPending;
 
   if (!hasAnyFile) {
     return (
       <div className="audit-page">
         <Header subtitle="Data Audit" />
         <main className="audit-page__main">
-          <StepIndicator current={2} />
+          <StepIndicator current={3} />
           <div className="audit-page__empty">
             <p>No files have been uploaded yet.</p>
             <button type="button" className="audit-page__btn audit-page__btn--primary" onClick={() => navigate("/upload")}>
@@ -77,7 +79,7 @@ export default function AuditPage({
     <div className="audit-page">
       <Header subtitle="Data Audit" />
       <main className="audit-page__main">
-        <StepIndicator current={2} />
+        <StepIndicator current={3} />
 
         <PageHeader
           icon={<IconShieldSearch />}

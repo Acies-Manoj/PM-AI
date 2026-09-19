@@ -1,0 +1,218 @@
+.cb {
+  margin-bottom: 20px;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #dde3ed);
+  border-radius: var(--radius-md, 10px);
+  overflow: hidden;
+}
+
+.cb__title {
+  padding: 14px 20px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--carrier-blue, #002e6e);
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid var(--color-border, #dde3ed);
+}
+
+/* ── Two-panel grid ── */
+.cb__panels {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  min-height: 220px;
+}
+
+/* ── Individual panel ── */
+.cb__panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.cb__panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px 8px;
+  border-bottom: 1px solid var(--color-border, #dde3ed);
+  min-height: 38px;
+}
+
+.cb__lang-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted, #6b7a99);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cb__lang-label--en {
+  color: var(--carrier-blue, #002e6e);
+}
+
+/* ── Spinner ── */
+.cb__spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-border, #dde3ed);
+  border-top-color: var(--carrier-blue, #002e6e);
+  border-radius: 50%;
+  animation: cb-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes cb-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Badges ── */
+.cb__badge {
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.cb__badge--ok {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.cb__badge--foreign {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.cb__badge--deepl {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.cb__badge--warn {
+  background: #fff8e1;
+  color: #f57f17;
+}
+
+.cb__badge--error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+/* ── Textareas ── */
+.cb__textarea {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.65;
+  color: var(--color-text, #1a2340);
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 14px 16px;
+}
+
+.cb__textarea::placeholder {
+  color: var(--color-text-muted, #b0bec5);
+}
+
+.cb__textarea--right {
+  background: var(--color-bg, #f7f9fc);
+}
+
+.cb__textarea--right[readonly] {
+  color: var(--color-text-muted, #6b7a99);
+  cursor: default;
+}
+
+.cb__textarea--translated {
+  background: #f0f7ff;
+  color: var(--color-text, #1a2340);
+}
+
+/* ── Vertical divider with arrow ── */
+.cb__divider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  gap: 8px;
+  border-left: 1px solid var(--color-border, #dde3ed);
+  border-right: 1px solid var(--color-border, #dde3ed);
+  background: var(--color-bg-alt, #f7f9fc);
+}
+
+.cb__divider-line {
+  flex: 1;
+  width: 1px;
+  background: var(--color-border, #dde3ed);
+}
+
+.cb__arrow {
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-muted, #b0bec5);
+  flex-shrink: 0;
+}
+
+/* ── Hints ── */
+.cb__edit-hint {
+  margin: 0;
+  padding: 6px 16px 10px;
+  font-size: 11px;
+  color: var(--color-text-muted, #90a4ae);
+  font-style: italic;
+}
+
+.cb__error-hint {
+  margin: 0;
+  padding: 6px 16px 10px;
+  font-size: 11px;
+  color: #c62828;
+}
+
+.cb__error-hint--info {
+  color: var(--color-text-muted, #6b7a99);
+}
+
+.cb__error-hint code {
+  font-family: monospace;
+  background: var(--color-bg-alt, #f2f5fa);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 10px;
+}
+
+/* ── Responsive: stack on small screens ── */
+@media (max-width: 680px) {
+  .cb__panels {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+  }
+
+  .cb__divider {
+    flex-direction: row;
+    width: 100%;
+    height: 32px;
+    border-left: none;
+    border-right: none;
+    border-top: 1px solid var(--color-border, #dde3ed);
+    border-bottom: 1px solid var(--color-border, #dde3ed);
+  }
+
+  .cb__divider-line {
+    flex: 1;
+    width: auto;
+    height: 1px;
+  }
+
+  .cb__arrow {
+    transform: rotate(90deg);
+  }
+}

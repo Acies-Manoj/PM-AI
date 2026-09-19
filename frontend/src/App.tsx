@@ -2,20 +2,25 @@ import { useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import WelcomePage from "./pages/WelcomePage";
 import UploadPage from "./pages/UploadPage";
+import PlannerPage from "./pages/PlannerPage";
 import AuditPage from "./pages/AuditPage";
 import FeaturesPage from "./pages/FeaturesPage";
 import AnalysisPage from "./pages/AnalysisPage";
 import ReportPage from "./pages/ReportPage";
-import { AuditApiError, resolveIssue, revertIssue, uploadForAudit } from "./api/audit";
+import { AuditApiError, resolveIssue, revertIssue, runAudit } from "./api/audit";
 import type { AuditReport as AuditReportData } from "./api/audit";
 import { isAudited } from "./constants/uploadSlots";
 import type { UploadSlotId } from "./types/upload";
+import { EMPTY_BRIEF } from "./components/ClientBriefInput";
+import type { BriefState } from "./components/ClientBriefInput";
 
 export type FilesState = Record<UploadSlotId, File | null>;
+export type UploadedSessionIdsState = Partial<Record<UploadSlotId, string>>;
 export type AuditReportsState = Partial<Record<UploadSlotId, AuditReportData>>;
 export type AuditLoadingState = Partial<Record<UploadSlotId, boolean>>;
 export type AuditErrorsState = Partial<Record<UploadSlotId, string>>;
 export type ResolvingState = Partial<Record<UploadSlotId, string>>;
+export type { BriefState };
 
 const EMPTY_FILES: FilesState = {
   sensiwatch: null,
@@ -28,16 +33,26 @@ const EMPTY_FILES: FilesState = {
 
 function App() {
   const [files, setFiles] = useState<FilesState>(EMPTY_FILES);
+  const [brief, setBrief] = useState<BriefState>(EMPTY_BRIEF);
+  const [uploadedSessionIds, setUploadedSessionIds] = useState<UploadedSessionIdsState>({});
+  const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
   const [auditReports, setAuditReports] = useState<AuditReportsState>({});
   const [auditLoading, setAuditLoading] = useState<AuditLoadingState>({});
   const [auditErrors, setAuditErrors] = useState<AuditErrorsState>({});
   const [resolvingIssueId, setResolvingIssueId] = useState<ResolvingState>({});
 
-  const runAudit = async (id: UploadSlotId, file: File) => {
+  const handleUploadComplete = (sessionIds: UploadedSessionIdsState) => {
+    setUploadedSessionIds(sessionIds);
+    setPlannerSessionId(sessionIds.sensiwatch ?? null);
+  };
+
+  const handleRunAudit = async (id: UploadSlotId) => {
+    const sessionId = uploadedSessionIds[id];
+    if (!sessionId) return;
     setAuditLoading((prev) => ({ ...prev, [id]: true }));
     setAuditErrors((prev) => ({ ...prev, [id]: undefined }));
     try {
-      const report = await uploadForAudit(id, file);
+      const report = await runAudit(sessionId);
       setAuditReports((prev) => ({ ...prev, [id]: report }));
     } catch (err) {
       setAuditErrors((prev) => ({
@@ -52,6 +67,7 @@ function App() {
   const handleSelect = (id: UploadSlotId, file: File) => {
     setFiles((prev) => ({ ...prev, [id]: file }));
     if (isAudited(id)) {
+      setUploadedSessionIds((prev) => ({ ...prev, [id]: undefined }));
       setAuditReports((prev) => ({ ...prev, [id]: undefined }));
       setAuditErrors((prev) => ({ ...prev, [id]: undefined }));
     }
@@ -59,6 +75,7 @@ function App() {
 
   const handleRemove = (id: UploadSlotId) => {
     setFiles((prev) => ({ ...prev, [id]: null }));
+    setUploadedSessionIds((prev) => ({ ...prev, [id]: undefined }));
     setAuditReports((prev) => ({ ...prev, [id]: undefined }));
     setAuditErrors((prev) => ({ ...prev, [id]: undefined }));
     setAuditLoading((prev) => ({ ...prev, [id]: false }));
@@ -66,6 +83,9 @@ function App() {
 
   const handleClearAll = () => {
     setFiles(EMPTY_FILES);
+    setBrief(EMPTY_BRIEF);
+    setUploadedSessionIds({});
+    setPlannerSessionId(null);
     setAuditReports({});
     setAuditErrors({});
     setAuditLoading({});
@@ -116,18 +136,33 @@ function App() {
         <Route path="/" element={<WelcomePage />} />
         <Route
           path="/upload"
-          element={<UploadPage files={files} onSelect={handleSelect} onRemove={handleRemove} onClearAll={handleClearAll} />}
+          element={
+            <UploadPage
+              files={files}
+              brief={brief}
+              onSelect={handleSelect}
+              onRemove={handleRemove}
+              onClearAll={handleClearAll}
+              onBriefChange={setBrief}
+              onUploadComplete={handleUploadComplete}
+            />
+          }
+        />
+        <Route
+          path="/planner"
+          element={<PlannerPage sessionId={plannerSessionId} />}
         />
         <Route
           path="/audit"
           element={
             <AuditPage
               files={files}
+              uploadedSessionIds={uploadedSessionIds}
               auditReports={auditReports}
               auditLoading={auditLoading}
               auditErrors={auditErrors}
               resolvingIssueId={resolvingIssueId}
-              onRunAudit={runAudit}
+              onRunAudit={handleRunAudit}
               onResolveIssue={handleResolveIssue}
               onRevertIssue={handleRevertIssue}
             />

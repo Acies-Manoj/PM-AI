@@ -1,0 +1,106 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+export interface FeatureDefinition {
+  feature_name: string;
+  formula: string;
+  input_fields: string[];
+  dimensions: string[];
+  filters: string[];
+  business_rules: string[];
+}
+
+export interface AnalysisDefinition {
+  analysis_name: string;
+  objective: string;
+  metrics: string[];
+  dimensions: string[];
+  filters: string[];
+  visualization: string;
+  group_by: string[];
+  sort_by: string[];
+}
+
+export interface ConfigurationDefinition {
+  required: boolean;
+  parameters: string[];
+}
+
+export interface DataRequirements {
+  required_fields: string[];
+  missing_fields: string[];
+}
+
+export interface Validation {
+  issues: string[];
+  warnings: string[];
+  clarifications_required: string[];
+}
+
+export type PlannerRecommendationType = "feature" | "analysis" | "feature_and_analysis" | "configuration";
+export type PlannerRecommendationStatus = "existing" | "create_new" | "needs_clarification";
+export type PmDecisionValue = "accepted" | "rejected" | "pending";
+
+export interface PlannerRecommendation {
+  type: PlannerRecommendationType;
+  status: PlannerRecommendationStatus;
+  name: string;
+  description: string;
+  reason: string;
+  confidence: number;
+  feature_definition: FeatureDefinition | null;
+  analysis_definition: AnalysisDefinition | null;
+  configuration: ConfigurationDefinition | null;
+  data_requirements: DataRequirements;
+  validation: Validation;
+  pm_decision?: PmDecisionValue;
+  pm_notes?: string;
+}
+
+export interface PlannerSuggestResponse {
+  interpreted_requirement: string;
+  business_objective: string;
+  recommendations: PlannerRecommendation[];
+}
+
+export interface PmDecision {
+  recommendation_index: number;
+  pm_decision: PmDecisionValue;
+  pm_notes: string;
+}
+
+export interface SaveDecisionsResponse {
+  session_id: string;
+  saved: boolean;
+}
+
+export async function fetchSuggestions(
+  sessionId: string,
+  additionalContext = ""
+): Promise<PlannerSuggestResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/planner/suggest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, additional_context: additionalContext }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Planner suggest failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function saveDecisions(
+  sessionId: string,
+  decisions: PmDecision[]
+): Promise<SaveDecisionsResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/planner/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, decisions }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Planner save failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}

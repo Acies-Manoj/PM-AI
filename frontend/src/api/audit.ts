@@ -209,7 +209,16 @@ async function parseErrorDetail(response: Response): Promise<string> {
   }
 }
 
-export async function uploadForAudit(source: string, file: File): Promise<AuditReport> {
+export interface UploadOnlyResponse {
+  session_id: string;
+  filename: string;
+  row_count: number;
+  column_count: number;
+  columns: string[];
+}
+
+/** Upload a file and profile its columns. Does NOT run the audit agent. */
+export async function uploadOnly(source: string, file: File): Promise<UploadOnlyResponse> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("source", source);
@@ -217,6 +226,18 @@ export async function uploadForAudit(source: string, file: File): Promise<AuditR
   const response = await fetch(`${API_BASE_URL}/api/audit/upload`, {
     method: "POST",
     body: formData,
+  });
+
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+/** Run the audit agent on an already-uploaded session. */
+export async function runAudit(sessionId: string): Promise<AuditReport> {
+  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/run`, {
+    method: "POST",
   });
 
   if (!response.ok) {

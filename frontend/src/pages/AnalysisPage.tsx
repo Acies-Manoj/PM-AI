@@ -274,7 +274,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       <div className="analysis-page">
         <Header subtitle="Analysis" />
         <main className="analysis-page__main">
-          <StepIndicator current={4} />
+          <StepIndicator current={5} />
           <div className="analysis-page__empty">
             <p>No audited data yet.</p>
             <button type="button" className="analysis-page__btn analysis-page__btn--primary" onClick={() => navigate("/upload")}>
@@ -291,7 +291,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       <div className="analysis-page">
         <Header subtitle="Analysis" />
         <main className="analysis-page__main">
-          <StepIndicator current={4} />
+          <StepIndicator current={5} />
           <div className="analysis-page__empty">
             <p>Finish resolving the data audit before analysis can run.</p>
             <button type="button" className="analysis-page__btn analysis-page__btn--primary" onClick={() => navigate("/audit")}>
@@ -308,7 +308,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       <div className="analysis-page">
         <Header subtitle="Analysis" />
         <main className="analysis-page__main">
-          <StepIndicator current={4} />
+          <StepIndicator current={5} />
           <div className="analysis-page__empty">
             <p>
               {Object.values(featureCheckLoading).some(Boolean)
@@ -329,7 +329,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       <div className="analysis-page">
         <Header subtitle="Analysis" />
         <main className="analysis-page__main">
-          <StepIndicator current={4} />
+          <StepIndicator current={5} />
           <div className="analysis-page__empty">
             <p>
               No Analysis Profile has been uploaded. Analysis table definitions (which columns to group by,
@@ -349,7 +349,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
     <div className="analysis-page">
       <Header subtitle="Analysis" />
       <main className="analysis-page__main">
-        <StepIndicator current={4} />
+        <StepIndicator current={5} />
 
         <PageHeader
           icon={<IconBarChart />}

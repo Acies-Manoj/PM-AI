@@ -5,7 +5,11 @@ backend/.venv/
 backend/venv/
 __pycache__/
 *.pyc
+.env
 backend/.env
+
+# Claude Code
+.claude/
 
 # Node
 frontend/node_modules/

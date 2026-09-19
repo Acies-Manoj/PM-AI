@@ -1,16 +1,22 @@
 import io
 import json
+from pathlib import Path
 
 import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 
+from app.config import DATA_DIR
 from app.schemas import ApplyFeaturesRequest, AuditIssue, AuditReport, FeatureReport, ResolveRequest
 from app.services import data_audit, feature_engineering
 from app.services import feature_definitions_store as defs_store
 from app.services.audit_agent import generate_audit_analysis
 from app.services.audit_store import AuditSession, store
+from app.services.column_profiler import profile_dataframe
 from app.services.excel_parser import load_spreadsheet
+
+_SESSIONS_DIR = DATA_DIR / "sessions"
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -59,32 +65,83 @@ def _get_session_or_404(session_id: str) -> AuditSession:
     return session
 
 
-@router.post("/upload", response_model=AuditReport)
-async def upload_for_audit(file: UploadFile = File(...), source: str = Form(...)) -> AuditReport:
+class UploadOnlyResponse(BaseModel):
+    session_id: str
+    filename: str
+    row_count: int
+    column_count: int
+    columns: list[str]
+
+
+@router.post("/upload", response_model=UploadOnlyResponse)
+async def upload_for_profiling(
+    file: UploadFile = File(...), source: str = Form(...)
+) -> UploadOnlyResponse:
+    """Upload a file, create a session, and profile its columns.
+    Does NOT run the audit agent — call /{session_id}/run for that."""
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=422, detail="Uploaded file is empty.")
 
     try:
-        df, parse_warnings = load_spreadsheet(raw, file.filename or "upload")
+        df, _warnings = load_spreadsheet(raw, file.filename or "upload")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    issues = data_audit.run_audit(df)
+    session = store.create(source=source, filename=file.filename or "upload", df=df)
+
+    try:
+        col_meta = profile_dataframe(df)
+        session_dir = _SESSIONS_DIR / session.session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        combined = {
+            "session_id": session.session_id,
+            "filename": session.filename,
+            "source": source,
+            "row_count": len(df),
+            "column_count": len(df.columns),
+            "columns": col_meta,
+        }
+        (session_dir / "column_metadata.json").write_text(
+            json.dumps(combined, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+    return UploadOnlyResponse(
+        session_id=session.session_id,
+        filename=session.filename,
+        row_count=len(df),
+        column_count=len(df.columns),
+        columns=[str(c) for c in df.columns],
+    )
+
+
+@router.post("/{session_id}/run", response_model=AuditReport)
+def run_audit_agent(session_id: str) -> AuditReport:
+    """Run the audit agent on an already-uploaded session."""
+    session = _get_session_or_404(session_id)
+
+    if session.issues:
+        return _to_report(session)
+
+    issues = data_audit.run_audit(session.df)
     try:
         summary, recommendations = generate_audit_analysis(
-            source, file.filename or "upload", len(df), len(df.columns), issues
+            session.source, session.filename, len(session.df), len(session.df.columns), issues
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Data audit agent (Groq) is unavailable: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Data audit agent (Groq) is unavailable: {exc}"
+        ) from exc
+
     for issue in issues:
         action, note = recommendations.get(issue.id, (None, None))
         issue.recommended_action = action
         issue.recommendation = note
-    if parse_warnings:
-        summary = " ".join(parse_warnings) + " " + summary
 
-    session = store.create(source=source, filename=file.filename or "upload", df=df, issues=issues, summary=summary)
+    session.issues = issues
+    session.summary = summary
     return _to_report(session)
 
 

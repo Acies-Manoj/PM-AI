@@ -166,7 +166,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
       <div className="features-page">
         <Header subtitle="Feature Engineering" />
         <main className="features-page__main">
-          <StepIndicator current={3} />
+          <StepIndicator current={4} />
           <div className="features-page__empty">
             <p>No audited data yet.</p>
             <button type="button" className="features-page__btn features-page__btn--primary" onClick={() => navigate("/upload")}>
@@ -183,7 +183,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
       <div className="features-page">
         <Header subtitle="Feature Engineering" />
         <main className="features-page__main">
-          <StepIndicator current={3} />
+          <StepIndicator current={4} />
           <div className="features-page__empty">
             <p>Finish resolving the data audit before features can be computed.</p>
             <button type="button" className="features-page__btn features-page__btn--primary" onClick={() => navigate("/audit")}>
@@ -200,7 +200,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
       <div className="features-page">
         <Header subtitle="Feature Engineering" />
         <main className="features-page__main">
-          <StepIndicator current={3} />
+          <StepIndicator current={4} />
           <div className="features-page__empty">
             <p>
               No Customer KPI Profile has been uploaded. Feature definitions (what to compute, and any
@@ -220,7 +220,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
     <div className="features-page">
       <Header subtitle="Feature Engineering" />
       <main className="features-page__main">
-        <StepIndicator current={3} />
+        <StepIndicator current={4} />
 
         <PageHeader
           icon={<IconShieldCheck />}

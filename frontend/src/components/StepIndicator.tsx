@@ -2,15 +2,16 @@ import { useNavigate } from "react-router-dom";
 import "./StepIndicator.css";
 
 interface StepIndicatorProps {
-  current: 1 | 2 | 3 | 4 | 5;
+  current: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 const STEPS = [
   { step: 1, label: "Upload", path: "/upload" },
-  { step: 2, label: "Audit", path: "/audit" },
-  { step: 3, label: "Features", path: "/features" },
-  { step: 4, label: "Analysis", path: "/analysis" },
-  { step: 5, label: "Report", path: "/report" },
+  { step: 2, label: "Planner", path: "/planner" },
+  { step: 3, label: "Audit", path: "/audit" },
+  { step: 4, label: "Features", path: "/features" },
+  { step: 5, label: "Analysis", path: "/analysis" },
+  { step: 6, label: "Report", path: "/report" },
 ] as const;
 
 export default function StepIndicator({ current }: StepIndicatorProps) {

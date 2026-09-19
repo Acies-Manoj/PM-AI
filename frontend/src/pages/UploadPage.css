@@ -4,6 +4,16 @@
   flex-direction: column;
 }
 
+.upload-page__error {
+  background: #fff0f0;
+  border: 1px solid #f5c2c2;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: #c0392b;
+  font-size: 13.5px;
+  margin-bottom: 12px;
+}
+
 .upload-page__main {
   max-width: 1080px;
   width: 100%;
@@ -99,4 +109,19 @@
 .upload-page__btn--secondary:hover {
   border-color: var(--color-text-muted);
   color: var(--color-text);
+}
+
+.upload-page__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.upload-page__save-error {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #c62828;
+  background: #ffebee;
+  border: 1px solid #ef9a9a;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
 }

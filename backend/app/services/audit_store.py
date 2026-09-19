@@ -80,9 +80,21 @@ class AuditStore:
         self._sessions: dict[str, AuditSession] = {}
         self._lock = threading.Lock()
 
-    def create(self, source: str, filename: str, df: pd.DataFrame, issues: list[AuditIssue], summary: str) -> AuditSession:
+    def create(
+        self,
+        source: str,
+        filename: str,
+        df: pd.DataFrame,
+        issues: list[AuditIssue] | None = None,
+        summary: str = "",
+    ) -> AuditSession:
         session = AuditSession(
-            session_id=uuid.uuid4().hex, source=source, filename=filename, df=df, issues=issues, summary=summary
+            session_id=uuid.uuid4().hex,
+            source=source,
+            filename=filename,
+            df=df,
+            issues=issues if issues is not None else [],
+            summary=summary,
         )
         with self._lock:
             self._sessions[session.session_id] = session

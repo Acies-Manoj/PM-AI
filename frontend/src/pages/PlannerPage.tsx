@@ -5,6 +5,7 @@ import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
 import { fetchSuggestions, saveDecisions } from "../api/planner";
 import type { PlannerRecommendation, PlannerRecommendationType, PlannerSuggestResponse, PmDecisionValue } from "../api/planner";
+import PlanText from "../components/PlanText";
 import "./PlannerPage.css";
 
 type PlannerTab = "features" | "analyses";
@@ -276,6 +277,7 @@ function RecommendationCard({ rec, index, decision, onDecide }: RecCardProps) {
   const hasWarnings = rec.validation.warnings.length > 0;
   const hasClarifications = rec.validation.clarifications_required.length > 0;
   const columns = rec.data_requirements.required_fields;
+  const generatedFormula = rec.feature_definition?.generated_formula;
 
   return (
     <div
@@ -293,6 +295,9 @@ function RecommendationCard({ rec, index, decision, onDecide }: RecCardProps) {
           </div>
           <h3 className="planner-page__card-name">{rec.name}</h3>
           <p className="planner-page__card-desc">{rec.description}</p>
+          {generatedFormula && (
+            <PlanText plan={generatedFormula} className="planner-page__formula" />
+          )}
           {columns.length > 0 && (
             <div className="planner-page__columns">
               <span className="planner-page__columns-label">Columns used:</span>

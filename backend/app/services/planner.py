@@ -3,11 +3,14 @@ and calls OpenRouter to produce structured feature/analysis recommendations."""
 from __future__ import annotations
 
 import json
+import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from openai import OpenAI
 
 from app.config import DATA_DIR, OPENROUTER_API_KEY, OPENROUTER_MODEL
+from app.services import feature_agent
 
 _SESSIONS_DIR = DATA_DIR / "sessions"
 
@@ -205,18 +208,27 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
 
     # Load existing catalog if available (grows over time as PM creates features)
     catalog_path = session_dir / "catalog.json"
-    catalog_block = ""
+    lines: list[str] = []
     if catalog_path.exists():
         try:
             catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-            lines = []
             for entry in catalog.get("features", [])[:25]:
                 lines.append(f"[feature] {entry.get('name', '')}: {entry.get('description', '')}")
             for entry in catalog.get("analyses", [])[:25]:
                 lines.append(f"[analysis] {entry.get('name', '')}: {entry.get('description', '')}")
-            catalog_block = "\n".join(lines)
         except Exception:
             pass
+
+    # Predefined features already covered by an uploaded Customer KPI Profile
+    # -- fed in the same way, so the Planner recommends things NOT already
+    # covered by that file instead of duplicating it.
+    try:
+        from app.services import feature_repository
+        lines.extend(feature_repository.predefined_catalog_lines()[:25])
+    except Exception:
+        pass
+
+    catalog_block = "\n".join(lines)
 
     if not OPENROUTER_API_KEY:
         raise RuntimeError(
@@ -252,9 +264,53 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
 
     result = json.loads(raw)
 
+    _attach_generated_formulas(result.get("recommendations", []), columns_block)
+
     # Cache the raw planner output so /save can attach decisions to it
     (session_dir / "planner_suggest.json").write_text(
         json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
     return result
+
+
+def _think_entry_for(rec: dict) -> dict:
+    """Reshapes one Planner recommendation's feature_definition into the
+    entry shape feature_agent.think() expects."""
+    fd = rec.get("feature_definition") or {}
+    output_column = fd.get("feature_name") or re.sub(r"\W+", "_", rec["name"].strip().lower()).strip("_")
+    return {
+        "name": rec["name"],
+        "output_column": output_column,
+        "description": rec.get("description", ""),
+        "calculation_intent": fd.get("formula") or rec.get("description", ""),
+        "input_columns": fd.get("input_fields", []),
+    }
+
+
+def _attach_generated_formulas(recommendations: list[dict], columns_block: str) -> None:
+    """For every feature/feature_and_analysis recommendation, calls the
+    Feature Agent's Think step (see feature_agent.py) right now, before the
+    PM ever sees it -- so the Planner page can show the actual computation
+    plan alongside the description, not just prose, before an accept/reject
+    decision is made. Run concurrently since these are independent calls and
+    there can be up to 4 of them per suggest request. A single Think failure
+    only leaves that one recommendation without a formula (the Feature Agent
+    will think one up itself later, at compute time) -- it never fails the
+    whole suggest response."""
+    targets = [
+        rec for rec in recommendations
+        if rec.get("type") in ("feature", "feature_and_analysis") and rec.get("feature_definition")
+    ]
+    if not targets:
+        return
+
+    def _run(rec: dict) -> None:
+        try:
+            plan = feature_agent.think(_think_entry_for(rec), columns_block)
+            rec["feature_definition"]["generated_formula"] = plan.get("plan")
+        except Exception:
+            rec["feature_definition"]["generated_formula"] = None
+
+    with ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
+        list(pool.map(_run, targets))

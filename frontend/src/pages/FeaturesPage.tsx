@@ -9,19 +9,22 @@ import FeatureDetailModal from "../components/FeatureDetailModal";
 import Modal from "../components/Modal";
 import FeatureSuggestionCard from "../components/FeatureSuggestionCard";
 import AddKpiForm from "../components/AddKpiForm";
+import type { NewCustomKpi } from "../components/AddKpiForm";
 import DataPreviewTable from "../components/DataPreviewTable";
 import { IconDoc, IconGrid, IconSparkle, IconWarnTriangle, IconShieldCheck, IconDownload, IconClipboard, IconChevronLeft, IconChevronRight } from "../components/icons";
 import {
+  acceptFeatureEntry,
+  addCustomFeature,
   applyFeatures,
   downloadCleansedFileUrl,
+  fetchFeatureRepository,
   fetchPreview,
-  suggestFeatures,
+  suggestFeatureEntries,
   uploadFeatureDefinitions,
   AuditApiError,
   type DataPreview,
-  type FeatureDefinitionsSummary,
   type FeatureReport,
-  type FeatureSuggestion,
+  type FeatureRepositoryEntry,
 } from "../api/audit";
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
@@ -38,9 +41,15 @@ type LoadingState = Partial<Record<UploadSlotId, boolean>>;
 type ErrorsState = Partial<Record<UploadSlotId, string>>;
 type PreviewsState = Partial<Record<UploadSlotId, DataPreview>>;
 type PreviewOpenState = Partial<Record<UploadSlotId, boolean>>;
-type SuggestionsState = Partial<Record<UploadSlotId, FeatureSuggestion[]>>;
-type AcceptedState = Partial<Record<UploadSlotId, FeatureSuggestion[]>>;
+type RepositoryState = Partial<Record<UploadSlotId, FeatureRepositoryEntry[]>>;
 type BusyIdState = Partial<Record<UploadSlotId, string>>;
+
+const SOURCE_GROUP_LABELS: { source: FeatureRepositoryEntry["source"]; label: string }[] = [
+  { source: "predefined", label: "Predefined (Customer KPI Profile)" },
+  { source: "planner", label: "Planner-Approved" },
+  { source: "ai_suggested", label: "AI Suggested" },
+  { source: "custom", label: "User Added" },
+];
 
 export default function FeaturesPage({ files, auditReports }: FeaturesPageProps) {
   const navigate = useNavigate();
@@ -50,54 +59,78 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
   const [previews, setPreviews] = useState<PreviewsState>({});
   const [previewOpen, setPreviewOpen] = useState<PreviewOpenState>({});
 
-  const [suggestions, setSuggestions] = useState<SuggestionsState>({});
+  const [repositories, setRepositories] = useState<RepositoryState>({});
   const [suggestLoading, setSuggestLoading] = useState<LoadingState>({});
   const [suggestError, setSuggestError] = useState<ErrorsState>({});
-  const [accepted, setAccepted] = useState<AcceptedState>({});
-  const [applyingSuggestionId, setApplyingSuggestionId] = useState<BusyIdState>({});
+  const [applyingEntryId, setApplyingEntryId] = useState<BusyIdState>({});
   const [showAddKpiForm, setShowAddKpiForm] = useState<LoadingState>({});
   const [addingKpi, setAddingKpi] = useState<LoadingState>({});
   const [showSuggestionsModal, setShowSuggestionsModal] = useState<LoadingState>({});
 
-  const [defsSummary, setDefsSummary] = useState<FeatureDefinitionsSummary | null>(null);
-  const [defsLoading, setDefsLoading] = useState(false);
   const [defsError, setDefsError] = useState<string | null>(null);
+  const [defsLoading, setDefsLoading] = useState(false);
+  // True once we've either attempted the Customer KPI Profile upload (success
+  // or failure) or confirmed there isn't one -- gates the first compute so
+  // predefined features are included when they're available, without ever
+  // requiring the file to exist.
+  const [defsAttempted, setDefsAttempted] = useState(false);
 
   const [openFeature, setOpenFeature] = useState<{ slotId: UploadSlotId; featureId: string } | null>(null);
 
   const slotsReady = AUDITED_SLOTS.filter((id) => files[id] && auditReports[id]?.status === "reviewed");
   const hasKpiFile = !!files.customerKpis;
 
-  // Step 1: upload the Customer KPI Profile file itself (the feature
-  // definitions + COO mapping live INSIDE it -- nothing is bundled/default).
+  // Step 1 (optional): if a Customer KPI Profile was uploaded, parse it so
+  // its features can join the repository as "predefined" entries. Not
+  // required -- planner-approved, custom, and AI-suggested features work
+  // with or without this file.
   useEffect(() => {
-    if (!hasKpiFile || defsSummary || defsLoading || defsError) return;
+    if (defsAttempted || defsLoading) return;
+    if (!hasKpiFile) {
+      setDefsAttempted(true);
+      return;
+    }
     setDefsLoading(true);
     uploadFeatureDefinitions(files.customerKpis!)
-      .then(setDefsSummary)
       .catch((err) => setDefsError(err instanceof AuditApiError ? err.message : "Could not upload the Customer KPI Profile."))
-      .finally(() => setDefsLoading(false));
-  }, [hasKpiFile, files.customerKpis, defsSummary, defsLoading, defsError]);
+      .finally(() => {
+        setDefsLoading(false);
+        setDefsAttempted(true);
+      });
+  }, [hasKpiFile, files.customerKpis, defsAttempted, defsLoading]);
 
-  // Step 2: once definitions are uploaded, compute features for each audited slot.
+  const refreshRepository = (id: UploadSlotId, sessionId: string) =>
+    fetchFeatureRepository(sessionId).then((repo) => setRepositories((prev) => ({ ...prev, [id]: repo.entries })));
+
+  const computeAndRefresh = (id: UploadSlotId) => {
+    const sessionId = auditReports[id]!.session_id;
+    setLoading((prev) => ({ ...prev, [id]: true }));
+    setErrors((prev) => ({ ...prev, [id]: undefined }));
+    return applyFeatures(sessionId)
+      .then((report) => {
+        setReports((prev) => ({ ...prev, [id]: report }));
+        return refreshRepository(id, sessionId);
+      })
+      .catch((err) =>
+        setErrors((prev) => ({
+          ...prev,
+          [id]: err instanceof AuditApiError ? err.message : "Could not compute features.",
+        }))
+      )
+      .finally(() => setLoading((prev) => ({ ...prev, [id]: false })));
+  };
+
+  // Step 2: once the KPI Profile upload has settled (or there wasn't one),
+  // compute features for each audited slot -- predefined contributes zero
+  // entries if no file was uploaded, planner/custom/AI-suggested work regardless.
   useEffect(() => {
-    if (!defsSummary) return;
+    if (!defsAttempted) return;
     for (const id of slotsReady) {
       if (reports[id] || loading[id] || errors[id]) continue;
-      const sessionId = auditReports[id]!.session_id;
-      setLoading((prev) => ({ ...prev, [id]: true }));
-      applyFeatures(sessionId)
-        .then((report) => setReports((prev) => ({ ...prev, [id]: report })))
-        .catch((err) =>
-          setErrors((prev) => ({
-            ...prev,
-            [id]: err instanceof AuditApiError ? err.message : "Could not compute features.",
-          }))
-        )
-        .finally(() => setLoading((prev) => ({ ...prev, [id]: false })));
+      computeAndRefresh(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defsSummary, files, auditReports]);
+  }, [defsAttempted, files, auditReports]);
 
   const togglePreview = (id: UploadSlotId) => {
     const willOpen = !previewOpen[id];
@@ -112,8 +145,8 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
     const sessionId = auditReports[id]!.session_id;
     setSuggestLoading((prev) => ({ ...prev, [id]: true }));
     setSuggestError((prev) => ({ ...prev, [id]: undefined }));
-    suggestFeatures(sessionId)
-      .then((res) => setSuggestions((prev) => ({ ...prev, [id]: res.suggestions })))
+    suggestFeatureEntries(sessionId)
+      .then(() => refreshRepository(id, sessionId))
       .catch((err) =>
         setSuggestError((prev) => ({
           ...prev,
@@ -123,41 +156,32 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
       .finally(() => setSuggestLoading((prev) => ({ ...prev, [id]: false })));
   };
 
-  // Shared by both the AI suggester and the manual "Add Custom KPI" form --
-  // either way it's just another entry in the same extra_features list sent
-  // to the same recompute endpoint, so both paths land in the same feature
-  // grid and summary. Errors are set here but re-thrown so each caller can
-  // decide what to do next (e.g. the KPI form keeps itself open on failure).
-  const addFeature = (id: UploadSlotId, feature: FeatureSuggestion): Promise<void> => {
+  const acceptSuggestion = (id: UploadSlotId, entry: FeatureRepositoryEntry) => {
     const sessionId = auditReports[id]!.session_id;
-    const nextAccepted = [...(accepted[id] ?? []), feature];
-    return applyFeatures(sessionId, nextAccepted)
-      .then((report) => {
-        setReports((prev) => ({ ...prev, [id]: report }));
-        setAccepted((prev) => ({ ...prev, [id]: nextAccepted }));
-        setPreviews((prev) => ({ ...prev, [id]: undefined }));
-      })
-      .catch((err) => {
+    setApplyingEntryId((prev) => ({ ...prev, [id]: entry.id }));
+    acceptFeatureEntry(sessionId, entry.id)
+      .then(() => computeAndRefresh(id))
+      .catch((err) =>
         setErrors((prev) => ({
           ...prev,
           [id]: err instanceof AuditApiError ? err.message : "Could not add that feature.",
-        }));
-        throw err;
-      });
+        }))
+      )
+      .finally(() => setApplyingEntryId((prev) => ({ ...prev, [id]: undefined })));
   };
 
-  const acceptSuggestion = (id: UploadSlotId, suggestion: FeatureSuggestion) => {
-    setApplyingSuggestionId((prev) => ({ ...prev, [id]: suggestion.id }));
-    addFeature(id, suggestion)
-      .catch(() => {})
-      .finally(() => setApplyingSuggestionId((prev) => ({ ...prev, [id]: undefined })));
-  };
-
-  const addCustomKpi = (id: UploadSlotId, kpi: FeatureSuggestion) => {
+  const addCustomKpi = (id: UploadSlotId, kpi: NewCustomKpi) => {
+    const sessionId = auditReports[id]!.session_id;
     setAddingKpi((prev) => ({ ...prev, [id]: true }));
-    addFeature(id, kpi)
+    addCustomFeature(sessionId, kpi)
+      .then(() => computeAndRefresh(id))
       .then(() => setShowAddKpiForm((prev) => ({ ...prev, [id]: false })))
-      .catch(() => {})
+      .catch((err) =>
+        setErrors((prev) => ({
+          ...prev,
+          [id]: err instanceof AuditApiError ? err.message : "Could not add that feature.",
+        }))
+      )
       .finally(() => setAddingKpi((prev) => ({ ...prev, [id]: false })));
   };
 
@@ -195,27 +219,6 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
     );
   }
 
-  if (!hasKpiFile) {
-    return (
-      <div className="features-page">
-        <Header subtitle="Feature Engineering" />
-        <main className="features-page__main">
-          <StepIndicator current={4} />
-          <div className="features-page__empty">
-            <p>
-              No Customer KPI Profile has been uploaded. Feature definitions (what to compute, and any
-              lookup tables like Country of Origin) live entirely in that file -- there's no default, so
-              nothing is computed until it's uploaded.
-            </p>
-            <button type="button" className="features-page__btn features-page__btn--primary" onClick={() => navigate("/upload")}>
-              Go to Upload
-            </button>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
   return (
     <div className="features-page">
       <Header subtitle="Feature Engineering" />
@@ -225,22 +228,24 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
         <PageHeader
           icon={<IconShieldCheck />}
           title="Feature Engineering"
-          subtitle="Review the engineered features below, or ask the AI agent to suggest more from your data's own columns."
+          subtitle="The Feature Agent computes every approved feature below -- predefined, planner-approved, custom, and AI-suggested -- by planning, writing, and validating pandas code for each one."
         />
 
         {defsLoading && <div className="features-page__loading">Reading feature definitions from {files.customerKpis!.name}…</div>}
         {defsError && <p className="features-page__error">{defsError}</p>}
+        {!hasKpiFile && (
+          <p className="features-page__hint">
+            No Customer KPI Profile uploaded -- predefined features are skipped, but planner-approved,
+            custom, and AI-suggested features below still work.
+          </p>
+        )}
 
         {slotsReady.map((id) => {
           const slot = UPLOAD_SLOTS.find((s) => s.id === id)!;
           const report = reports[id];
           const preview = previews[id];
-          const slotSuggestions = suggestions[id] ?? [];
-          const slotAccepted = accepted[id] ?? [];
-          const acceptedIds = new Set(slotAccepted.map((s) => s.id));
-          const slotFormulas = Object.fromEntries(slotAccepted.map((s) => [s.id, s.formula]));
-          const aiFeatureCount = report ? report.features.filter((f) => f.id.startsWith("ai_")).length : 0;
-          const customFeatureCount = report ? report.features.filter((f) => f.id.startsWith("custom_")).length : 0;
+          const repo = repositories[id] ?? [];
+          const pendingSuggestions = repo.filter((e) => e.source === "ai_suggested" && e.status === "pending");
 
           const panelsSection = report && (
             <div className="features-page__panels-grid">
@@ -264,15 +269,15 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                   className="features-page__btn features-page__btn--primary features-page__panel-btn"
                   disabled={suggestLoading[id]}
                   onClick={() => {
-                    if (slotSuggestions.length === 0) runSuggest(id);
+                    if (pendingSuggestions.length === 0) runSuggest(id);
                     setShowSuggestionsModal((prev) => ({ ...prev, [id]: true }));
                   }}
                 >
                   <IconSparkle />{" "}
                   {suggestLoading[id]
                     ? "Thinking…"
-                    : slotSuggestions.length > 0
-                      ? `View Suggestions (${slotSuggestions.length})`
+                    : pendingSuggestions.length > 0
+                      ? `View Suggestions (${pendingSuggestions.length})`
                       : "Suggest Features"}
                 </button>
 
@@ -293,17 +298,17 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                       </button>
                     }
                   >
-                    {slotSuggestions.length === 0 ? (
+                    {pendingSuggestions.length === 0 ? (
                       <p className="features-page__ai-panel-hint">No suggestions yet.</p>
                     ) : (
                       <div className="features-page__ai-grid">
-                        {slotSuggestions.map((s) => (
+                        {pendingSuggestions.map((entry) => (
                           <FeatureSuggestionCard
-                            key={s.id}
-                            suggestion={s}
-                            added={acceptedIds.has(s.id)}
-                            busy={applyingSuggestionId[id] === s.id}
-                            onAdd={() => acceptSuggestion(id, s)}
+                            key={entry.id}
+                            suggestion={entry}
+                            added={false}
+                            busy={applyingEntryId[id] === entry.id}
+                            onAdd={() => acceptSuggestion(id, entry)}
                           />
                         ))}
                       </div>
@@ -321,8 +326,8 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                     <div>
                       <h3 className="features-page__custom-kpi-title">Add a Custom KPI</h3>
                       <p className="features-page__custom-kpi-hint">
-                        Define your own duration, ratio, or month-extraction feature straight from this
-                        data's columns -- no need to edit and re-upload the Customer KPI Profile file.
+                        Define your own feature straight from this data's columns -- no need to edit and
+                        re-upload the Customer KPI Profile file.
                       </p>
                     </div>
                   </div>
@@ -359,7 +364,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                 <span className="features-page__filename">{files[id]!.name}</span>
               </div>
 
-              {loading[id] && <div className="features-page__loading">Computing features…</div>}
+              {loading[id] && <div className="features-page__loading">Feature Agent is computing features…</div>}
               {errors[id] && <p className="features-page__error">{errors[id]}</p>}
 
               {report && (
@@ -368,12 +373,6 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                     <StatTile icon={<IconDoc />} color="blue" value={report.row_count.toLocaleString()} label="Rows" />
                     <StatTile icon={<IconGrid />} color="teal" value={report.column_count} label="Columns" />
                     <StatTile icon={<IconSparkle />} color="purple" value={report.features.length} label="Features Added" />
-                    {aiFeatureCount > 0 && (
-                      <StatTile icon={<IconSparkle />} color="amber" value={aiFeatureCount} label="AI Suggested" />
-                    )}
-                    {customFeatureCount > 0 && (
-                      <StatTile icon={<IconClipboard />} color="blue" value={customFeatureCount} label="Custom KPIs" />
-                    )}
                     {report.skipped_notes.length > 0 && (
                       <StatTile icon={<IconWarnTriangle />} color="error" value={report.skipped_notes.length} label="Skipped" />
                     )}
@@ -384,11 +383,10 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                       <p className="features-page__summary-title">
                         ✓ {report.features.length} feature{report.features.length === 1 ? "" : "s"} added in total
                       </p>
-                      {[
-                        { label: "Defined", tag: null, items: report.features.filter((f) => !f.id.startsWith("ai_") && !f.id.startsWith("custom_")) },
-                        { label: "AI Suggested", tag: "ai", items: report.features.filter((f) => f.id.startsWith("ai_")) },
-                        { label: "User Added", tag: "custom", items: report.features.filter((f) => f.id.startsWith("custom_")) },
-                      ]
+                      {SOURCE_GROUP_LABELS.map(({ source, label }) => ({
+                        label,
+                        items: report.features.filter((f) => f.source === source),
+                      }))
                         .filter((group) => group.items.length > 0)
                         .map((group) => (
                           <div className="features-page__summary-group" key={group.label}>
@@ -414,7 +412,8 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
 
                   {report.features.length === 0 ? (
                     <p className="features-page__none">
-                      None of the uploaded feature definitions could be computed against this data.
+                      No features computed yet for this data -- upload a Customer KPI Profile, wait for
+                      planner-approved features, or add a custom/AI-suggested one below.
                     </p>
                   ) : (
                     <>
@@ -427,7 +426,6 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                             key={f.id}
                             feature={f}
                             colorIndex={idx}
-                            formula={slotFormulas[f.id]}
                             onExpand={() => setOpenFeature({ slotId: id, featureId: f.id })}
                           />
                         ))}
@@ -476,8 +474,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
         (() => {
           const openFeatureData = reports[openFeature.slotId]?.features.find((f) => f.id === openFeature.featureId);
           if (!openFeatureData) return null;
-          const openFeatureFormula = (accepted[openFeature.slotId] ?? []).find((s) => s.id === openFeature.featureId)?.formula;
-          return <FeatureDetailModal feature={openFeatureData} formula={openFeatureFormula} onClose={() => setOpenFeature(null)} />;
+          return <FeatureDetailModal feature={openFeatureData} onClose={() => setOpenFeature(null)} />;
         })()}
     </div>
   );

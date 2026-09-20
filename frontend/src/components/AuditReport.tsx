@@ -398,7 +398,7 @@ export default function AuditReport({
                 <button type="button" className="outlier-tab__retry" onClick={loadOutliers}>Retry</button>
               </div>
             ) : outlierData ? (
-              <SegmentOutlierTab data={outlierData.segment} />
+              <SegmentOutlierTab data={outlierData.segment} sessionId={report.session_id} onUpdated={setOutlierData} />
             ) : null
           ) : activeTab === "temperature" ? (
             outlierLoading ? (
@@ -409,7 +409,7 @@ export default function AuditReport({
                 <button type="button" className="outlier-tab__retry" onClick={loadOutliers}>Retry</button>
               </div>
             ) : outlierData ? (
-              <TemperatureOutlierTab data={outlierData.temperature} />
+              <TemperatureOutlierTab data={outlierData.temperature} sessionId={report.session_id} onUpdated={setOutlierData} />
             ) : null
           ) : (
             <div className="audit-report__issues">

@@ -62,9 +62,16 @@ export interface FeatureResult {
   null_count: number;
   distribution: Record<string, number>;
   stats: Record<string, number>;
-  // Only set for an "ai_generated" feature -- the pandas code Groq wrote to
-  // compute it, after it ran successfully through the backend's sandbox.
+  // The pandas code the Feature Agent wrote to compute this column, after it
+  // ran successfully through the backend's sandbox.
   generated_code?: string | null;
+  // Which of the four repository sources this feature came from.
+  source: FeatureSource;
+  // The Feature Agent's own plain-English computation plan (its "Think"
+  // step) -- shown in place of a static formula string.
+  plan?: string | null;
+  // The Feature Agent's own validation verdict on its result.
+  validation_note?: string | null;
 }
 
 export interface FeatureReport {
@@ -90,32 +97,36 @@ export interface FeatureDefinitionsSummary {
   feature_names: string[];
 }
 
-export type FeatureSuggestionType = "duration_hours" | "ratio" | "extract_month" | "custom_formula" | "ai_generated";
+// The four sources that can contribute a candidate feature to a session's
+// repository -- see backend/app/services/feature_repository.py.
+export type FeatureSource = "predefined" | "planner" | "custom" | "ai_suggested";
+export type FeatureEntryStatus = "approved" | "pending" | "rejected";
 
-export interface FeatureSuggestion {
+export interface FeatureRepositoryEntry {
   id: string;
+  source: FeatureSource;
+  status: FeatureEntryStatus;
   name: string;
   description: string;
   output_column: string;
-  type: FeatureSuggestionType;
-  formula: string;
-  summary: string;
-  start_column: string | null;
-  end_column: string | null;
-  unit: string | null;
-  numerator_columns: string[] | null;
-  denominator_columns: string[] | null;
-  source_columns: string[] | null;
-  // Only used by type "ai_generated": the plain-English ask, and the
-  // pandas code Groq wrote for it (filled in after the backend computes
-  // it once -- not set when the KPI is first submitted).
-  calculation_prompt?: string | null;
-  generated_code?: string | null;
+  // Plain-English description of the calculation -- the one input the
+  // Feature Agent's Think step needs, regardless of which source proposed it.
+  calculation_intent: string;
+  input_columns: string[];
+  // A precise plan already attached to this entry (Planner-generated and
+  // PM-approved, or a fully structured predefined spec) -- null means the
+  // Feature Agent hasn't thought about this one yet.
+  formula: string | null;
 }
 
-export interface FeatureSuggestionsResponse {
+export interface FeatureRepositoryResponse {
   session_id: string;
-  suggestions: FeatureSuggestion[];
+  entries: FeatureRepositoryEntry[];
+}
+
+export interface SuggestFeatureEntriesResponse {
+  session_id: string;
+  entries: FeatureRepositoryEntry[];
 }
 
 export type PivotAgg = "sum" | "mean" | "count" | "min" | "max" | "median" | "distinct_count" | "pct_of_total";
@@ -283,12 +294,10 @@ export function downloadReportUrl(sessionId: string): string {
   return `${API_BASE_URL}/api/analysis/${sessionId}/report`;
 }
 
-export async function applyFeatures(sessionId: string, extraFeatures: FeatureSuggestion[] = []): Promise<FeatureReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/features`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ extra_features: extraFeatures }),
-  });
+export async function applyFeatures(sessionId: string): Promise<FeatureReport> {
+  // Computes every APPROVED entry in this session's feature repository --
+  // no body needed, the repository already holds everything server-side.
+  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/features`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -303,12 +312,47 @@ export async function fetchFeatureReport(sessionId: string): Promise<FeatureRepo
   return response.json();
 }
 
-export async function suggestFeatures(sessionId: string): Promise<FeatureSuggestionsResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/features/suggest`, {
+export async function fetchFeatureRepository(sessionId: string): Promise<FeatureRepositoryResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export async function addCustomFeature(
+  sessionId: string,
+  body: { name: string; description?: string; calculation_intent: string; input_columns?: string[] }
+): Promise<FeatureRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/custom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId }),
+    body: JSON.stringify(body),
   });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export async function suggestFeatureEntries(sessionId: string): Promise<SuggestFeatureEntriesResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/suggest`, { method: "POST" });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export async function acceptFeatureEntry(sessionId: string, entryId: string): Promise<FeatureRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export async function rejectFeatureEntry(sessionId: string, entryId: string): Promise<FeatureRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -543,12 +587,40 @@ export interface LaneResult {
   outlier_rows: Record<string, unknown>[];
 }
 
+// One flagged trip, flattened out of its lane -- the "outliers themselves,
+// not the fence numbers" table (Segment Outlier tab).
+export interface SegmentOutlierRow {
+  serial: string | null;
+  trip_id: number | string | null;
+  origin: string;
+  destination: string;
+  segment_days: number | null;
+  lower_fence_days: number | null;
+  upper_fence_days: number | null;
+  status: string;
+}
+
 export interface SegmentOutliersResult {
   column_found: boolean;
   total_trips: number;
   flagged_trips: number;
   columns: string[];
   lanes: LaneResult[];
+  outlier_rows: SegmentOutlierRow[];
+}
+
+// One trip's mean-temperature reading against its own configured limits --
+// every trip for a product, not just the flagged ones, so the product's
+// chart can plot the full picture.
+export interface ProductTemperatureTrip {
+  serial: string | null;
+  trip_id: number | string | null;
+  mean_temp: number | null;
+  limit_low: number | null;
+  limit_ideal: number | null;
+  limit_high: number | null;
+  status: "too_warm" | "too_cold" | "in_spec";
+  flag_count: number;
 }
 
 export interface ProductTemperatureResult {
@@ -557,6 +629,7 @@ export interface ProductTemperatureResult {
   too_warm: number;
   too_cold: number;
   in_spec: number;
+  trips: ProductTemperatureTrip[];
 }
 
 export interface TemperatureOutliersResult {
@@ -575,6 +648,29 @@ export interface OutliersResponse {
 
 export async function fetchOutliers(sessionId: string): Promise<OutliersResponse> {
   const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/outliers`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+// A PM's inline correction to one trip's Segment Days or Mean Temp, from the
+// Segment/Temperature Outlier tabs' editable columns -- writes into the
+// session's working dataframe and returns freshly recomputed outliers.
+export async function updateTripValue(
+  sessionId: string,
+  params: { serial: string; tripId: string | number; field: "segment_days" | "mean_temp"; value: number }
+): Promise<OutliersResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/trip-value`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      serial: params.serial,
+      trip_id: String(params.tripId),
+      field: params.field,
+      value: params.value,
+    }),
+  });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }

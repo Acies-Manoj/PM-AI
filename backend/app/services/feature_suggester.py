@@ -1,20 +1,21 @@
-"""AI agent that looks at the audited dataframe's columns/dtypes and proposes
-new engineered features. Groq only picks WHICH existing columns to combine
-and writes the rationale -- it never computes a value itself. Every
-suggestion is constrained to one of the three deterministic types
-feature_engineering.py can actually execute, and anything referencing a
-column that doesn't exist in the current data (a hallucination) is dropped
-rather than surfaced, since a broken suggestion is worse than a missing one.
+"""AI agent that looks at the audited dataframe's columns/dtypes and
+proposes new engineered features -- the "ai_suggested" source in the
+feature repository (see feature_repository.py). It only picks WHICH
+columns to combine and describes the calculation in plain English; it never
+computes a value itself and isn't limited to any fixed set of calculation
+shapes -- the Feature Agent (feature_agent.py) is what actually plans,
+writes, executes and validates the code for whatever gets accepted. Runs on
+OpenRouter, never Groq. Anything referencing a column that doesn't exist in
+the current data (a hallucination) is dropped rather than surfaced, since a
+broken suggestion is worse than a missing one.
 """
 import json
-import uuid
+import re
 
 import pandas as pd
+from openai import OpenAI
 
-from app.schemas import FeatureSuggestion
-from app.services.groq_client import chat_json
-
-VALID_TYPES = {"duration_hours", "ratio", "extract_month"}
+from app.config import OPENROUTER_API_KEY, OPENROUTER_MODEL
 
 SYSTEM_PROMPT = """You are a data engineer proposing new engineered columns \
 for an operational cold-chain shipment dataset, to help a program manager \
@@ -23,18 +24,9 @@ and a few sample values per column.
 
 Propose up to 5 NEW feature ideas that would be genuinely useful for \
 cold-chain reporting (e.g. transit duration, percentage breakdowns of time \
-in/out of spec, seasonality). Every suggestion MUST be exactly one of these \
-three computable types, and MUST reference only columns that appear in the \
-given column list -- never invent a column name:
-
-1. "duration_hours" -- the difference between two datetime-like columns.
-   Required fields: start_column, end_column, unit ("hours" or "days").
-2. "ratio" -- percentage of a sum of numerator column(s) over a sum of \
-denominator column(s). Both must be numeric columns.
-   Required fields: numerator_columns (list), denominator_columns (list).
-3. "extract_month" -- calendar month extracted from one or more datetime \
-columns (first non-null one wins).
-   Required fields: source_columns (list).
+in/out of spec, seasonality, lane- or carrier-level aggregates). Every \
+suggestion MUST reference only columns that appear in the given column \
+list -- never invent a column name.
 
 Respond with ONLY a JSON object of this exact shape, no markdown, no \
 commentary:
@@ -43,10 +35,16 @@ commentary:
     "name": "short title, e.g. 'Time in Transit'",
     "description": "one plain-English sentence on why this is useful",
     "output_column": "short column name for the new field",
-    "type": "duration_hours | ratio | extract_month",
-    ... the required fields for that type ...
+    "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below",
+    "input_columns": ["exact column name(s) this calculation reads"]
   }
 ]}"""
+
+
+def _client() -> OpenAI:
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("OPENROUTER_API_KEY is not set. Add your key from https://openrouter.ai/keys to backend/.env")
+    return OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
 
 
 def _columns_block(df: pd.DataFrame) -> str:
@@ -58,72 +56,44 @@ def _columns_block(df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
-def _formula_text(spec: dict) -> str:
-    t = spec.get("type")
-    if t == "duration_hours":
-        unit = spec.get("unit", "hours")
-        return f"{spec.get('end_column')} minus {spec.get('start_column')}, in {unit}"
-    if t == "ratio":
-        num = " + ".join(spec.get("numerator_columns") or [])
-        den = " + ".join(spec.get("denominator_columns") or [])
-        return f"({num}) / ({den}) x 100"
-    if t == "extract_month":
-        cols = " / ".join(spec.get("source_columns") or [])
-        return f"Calendar month of {cols}"
-    return t or ""
-
-
-def _referenced_columns(spec: dict) -> set[str] | None:
-    t = spec.get("type")
-    if t == "duration_hours":
-        cols = {spec.get("start_column"), spec.get("end_column")}
-        return cols if all(cols) else None
-    if t == "ratio":
-        num, den = spec.get("numerator_columns"), spec.get("denominator_columns")
-        if not num or not den:
-            return None
-        return set(num) | set(den)
-    if t == "extract_month":
-        cols = spec.get("source_columns")
-        return set(cols) if cols else None
-    return None
-
-
-def suggest_features(df: pd.DataFrame) -> list[FeatureSuggestion]:
+def suggest_features(df: pd.DataFrame) -> list[dict]:
+    """Returns repository-shaped candidate dicts: name, description,
+    output_column, calculation_intent, input_columns -- ready to hand to
+    feature_repository.add_ai_suggested_entries."""
+    client = _client()
     user_prompt = f"Columns:\n{_columns_block(df)}\n\nPropose the features now."
-    raw = chat_json(SYSTEM_PROMPT, user_prompt)
+    response = client.chat.completions.create(
+        model=OPENROUTER_MODEL,
+        temperature=0.4,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+    raw = response.choices[0].message.content or "{}"
     payload = json.loads(raw)
     candidates = payload.get("suggestions", [])
     if not isinstance(candidates, list):
         return []
 
     available_columns = set(df.columns.astype(str))
-    suggestions: list[FeatureSuggestion] = []
+    suggestions: list[dict] = []
     for spec in candidates:
         if not isinstance(spec, dict):
             continue
-        if spec.get("type") not in VALID_TYPES:
+        if not spec.get("name") or not spec.get("output_column") or not spec.get("calculation_intent"):
             continue
-        if not spec.get("name") or not spec.get("output_column"):
+        input_columns = spec.get("input_columns") or []
+        if input_columns and not set(input_columns).issubset(available_columns):
             continue
-        referenced = _referenced_columns(spec)
-        if not referenced or not referenced.issubset(available_columns):
-            continue
-
-        suggestions.append(FeatureSuggestion(
-            id=f"ai_{uuid.uuid4().hex[:8]}",
-            name=spec["name"],
-            description=spec.get("description", ""),
-            output_column=spec["output_column"],
-            type=spec["type"],
-            formula=_formula_text(spec),
-            summary="distribution" if spec["type"] == "extract_month" else "stats",
-            start_column=spec.get("start_column"),
-            end_column=spec.get("end_column"),
-            unit=spec.get("unit"),
-            numerator_columns=spec.get("numerator_columns"),
-            denominator_columns=spec.get("denominator_columns"),
-            source_columns=spec.get("source_columns"),
-        ))
+        output_column = re.sub(r"\W+", "_", spec["output_column"].strip().lower()).strip("_")
+        suggestions.append({
+            "name": spec["name"],
+            "description": spec.get("description", ""),
+            "output_column": output_column,
+            "calculation_intent": spec["calculation_intent"],
+            "input_columns": input_columns,
+        })
 
     return suggestions

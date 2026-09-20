@@ -265,3 +265,13 @@
   color: var(--color-text-muted);
   line-height: 1.6;
 }
+
+.feature-card__validation-note {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-success-bg, #eafaf1);
+  color: var(--color-success-text, #1e7e4d);
+  font-size: 12.5px;
+  line-height: 1.5;
+}

@@ -227,6 +227,17 @@
   line-height: 1.5;
 }
 
+.planner-page__formula {
+  font-size: 12.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--carrier-blue);
+  background: var(--color-bg-subtle, #f4f6f8);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
 /* Columns used */
 .planner-page__columns {
   display: flex;

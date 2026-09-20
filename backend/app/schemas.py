@@ -80,6 +80,18 @@ class ResolveRequest(BaseModel):
     selected_items: list[str] | None = None
 
 
+class UpdateTripValueRequest(BaseModel):
+    """A PM's inline correction to one trip's Segment Length (Days) or Mean
+    Value_Temperature, from the Segment/Temperature Outlier tabs' editable
+    columns. `trip_id` is a string on the wire since it's just a lookup key
+    here (not computed on), matching whatever the outliers response already
+    sent back for that trip."""
+    serial: str
+    trip_id: str
+    field: Literal["segment_days", "mean_temp"]
+    value: float
+
+
 class FeatureResult(BaseModel):
     id: str
     name: str
@@ -90,6 +102,15 @@ class FeatureResult(BaseModel):
     distribution: dict[str, int] = {}
     stats: dict[str, float] = {}
     generated_code: str | None = None
+    # Where this feature came from (predefined / planner / custom / ai_suggested).
+    source: str = "predefined"
+    # The Feature Agent's own plain-English computation plan (its "Think"
+    # step output) -- shown in place of a static formula string, since every
+    # feature is now agent-computed rather than template-applied.
+    plan: str | None = None
+    # The agent's own validation verdict on its result (its "Validate" step
+    # reason), so a PM can see why a computed column was trusted.
+    validation_note: str | None = None
 
 
 class FeatureReport(BaseModel):
@@ -105,6 +126,53 @@ class FeatureDefinitionsSummary(BaseModel):
     filename: str
     feature_count: int
     feature_names: list[str]
+
+
+FeatureSource = Literal["predefined", "planner", "custom", "ai_suggested"]
+FeatureEntryStatus = Literal["approved", "pending", "rejected"]
+
+
+class FeatureRepositoryEntry(BaseModel):
+    """One candidate feature in a session's repository, regardless of which
+    of the four sources proposed it. `calculation_intent` is always a plain-
+    English description of what to compute -- the one thing every source
+    (a structured KPI-profile spec, a planner recommendation, a PM's typed
+    request, an AI suggestion) can be reduced to, and the only input the
+    Feature Agent's Think step actually needs."""
+    id: str
+    source: FeatureSource
+    status: FeatureEntryStatus
+    name: str
+    description: str
+    output_column: str
+    calculation_intent: str
+    input_columns: list[str] = []
+    # A precise, agent-thought-through plan already attached to this entry --
+    # set when the Planner pre-generated one at suggest time (feature/
+    # feature_and_analysis recommendations), or when the uploaded Customer
+    # KPI Profile's spec was already fully structured (not "ai_generated").
+    # None means the Feature Agent hasn't thought about this one yet and
+    # will run its own Think step for it at compute time. Once set here, the
+    # Feature Agent will never silently replace it -- only retry writing
+    # code against it.
+    formula: str | None = None
+
+
+class FeatureRepositoryResponse(BaseModel):
+    session_id: str
+    entries: list[FeatureRepositoryEntry]
+
+
+class AddCustomFeatureRequest(BaseModel):
+    name: str
+    description: str = ""
+    calculation_intent: str
+    input_columns: list[str] = []
+
+
+class SuggestFeatureEntriesResponse(BaseModel):
+    session_id: str
+    entries: list[FeatureRepositoryEntry]
 
 
 class FeatureSuggestion(BaseModel):

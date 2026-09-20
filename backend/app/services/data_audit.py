@@ -29,6 +29,16 @@ from app.services.anomaly_detection import SENSOR_TYPE_COL
 HIGH_NULL_THRESHOLD_PCT = 50.0
 OUTLIER_IQR_MULTIPLIER = 3.0
 MEASUREMENT_COL_NAMES = {"Mean Value", "Min Value", "Max Value", "Standard Deviation"}
+
+# Never offered as a droppable "constant value" column, even when every row
+# shares one value -- a single-sensor-type export (e.g. Temperature-only)
+# makes Sensor Type constant by definition, but outlier_detectors.py's
+# widen_by_sensor_type() needs its literal presence/values to pivot the
+# long (trip, sensor channel) rows into the _Temperature/_Light-suffixed
+# columns the Temperature Outliers tab reads. Dropping it silently breaks
+# that tab with no error -- just "column not found" -- so it's excluded
+# here rather than left to look like a harmless zero-information column.
+_PROTECTED_CONSTANT_COLUMNS = {SENSOR_TYPE_COL}
 CORE_IDENTITY_COLS = ["Product", "Origin", "Destination"]
 SAMPLE_ROWS = 5
 SAMPLE_COLS = 8

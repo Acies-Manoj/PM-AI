@@ -142,7 +142,8 @@
    chrome -- this just widens it to fit the chart + trip table. */
 
 .outlier-tab__product-modal.audit-issue__modal {
-  max-width: 860px;
+  max-width: 900px;
+  max-height: 92vh;
 }
 
 .temp-chart {
@@ -210,4 +211,195 @@
   max-height: 320px;
   border: 1px solid var(--color-border, #e2e8f0);
   border-radius: var(--radius-md, 10px);
+}
+
+.temp-chart__table-wrap--tall {
+  max-height: 460px;
+}
+
+.temp-chart__row {
+  cursor: pointer;
+  scroll-margin: 40px;
+}
+
+.temp-chart__row:hover {
+  background: var(--color-surface-raised, #f8f9fa);
+}
+
+.temp-chart__row--selected,
+.temp-chart__row--selected:hover {
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.temp-chart__row--selected td:first-child {
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+/* ── Toolbar row (hint + filter) shared by both tabs ─────────────────────── */
+
+.outlier-tab__toolbar-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.outlier-tab__toolbar-row .outlier-tab__hint {
+  flex: 1;
+  min-width: 240px;
+}
+
+.outlier-tab__empty {
+  margin: 0;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--color-text-muted, #64748b);
+  text-align: center;
+}
+
+.outlier-tab__table-empty {
+  text-align: center !important;
+  color: var(--color-text-muted, #64748b);
+  padding: 16px !important;
+  white-space: normal !important;
+}
+
+/* ── Filter box (reuses the visual language of AuditReport's column search) */
+
+.outlier-tab__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 260px;
+  flex-shrink: 0;
+}
+
+.outlier-tab__search--compact {
+  width: 220px;
+  margin-bottom: 10px;
+}
+
+.outlier-tab__search-icon {
+  position: absolute;
+  left: 9px;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  color: var(--color-text-muted, #64748b);
+  pointer-events: none;
+}
+
+.outlier-tab__search-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.outlier-tab__search-input {
+  width: 100%;
+  font-size: 12.5px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-sm, 6px);
+  padding: 7px 26px 7px 28px;
+  color: var(--color-text, #1b2333);
+  background: var(--color-surface, #fff);
+}
+
+.outlier-tab__search-input:focus {
+  outline: none;
+  border-color: var(--carrier-blue, #152c73);
+}
+
+.outlier-tab__search-clear {
+  position: absolute;
+  right: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted, #64748b);
+  font-size: 11px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.outlier-tab__search-clear:hover {
+  color: var(--color-text, #1b2333);
+  background: var(--carrier-blue-tint, #eaf1fb);
+}
+
+/* ── PM-editable cell (Segment Days / Mean Temp columns) ─────────────────── */
+
+.outlier-tab__editable-cell {
+  background: none;
+  border: 1px dashed transparent;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  font: inherit;
+  color: inherit;
+  cursor: text;
+}
+
+.outlier-tab__editable-cell:hover {
+  border-color: var(--carrier-light-blue, #1891f6);
+  background: var(--carrier-blue-tint, #eaf1fb);
+}
+
+.outlier-tab__edit-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.outlier-tab__edit-input {
+  width: 90px;
+  font: inherit;
+  font-size: 13px;
+  padding: 3px 6px;
+  border: 1px solid var(--carrier-light-blue, #1891f6);
+  border-radius: 4px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #1b2333);
+}
+
+.outlier-tab__edit-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(24, 145, 246, 0.2);
+}
+
+.outlier-tab__edit-input--error {
+  border-color: var(--color-error, #c62828);
+}
+
+.outlier-tab__edit-error {
+  font-size: 11px;
+  color: var(--color-error, #c62828);
+  white-space: nowrap;
+}
+
+/* ── "Show affected trips" disclosure (Temperature Outlier product modal) ── */
+
+.temp-chart__affected {
+  display: flex;
+  flex-direction: column;
+}
+
+.temp-chart__affected-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  margin: 4px 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--carrier-light-blue, #1891f6);
+  cursor: pointer;
+}
+
+.temp-chart__affected-toggle:hover {
+  text-decoration: underline;
 }

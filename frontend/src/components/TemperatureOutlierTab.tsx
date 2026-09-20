@@ -1,14 +1,18 @@
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Plotly from "plotly.js-dist-min";
 import createPlotlyComponent from "react-plotly.js/factory";
-import type { ProductTemperatureResult, ProductTemperatureTrip, TemperatureOutliersResult } from "../api/audit";
-import { IconChevronRight } from "./icons";
+import type { OutliersResponse, ProductTemperatureResult, ProductTemperatureTrip, TemperatureOutliersResult } from "../api/audit";
+import { updateTripValue } from "../api/audit";
+import { IconChevronRight, IconSearch } from "./icons";
+import EditableNumberCell from "./EditableNumberCell";
 import "./OutlierTabs.css";
 
 const Plot = createPlotlyComponent(Plotly);
 
 interface Props {
   data: TemperatureOutliersResult;
+  sessionId: string;
+  onUpdated: (updated: OutliersResponse) => void;
 }
 
 // Same categorical palette as AnalysisChart.tsx / report_style.py -- a trip's
@@ -19,15 +23,29 @@ const COLOR_OUT_OF_RANGE = "#C0392B";
 const COLOR_LOW = "#1891F6";
 const COLOR_IDEAL = "#10B981";
 const COLOR_HIGH = "#C0392B";
+const COLOR_SELECTED = "#F59E0B";
 
 function statusLabel(status: ProductTemperatureTrip["status"]): string {
   return status === "too_warm" ? "Too Warm" : status === "too_cold" ? "Too Cold" : "In Spec";
 }
 
-function ProductTempChart({ product }: { product: ProductTemperatureResult }) {
+function tripKey(t: { serial: string | null; trip_id: number | string | null }): string {
+  return `${t.serial ?? "?"}::${t.trip_id ?? "?"}`;
+}
+
+function ProductTempChart({
+  product,
+  selectedKey,
+  onBarClick,
+}: {
+  product: ProductTemperatureResult;
+  selectedKey: string | null;
+  onBarClick: (trip: ProductTemperatureTrip) => void;
+}) {
   const trips = product.trips;
   const flaggedCount = product.too_warm + product.too_cold;
   const withLimits = trips.find((t) => t.limit_low != null || t.limit_ideal != null || t.limit_high != null);
+  const selectedTrip = selectedKey ? trips.find((t) => tripKey(t) === selectedKey) ?? null : null;
 
   const traces: Partial<Plotly.PlotData>[] = [
     {
@@ -35,10 +53,26 @@ function ProductTempChart({ product }: { product: ProductTemperatureResult }) {
       name: product.product,
       x: trips.map((t) => String(t.trip_id ?? "—")),
       y: trips.map((t) => t.mean_temp),
+      customdata: trips.map((t) => tripKey(t)) as unknown as Plotly.Datum[],
       hovertemplate: "Trip %{x}<br>Mean Temp: %{y}°<extra></extra>",
       marker: { color: trips.map((t) => (t.status === "in_spec" ? COLOR_IN_SPEC : COLOR_OUT_OF_RANGE)) },
     },
   ];
+
+  // A marker drawn on top of the selected trip's bar -- clicking a table
+  // row highlights the bar this way, regardless of how many bars are on
+  // screen (a border tweak on one bar among a thousand is easy to miss).
+  if (selectedTrip) {
+    traces.push({
+      type: "scatter",
+      mode: "markers",
+      x: [String(selectedTrip.trip_id ?? "—")],
+      y: [selectedTrip.mean_temp],
+      marker: { color: COLOR_SELECTED, size: 13, symbol: "circle-open", line: { color: COLOR_SELECTED, width: 3 } },
+      hoverinfo: "skip",
+      showlegend: false,
+    });
+  }
 
   const shapes: Partial<Plotly.Shape>[] = [];
   const addLine = (y: number | null | undefined, color: string) => {
@@ -83,13 +117,201 @@ function ProductTempChart({ product }: { product: ProductTemperatureResult }) {
         config={{ displayModeBar: true, displaylogo: false, responsive: true }}
         style={{ width: "100%" }}
         useResizeHandler
+        onClick={(e) => {
+          const point = e.points?.[0] as unknown as { curveNumber?: number; customdata?: string } | undefined;
+          if (!point || point.curveNumber !== 0 || !point.customdata) return;
+          const trip = trips.find((t) => tripKey(t) === point.customdata);
+          if (trip) onBarClick(trip);
+        }}
       />
     </div>
   );
 }
 
-export default function TemperatureOutlierTab({ data }: Props) {
+function AffectedTripsPanel({
+  flaggedTrips,
+  sessionId,
+  onUpdated,
+  show,
+  setShow,
+  query,
+  setQuery,
+  selectedKey,
+  onRowClick,
+  rowRefs,
+}: {
+  flaggedTrips: ProductTemperatureTrip[];
+  sessionId: string;
+  onUpdated: (updated: OutliersResponse) => void;
+  show: boolean;
+  setShow: (v: boolean | ((s: boolean) => boolean)) => void;
+  query: string;
+  setQuery: (v: string) => void;
+  selectedKey: string | null;
+  onRowClick: (trip: ProductTemperatureTrip) => void;
+  rowRefs: React.MutableRefObject<Map<string, HTMLTableRowElement>>;
+}) {
+  const filteredTrips = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return flaggedTrips;
+    return flaggedTrips.filter(
+      (t) => (t.serial != null && t.serial.toLowerCase().includes(q)) || (t.trip_id != null && String(t.trip_id).toLowerCase().includes(q))
+    );
+  }, [flaggedTrips, query]);
+
+  if (flaggedTrips.length === 0) return null;
+
+  return (
+    <div className="temp-chart__affected">
+      <button type="button" className="temp-chart__affected-toggle" onClick={() => setShow((s) => !s)}>
+        {show ? "▾" : "▸"} {show ? "Hide" : "Show"} affected trips ({flaggedTrips.length})
+      </button>
+
+      {show && (
+        <>
+          <div className="outlier-tab__search outlier-tab__search--compact">
+            <span className="outlier-tab__search-icon">
+              <IconSearch />
+            </span>
+            <input
+              type="text"
+              className="outlier-tab__search-input"
+              placeholder="Filter by serial or trip ID…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {query && (
+              <button type="button" className="outlier-tab__search-clear" aria-label="Clear filter" onClick={() => setQuery("")}>
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div className="temp-chart__table-wrap temp-chart__table-wrap--tall">
+            <table className="outlier-lane-card__table">
+              <thead>
+                <tr>
+                  <th>Serial Number</th>
+                  <th>Trip ID</th>
+                  <th>Flags</th>
+                  <th>Mean Temp</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTrips.map((t, idx) => {
+                  const key = tripKey(t);
+                  const isSelected = key === selectedKey;
+                  return (
+                    <tr
+                      key={`${idx}::${key}`}
+                      ref={(el) => {
+                        if (el) rowRefs.current.set(key, el);
+                        else rowRefs.current.delete(key);
+                      }}
+                      className={isSelected ? "temp-chart__row temp-chart__row--selected" : "temp-chart__row"}
+                      onClick={() => onRowClick(t)}
+                    >
+                      <td>{t.serial ?? "—"}</td>
+                      <td>{t.trip_id ?? "—"}</td>
+                      <td>{t.flag_count}</td>
+                      <td>
+                        {t.serial != null && t.trip_id != null ? (
+                          <EditableNumberCell
+                            value={t.mean_temp}
+                            suffix="°"
+                            onSave={async (next) => {
+                              const updated = await updateTripValue(sessionId, {
+                                serial: t.serial!,
+                                tripId: t.trip_id!,
+                                field: "mean_temp",
+                                value: next,
+                              });
+                              onUpdated(updated);
+                            }}
+                          />
+                        ) : t.mean_temp != null ? (
+                          `${t.mean_temp}°`
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>{statusLabel(t.status)}</td>
+                    </tr>
+                  );
+                })}
+                {filteredTrips.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="outlier-tab__table-empty">
+                      No trips match "{query}".
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ProductDetail({
+  product,
+  sessionId,
+  onUpdated,
+}: {
+  product: ProductTemperatureResult;
+  sessionId: string;
+  onUpdated: (updated: OutliersResponse) => void;
+}) {
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [show, setShow] = useState(false);
+  const [query, setQuery] = useState("");
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+
+  const flaggedTrips = useMemo(() => product.trips.filter((t) => t.status !== "in_spec"), [product.trips]);
+  const flaggedKeySet = useMemo(() => new Set(flaggedTrips.map(tripKey)), [flaggedTrips]);
+
+  const handleBarClick = (trip: ProductTemperatureTrip) => {
+    const key = tripKey(trip);
+    // Only a flagged trip has a row to jump to -- an in-spec (blue) bar
+    // isn't in the affected-trips table at all.
+    if (!flaggedKeySet.has(key)) return;
+    setSelectedKey(key);
+    setShow(true);
+    setQuery("");
+    requestAnimationFrame(() => {
+      rowRefs.current.get(key)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  };
+
+  const handleRowClick = (trip: ProductTemperatureTrip) => {
+    setSelectedKey(tripKey(trip));
+  };
+
+  return (
+    <>
+      <ProductTempChart product={product} selectedKey={selectedKey} onBarClick={handleBarClick} />
+      <AffectedTripsPanel
+        flaggedTrips={flaggedTrips}
+        sessionId={sessionId}
+        onUpdated={onUpdated}
+        show={show}
+        setShow={setShow}
+        query={query}
+        setQuery={setQuery}
+        selectedKey={selectedKey}
+        onRowClick={handleRowClick}
+        rowRefs={rowRefs}
+      />
+    </>
+  );
+}
+
+export default function TemperatureOutlierTab({ data, sessionId, onUpdated }: Props) {
   const [openProduct, setOpenProduct] = useState<string | null>(null);
+  const [productQuery, setProductQuery] = useState("");
 
   const missingCols = Object.entries(data.columns_found)
     .filter(([, found]) => !found)
@@ -106,20 +328,42 @@ export default function TemperatureOutlierTab({ data }: Props) {
 
   const totalBreaches = data.too_warm_count + data.too_cold_count;
   const activeProduct = data.by_product.find((p) => p.product === openProduct) ?? null;
-  const activeFlaggedTrips = activeProduct?.trips.filter((t) => t.status !== "in_spec") ?? [];
+
+  const filteredProducts = data.by_product.filter((p) => p.product.toLowerCase().includes(productQuery.trim().toLowerCase()));
 
   return (
     <div className="outlier-tab">
-      <p className="outlier-tab__hint">
-        One card per product -- open one to see its mean-temperature chart and flagged trips.
-      </p>
+      <div className="outlier-tab__toolbar-row">
+        <p className="outlier-tab__hint">
+          One card per product -- open one to see its mean-temperature chart and flagged trips.
+        </p>
+        {data.by_product.length > 0 && (
+          <div className="outlier-tab__search">
+            <span className="outlier-tab__search-icon">
+              <IconSearch />
+            </span>
+            <input
+              type="text"
+              className="outlier-tab__search-input"
+              placeholder="Filter products…"
+              value={productQuery}
+              onChange={(e) => setProductQuery(e.target.value)}
+            />
+            {productQuery && (
+              <button type="button" className="outlier-tab__search-clear" aria-label="Clear filter" onClick={() => setProductQuery("")}>
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {totalBreaches === 0 && (
         <p className="outlier-tab__all-clear">No temperature breaches detected. All trips are within their configured limits.</p>
       )}
 
       <div className="audit-report__issues">
-        {data.by_product.map((p) => {
+        {filteredProducts.map((p) => {
           const flaggedCount = p.too_warm + p.too_cold;
           return (
             <div key={p.product} className={`audit-issue ${flaggedCount > 0 ? "audit-issue--warning" : "audit-issue--info"}`}>
@@ -139,6 +383,9 @@ export default function TemperatureOutlierTab({ data }: Props) {
             </div>
           );
         })}
+        {filteredProducts.length === 0 && (
+          <p className="outlier-tab__empty">No products match "{productQuery}".</p>
+        )}
       </div>
 
       {activeProduct && (
@@ -153,34 +400,7 @@ export default function TemperatureOutlierTab({ data }: Props) {
               </button>
             </div>
             <div className="audit-issue__modal-body">
-              <ProductTempChart product={activeProduct} />
-
-              {activeFlaggedTrips.length > 0 && (
-                <div className="temp-chart__table-wrap">
-                  <table className="outlier-lane-card__table">
-                    <thead>
-                      <tr>
-                        <th>Serial Number</th>
-                        <th>Trip ID</th>
-                        <th>Flags</th>
-                        <th>Mean Temp</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeFlaggedTrips.map((t, idx) => (
-                        <tr key={`${idx}::${t.serial ?? "?"}::${t.trip_id ?? "?"}`}>
-                          <td>{t.serial ?? "—"}</td>
-                          <td>{t.trip_id ?? "—"}</td>
-                          <td>{t.flag_count}</td>
-                          <td>{t.mean_temp != null ? `${t.mean_temp}°` : "—"}</td>
-                          <td>{statusLabel(t.status)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <ProductDetail key={activeProduct.product} product={activeProduct} sessionId={sessionId} onUpdated={onUpdated} />
             </div>
           </div>
         </div>

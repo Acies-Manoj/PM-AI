@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.config import DATA_DIR
-from app.schemas import AuditIssue, AuditReport, FeatureReport, ResolveRequest
+from app.schemas import AuditIssue, AuditReport, FeatureReport, ResolveRequest, UpdateTripValueRequest
 from app.services import data_audit, feature_engineering, feature_repository
 from app.services.audit_agent import generate_audit_analysis
 from app.services.audit_store import AuditSession, store
@@ -324,6 +324,45 @@ def get_features(session_id: str) -> FeatureReport:
 def get_outliers(session_id: str):
     from app.services.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
     session = _get_session_or_404(session_id)
+    return {
+        "session_id": session_id,
+        "segment": detect_segment_outliers(session.df),
+        "temperature": detect_temperature_outliers(session.df),
+    }
+
+
+@router.patch("/{session_id}/trip-value")
+def edit_trip_value(session_id: str, body: UpdateTripValueRequest):
+    """A PM's inline correction to one trip's Segment Length (Days) or Mean
+    Value_Temperature (see the Segment/Temperature Outlier tabs' editable
+    columns) -- writes straight into session.df, then returns freshly
+    recomputed outliers so the edited row's flag/fence status updates too.
+
+    Also patches session.pre_feature_df (the snapshot Features re-applies
+    its definitions from -- see routers/features.py) when it already exists,
+    so an edit made AFTER Features has run once still reaches every later
+    step (Features, Analysis, the downloaded cleansed file, the report)
+    instead of being silently overwritten the next time features recompute."""
+    from app.services.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
+    from app.services.outlier_detectors import update_trip_value as apply_trip_value_edit
+    session = _get_session_or_404(session_id)
+    try:
+        session.df = apply_trip_value_edit(session.df, body.serial, body.trip_id, body.field, body.value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if session.pre_feature_df is not None:
+        try:
+            session.pre_feature_df = apply_trip_value_edit(
+                session.pre_feature_df, body.serial, body.trip_id, body.field, body.value
+            )
+        except ValueError:
+            # pre_feature_df is a strict subset/superset relationship with df
+            # in the common case, but not guaranteed (e.g. a column an
+            # earlier audit decision dropped from df was never in this
+            # snapshot to begin with). The primary edit above already
+            # succeeded, so don't fail the whole request over this one.
+            pass
     return {
         "session_id": session_id,
         "segment": detect_segment_outliers(session.df),

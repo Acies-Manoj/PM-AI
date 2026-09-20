@@ -80,6 +80,18 @@ class ResolveRequest(BaseModel):
     selected_items: list[str] | None = None
 
 
+class UpdateTripValueRequest(BaseModel):
+    """A PM's inline correction to one trip's Segment Length (Days) or Mean
+    Value_Temperature, from the Segment/Temperature Outlier tabs' editable
+    columns. `trip_id` is a string on the wire since it's just a lookup key
+    here (not computed on), matching whatever the outliers response already
+    sent back for that trip."""
+    serial: str
+    trip_id: str
+    field: Literal["segment_days", "mean_temp"]
+    value: float
+
+
 class FeatureResult(BaseModel):
     id: str
     name: str

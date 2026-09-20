@@ -12,6 +12,7 @@ row per trip with _Temperature-suffixed columns that compute_flags expects.
 from __future__ import annotations
 
 import json
+import re
 
 import numpy as np
 import pandas as pd
@@ -24,6 +25,16 @@ def _find_col(columns: list[str], *needles: str) -> str | None:
     for i, c in enumerate(lowered):
         if all(n in c for n in needles):
             return columns[i]
+    return None
+
+
+def _raw_column(df: pd.DataFrame, normalized_target: str) -> str | None:
+    """The df's OWN column name that normalizes (whitespace-collapsed) to
+    `normalized_target` -- so a caller can write to it without renaming any
+    column on the dataframe that becomes the new session.df."""
+    for c in df.columns:
+        if re.sub(r"\s+", " ", str(c)).strip() == normalized_target:
+            return c
     return None
 
 
@@ -277,3 +288,54 @@ def detect_temperature_outliers(df: pd.DataFrame) -> dict:
         "too_cold_count": int(too_cold.sum()),
         "by_product": by_product,
     }
+
+
+def update_trip_value(df: pd.DataFrame, serial: str, trip_id: str, field: str, value: float) -> pd.DataFrame:
+    """Writes a PM's inline edit for one trip back into the session's own
+    working dataframe, keyed by (serial, trip_id) -- mutates the dataframe's
+    OWN column names/rows directly (no normalization/widening persisted),
+    since the result becomes the new session.df for every other endpoint too.
+
+    "segment_days" writes every row for that trip (Segment Length (Days) is
+    a trip-level attribute, duplicated across a trip's Temperature/Light
+    channel rows in the long sensor format). "mean_temp" writes only the
+    Temperature-channel row's Mean Value, so a trip's Light-channel reading
+    (a different physical quantity, sharing the generic "Mean Value" column
+    name before widening) is left alone.
+    """
+    df = df.copy()
+    serial_col = _find_col(list(df.columns), "serial")
+    trip_col = _find_col(list(df.columns), "trip", "id")
+    if not serial_col or not trip_col:
+        raise ValueError("Could not identify Serial Number/Trip ID columns in this dataset.")
+
+    row_mask = (df[serial_col].astype(str) == str(serial)) & (df[trip_col].astype(str) == str(trip_id))
+    if not row_mask.any():
+        raise ValueError(f"No rows found for serial '{serial}', trip {trip_id}.")
+
+    if field == "segment_days":
+        col = _raw_column(df, anomaly_detection.COL_DURATION)
+        if not col:
+            raise ValueError(f"Column '{anomaly_detection.COL_DURATION}' not found in this dataset.")
+        df.loc[row_mask, col] = value
+        return df
+
+    if field == "mean_temp":
+        sensor_col = _raw_column(df, anomaly_detection.SENSOR_TYPE_COL)
+        target_mask = row_mask
+        col = None
+        if sensor_col is not None:
+            sensor_values = set(df.loc[row_mask, sensor_col].dropna().astype(str).str.strip().unique())
+            if sensor_values and sensor_values.issubset({"Temperature", "Light"}):
+                target_mask = row_mask & (df[sensor_col].astype(str).str.strip() == "Temperature")
+                col = _raw_column(df, "Mean Value")
+        if col is None:
+            col = _raw_column(df, anomaly_detection.COL_MEAN_TEMP)
+        if not col:
+            raise ValueError("Mean temperature column not found in this dataset.")
+        if not target_mask.any():
+            raise ValueError(f"No Temperature-channel row found for serial '{serial}', trip {trip_id}.")
+        df.loc[target_mask, col] = value
+        return df
+
+    raise ValueError(f"Unknown field '{field}'.")

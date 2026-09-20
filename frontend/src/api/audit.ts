@@ -560,3 +560,26 @@ export async function fetchOutliers(sessionId: string): Promise<OutliersResponse
   }
   return response.json();
 }
+
+// A PM's inline correction to one trip's Segment Days or Mean Temp, from the
+// Segment/Temperature Outlier tabs' editable columns -- writes into the
+// session's working dataframe and returns freshly recomputed outliers.
+export async function updateTripValue(
+  sessionId: string,
+  params: { serial: string; tripId: string | number; field: "segment_days" | "mean_temp"; value: number }
+): Promise<OutliersResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/trip-value`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      serial: params.serial,
+      trip_id: String(params.tripId),
+      field: params.field,
+      value: params.value,
+    }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}

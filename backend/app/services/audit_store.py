@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from app.schemas import AuditIssue, FeatureResult, OverallAnalysisReport, PivotFilterSpec, PivotResult
+from app.schemas import AnalysisResult, AuditIssue, FeatureResult, OverallAnalysisReport
 
 
 @dataclass
@@ -35,43 +35,19 @@ class AuditSession:
     # re-runs from this snapshot rather than layering on top of `df`, so
     # re-applying the same definitions twice can't double up or drift.
     pre_feature_df: pd.DataFrame | None = None
-    # Last-computed pivot tables for the Analysis step (see routers/analysis.py).
-    # Pivots only ever READ `df` (post-feature-engineering) -- they never
-    # mutate it, so there's no snapshot/undo bookkeeping needed here.
-    pivots: list[PivotResult] = field(default_factory=list)
-    pivot_skipped_notes: list[str] = field(default_factory=list)
-    # The AI-suggested/custom pivot definitions last applied on top of the
-    # uploaded Analysis Profile -- remembered so a caller that only wants to
-    # change slicer filters (e.g. the Report page) can recompute without
-    # having to resend every AI/custom pivot the Analysis page already added.
-    extra_pivot_defs: list[dict] = field(default_factory=list)
-    # Currently-active runtime slicer filters per pivot id (see
-    # ApplyPivotsRequest.pivot_filters) -- merged (not replaced) on each
-    # apply_pivots call so a caller touching one pivot's filters, or adding
-    # a filter shared across several, can't silently wipe filters saved for
-    # pivots it didn't mention.
-    pivot_filter_state: dict[str, list[dict]] = field(default_factory=dict)
-    # The ONE shared filter set for the whole downloaded report -- applied to
-    # EVERY pivot at report-build time (see report_generator.build_report).
-    # An "in" filter with 2+ selected values becomes a multiplier: the report
-    # gets one slide per value (per pivot) instead of one slide combining
-    # them. Report-time only, never affects a pivot's own computed rows/table
-    # on the Analysis page.
-    report_filters: list[PivotFilterSpec] = field(default_factory=list)
-    # Per-pivot override of WHICH report_filters columns actually apply to
-    # that pivot's slide(s) -- a pivot id absent here uses every active
-    # column (the default, i.e. today's "same scope everywhere" behavior).
-    # E.g. {"pivot_1": ["Country of Origin"]} means pivot_1 only respects the
-    # Country of Origin filter and ignores Origin/Carrier/Product/departure-
-    # range even though they're set in the shared report_filters.
-    pivot_filter_scope: dict[str, list[str]] = field(default_factory=dict)
-    # Per-pivot custom slide title -- a pivot id absent here uses its own
-    # name (the default). Report-time only, purely cosmetic.
-    report_titles: dict[str, str] = field(default_factory=dict)
+    # In-memory run outputs for the Analysis Agent (see analysis_engine.py),
+    # keyed by analysis_repository entry id. Populated only once a PM clicks
+    # "Run" for that entry -- unlike features, analyses are computed
+    # per-entry/on-demand, not as an eager batch, so there's no equivalent of
+    # `features` holding every result up front. Definitions (name/
+    # calculation_intent/etc) live in analysis_repository.json; this is only
+    # the latest computed table/chart/interpretation for entries that have
+    # actually been run.
+    analysis_results: dict[str, AnalysisResult] = field(default_factory=dict)
     # Last-computed overall analysis (see routers/analysis.py's /overall
-    # endpoint) -- kept here so the report generator can reuse the exact
+    # endpoint) -- kept here so a future report generator can reuse the exact
     # highlights/narrative the user already saw on screen instead of
-    # triggering another Groq call at export time.
+    # triggering another LLM call at export time.
     overall_analysis: OverallAnalysisReport | None = None
 
 

@@ -19,37 +19,55 @@ import pandas as pd
 from app.services import anomaly_detection
 
 
-def _prepare(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return (original_df, analysis_df) with aligned 0-based indices.
+def _find_col(columns: list[str], *needles: str) -> str | None:
+    lowered = [c.lower() for c in columns]
+    for i, c in enumerate(lowered):
+        if all(n in c for n in needles):
+            return columns[i]
+    return None
+
+
+def _to_trip_id(val) -> int | str | None:
+    if val is None or (isinstance(val, float) and np.isnan(val)) or pd.isna(val):
+        return None
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return str(val)
+
+
+def _prepare(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, str | None, str | None]:
+    """Return (original_df, analysis_df, serial_col, trip_col) with aligned
+    0-based indices.
 
     original_df – original data reset to integer index (for display).
     analysis_df – normalized + widened copy passed to the detection functions.
+    serial_col/trip_col – the column names (in analysis_df) identifying each
+    trip, so callers can build per-trip records; None if not found.
     """
     original = df.reset_index(drop=True)
     analysis = anomaly_detection._normalize_columns(original.copy())
 
+    serial_col = _find_col(list(analysis.columns), "serial")
+    trip_col = _find_col(list(analysis.columns), "trip", "id")
+
     if anomaly_detection.is_long_sensor_format(analysis):
-        serial_col = next(
-            (c for c in analysis.columns if "serial" in c.lower()),
-            analysis.columns[0],
-        )
-        trip_col = next(
-            (c for c in analysis.columns if "trip" in c.lower() and "id" in c.lower()),
-            analysis.columns[1],
-        )
-        analysis = anomaly_detection.widen_by_sensor_type(analysis, serial_col, trip_col)
+        s_col = serial_col or analysis.columns[0]
+        t_col = trip_col or analysis.columns[1]
+        analysis = anomaly_detection.widen_by_sensor_type(analysis, s_col, t_col)
         analysis = analysis.reset_index(drop=True)
+        serial_col, trip_col = s_col, t_col
 
     # Light channel absent in Temperature-only exports; add NaN column so
     # compute_flags can compute flag_8 without a KeyError (flag_8 = all False).
     if anomaly_detection.COL_MAX_LIGHT not in analysis.columns:
         analysis[anomaly_detection.COL_MAX_LIGHT] = np.nan
 
-    return original, analysis
+    return original, analysis, serial_col, trip_col
 
 
 def detect_segment_outliers(df: pd.DataFrame) -> dict:
-    original_df, analysis_df = _prepare(df)
+    original_df, analysis_df, serial_col, trip_col = _prepare(df)
 
     DUR = anomaly_detection.COL_DURATION
     ORIG = anomaly_detection.COL_ORIGIN
@@ -62,10 +80,11 @@ def detect_segment_outliers(df: pd.DataFrame) -> dict:
             "flagged_trips": 0,
             "columns": [str(c) for c in original_df.columns],
             "lanes": [],
+            "outlier_rows": [],
         }
 
     outlier_df = anomaly_detection.compute_lane_duration_outliers(analysis_df)
-    # outlier_df.index == analysis_df.index == 0..N-1
+    duration = pd.to_numeric(analysis_df[DUR], errors="coerce")
 
     origins = analysis_df[ORIG].fillna("(blank)").astype(str)
     destinations = analysis_df[DEST].fillna("(blank)").astype(str)
@@ -76,6 +95,7 @@ def detect_segment_outliers(df: pd.DataFrame) -> dict:
         lane_groups.setdefault(lane, []).append(i)
 
     lanes_output: list[dict] = []
+    lane_flagged_idx: dict[tuple[str, str], list[int]] = {}
 
     for (orig, dest), idxs in sorted(lane_groups.items()):
         idx_arr = pd.Index(idxs)
@@ -86,6 +106,7 @@ def detect_segment_outliers(df: pd.DataFrame) -> dict:
 
         flagged_idx = list(lane_outlier[lane_outlier["duration_outlier"]].index)
         n_outliers = len(flagged_idx)
+        lane_flagged_idx[(orig, dest)] = flagged_idx
 
         # Prefer any non-"Insufficient History" label for the lane badge
         status_series = lane_outlier["duration_outlier_status"]
@@ -130,21 +151,44 @@ def detect_segment_outliers(df: pd.DataFrame) -> dict:
 
     lanes_output.sort(key=lambda l: (-l["n_outliers"], l["destination"], l["origin"]))
 
+    # Flat, one-row-per-outlier-trip view across every lane (the "outliers
+    # themselves, not the fence numbers" table) -- walked in the same
+    # lane order as `lanes` above so trips from the same lane stay grouped.
+    flat_rows: list[dict] = []
+    for lane in lanes_output:
+        idxs = lane_flagged_idx.get((lane["origin"], lane["destination"]), [])
+        for i in idxs:
+            serial_val = analysis_df.at[i, serial_col] if serial_col else None
+            trip_val = analysis_df.at[i, trip_col] if trip_col else None
+            days = duration.at[i]
+            flat_rows.append({
+                "serial": str(serial_val) if serial_val is not None and pd.notna(serial_val) else None,
+                "trip_id": _to_trip_id(trip_val),
+                "origin": lane["origin"],
+                "destination": lane["destination"],
+                "segment_days": round(float(days), 2) if pd.notna(days) else None,
+                "lower_fence_days": lane["lower_fence"],
+                "upper_fence_days": lane["upper_fence"],
+                "status": lane["status_label"],
+            })
+
     return {
         "column_found": True,
         "total_trips": len(original_df),
         "flagged_trips": int(outlier_df["duration_outlier"].sum()),
         "columns": [str(c) for c in original_df.columns],
         "lanes": lanes_output,
+        "outlier_rows": flat_rows,
     }
 
 
 def detect_temperature_outliers(df: pd.DataFrame) -> dict:
-    original_df, analysis_df = _prepare(df)
+    original_df, analysis_df, serial_col, trip_col = _prepare(df)
 
     MEAN = anomaly_detection.COL_MEAN_TEMP
     LOW = anomaly_detection.COL_LIMIT_LOW_TEMP
     HIGH = anomaly_detection.COL_LIMIT_HIGH_TEMP
+    IDEAL = anomaly_detection.COL_LIMIT_IDEAL_TEMP
     PRODUCT = anomaly_detection.COL_PRODUCT
 
     cols_found = {
@@ -171,6 +215,16 @@ def detect_temperature_outliers(df: pd.DataFrame) -> dict:
     flags = anomaly_detection.compute_flags(analysis_df)
     too_warm = flags["flag_1_too_warm_avg"]
     too_cold = flags["flag_2_too_cold_avg"]
+    flag_count = flags["flag_count"]
+
+    mean_temp = pd.to_numeric(analysis_df[MEAN], errors="coerce")
+    limit_low = pd.to_numeric(analysis_df[LOW], errors="coerce")
+    limit_high = pd.to_numeric(analysis_df[HIGH], errors="coerce")
+    limit_ideal = (
+        pd.to_numeric(analysis_df[IDEAL], errors="coerce")
+        if IDEAL in analysis_df.columns
+        else pd.Series(np.nan, index=analysis_df.index)
+    )
 
     products = (
         original_df[PRODUCT].fillna("Unknown").astype(str)
@@ -181,15 +235,36 @@ def detect_temperature_outliers(df: pd.DataFrame) -> dict:
     by_product: list[dict] = []
     for product in sorted(products.unique()):
         mask = products == product
+        idxs = list(products[mask].index)
         n_total = int(mask.sum())
         n_warm = int(too_warm[mask].sum())
         n_cold = int(too_cold[mask].sum())
+
+        trips: list[dict] = []
+        for i in idxs:
+            status = "too_warm" if bool(too_warm.at[i]) else "too_cold" if bool(too_cold.at[i]) else "in_spec"
+            serial_val = analysis_df.at[i, serial_col] if serial_col else None
+            trip_val = analysis_df.at[i, trip_col] if trip_col else None
+            mt = mean_temp.at[i]
+            trips.append({
+                "serial": str(serial_val) if serial_val is not None and pd.notna(serial_val) else None,
+                "trip_id": _to_trip_id(trip_val),
+                "mean_temp": round(float(mt), 2) if pd.notna(mt) else None,
+                "limit_low": round(float(limit_low.at[i]), 2) if pd.notna(limit_low.at[i]) else None,
+                "limit_ideal": round(float(limit_ideal.at[i]), 2) if pd.notna(limit_ideal.at[i]) else None,
+                "limit_high": round(float(limit_high.at[i]), 2) if pd.notna(limit_high.at[i]) else None,
+                "status": status,
+                "flag_count": int(flag_count.at[i]),
+            })
+        trips.sort(key=lambda t: (t["trip_id"] is None, t["trip_id"]))
+
         by_product.append({
             "product": product,
             "total": n_total,
             "too_warm": n_warm,
             "too_cold": n_cold,
             "in_spec": max(0, n_total - n_warm - n_cold),
+            "trips": trips,
         })
 
     by_product.sort(key=lambda x: -(x["too_warm"] + x["too_cold"]))

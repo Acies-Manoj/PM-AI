@@ -1,4 +1,4 @@
-.pivot-suggestion {
+.analysis-suggestion {
   background: var(--color-surface);
   border: 1px dashed var(--accent-purple);
   border-radius: var(--radius-md);
@@ -9,48 +9,38 @@
   height: 100%;
 }
 
-.pivot-suggestion__body {
+.analysis-suggestion__body {
   display: flex;
   flex-direction: column;
   gap: 6px;
   flex: 1;
 }
 
-.pivot-suggestion--added {
+.analysis-suggestion--added {
   border-style: solid;
   border-color: var(--color-success);
   background: var(--color-success-bg);
 }
 
-.pivot-suggestion__top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pivot-suggestion__name {
+.analysis-suggestion__name {
   margin: 0;
   font-size: 14px;
   font-weight: 800;
   color: var(--accent-purple);
 }
 
-.pivot-suggestion--added .pivot-suggestion__name {
+.analysis-suggestion--added .analysis-suggestion__name {
   color: var(--color-success);
 }
 
-.pivot-suggestion__group {
-  font-size: 11px;
-  font-weight: 700;
+.analysis-suggestion__description {
+  margin: 0;
+  font-size: 12.5px;
   color: var(--color-text-muted);
-  background: var(--accent-purple-bg);
-  border-radius: 999px;
-  padding: 2px 10px;
+  line-height: 1.5;
 }
 
-.pivot-suggestion__formula-toggle {
+.analysis-suggestion__intent-toggle {
   align-self: flex-start;
   display: flex;
   align-items: center;
@@ -65,12 +55,12 @@
   cursor: pointer;
 }
 
-.pivot-suggestion__formula-toggle svg {
+.analysis-suggestion__intent-toggle svg {
   width: 12px;
   height: 12px;
 }
 
-.pivot-suggestion__formula {
+.analysis-suggestion__intent {
   margin: 0;
   font-size: 13px;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
@@ -78,24 +68,16 @@
   background: var(--color-bg);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
-  word-break: break-word;
 }
 
-.pivot-suggestion__modal-description {
+.analysis-suggestion__modal-description {
   margin: 0 0 14px;
   font-size: 13px;
   color: var(--color-text-muted);
   line-height: 1.6;
 }
 
-.pivot-suggestion__description {
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
-}
-
-.pivot-suggestion__btn {
+.analysis-suggestion__btn {
   align-self: flex-start;
   border-radius: var(--radius-sm);
   padding: 7px 16px;
@@ -107,16 +89,16 @@
   color: #fff;
 }
 
-.pivot-suggestion__btn:hover:not(:disabled) {
+.analysis-suggestion__btn:hover:not(:disabled) {
   opacity: 0.9;
 }
 
-.pivot-suggestion__btn:disabled {
+.analysis-suggestion__btn:disabled {
   cursor: default;
   opacity: 0.7;
 }
 
-.pivot-suggestion--added .pivot-suggestion__btn {
+.analysis-suggestion--added .analysis-suggestion__btn {
   background: var(--color-success);
   border-color: var(--color-success);
 }

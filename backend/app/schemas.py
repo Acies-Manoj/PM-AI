@@ -90,6 +90,15 @@ class FeatureResult(BaseModel):
     distribution: dict[str, int] = {}
     stats: dict[str, float] = {}
     generated_code: str | None = None
+    # Where this feature came from (predefined / planner / custom / ai_suggested).
+    source: str = "predefined"
+    # The Feature Agent's own plain-English computation plan (its "Think"
+    # step output) -- shown in place of a static formula string, since every
+    # feature is now agent-computed rather than template-applied.
+    plan: str | None = None
+    # The agent's own validation verdict on its result (its "Validate" step
+    # reason), so a PM can see why a computed column was trusted.
+    validation_note: str | None = None
 
 
 class FeatureReport(BaseModel):
@@ -105,6 +114,53 @@ class FeatureDefinitionsSummary(BaseModel):
     filename: str
     feature_count: int
     feature_names: list[str]
+
+
+FeatureSource = Literal["predefined", "planner", "custom", "ai_suggested"]
+FeatureEntryStatus = Literal["approved", "pending", "rejected"]
+
+
+class FeatureRepositoryEntry(BaseModel):
+    """One candidate feature in a session's repository, regardless of which
+    of the four sources proposed it. `calculation_intent` is always a plain-
+    English description of what to compute -- the one thing every source
+    (a structured KPI-profile spec, a planner recommendation, a PM's typed
+    request, an AI suggestion) can be reduced to, and the only input the
+    Feature Agent's Think step actually needs."""
+    id: str
+    source: FeatureSource
+    status: FeatureEntryStatus
+    name: str
+    description: str
+    output_column: str
+    calculation_intent: str
+    input_columns: list[str] = []
+    # A precise, agent-thought-through plan already attached to this entry --
+    # set when the Planner pre-generated one at suggest time (feature/
+    # feature_and_analysis recommendations), or when the uploaded Customer
+    # KPI Profile's spec was already fully structured (not "ai_generated").
+    # None means the Feature Agent hasn't thought about this one yet and
+    # will run its own Think step for it at compute time. Once set here, the
+    # Feature Agent will never silently replace it -- only retry writing
+    # code against it.
+    formula: str | None = None
+
+
+class FeatureRepositoryResponse(BaseModel):
+    session_id: str
+    entries: list[FeatureRepositoryEntry]
+
+
+class AddCustomFeatureRequest(BaseModel):
+    name: str
+    description: str = ""
+    calculation_intent: str
+    input_columns: list[str] = []
+
+
+class SuggestFeatureEntriesResponse(BaseModel):
+    session_id: str
+    entries: list[FeatureRepositoryEntry]
 
 
 class FeatureSuggestion(BaseModel):
@@ -141,144 +197,96 @@ class ApplyFeaturesRequest(BaseModel):
     extra_features: list[dict[str, Any]] = []
 
 
-AggType = Literal["sum", "mean", "count", "min", "max", "median", "distinct_count", "pct_of_total"]
+AnalysisSource = Literal["predefined", "planner", "custom", "ai_suggested", "drilldown"]
+AnalysisEntryStatus = Literal["approved", "pending", "rejected"]
+AnalysisRunStatus = Literal["not_run", "done", "error"]
 
 
-class PivotMetricSpec(BaseModel):
-    column: str
-    agg: AggType
-    output_label: str
-
-
-class PivotFilterSpec(BaseModel):
-    column: str
-    op: Literal["eq", "neq", "gt", "gte", "lt", "lte", "in"]
-    value: Any
-
-
-class PivotSortSpec(BaseModel):
-    metric: str
-    direction: Literal["asc", "desc"] = "desc"
-
-
-class PivotResult(BaseModel):
+class AnalysisDrilldownSuggestion(BaseModel):
     id: str
     name: str
     description: str
-    group_by: list[str]
-    metric_labels: list[str]
-    rows: list[dict[str, Any]]
-    row_count: int
-    # Columns this pivot can be sliced by at runtime, and the distinct
-    # values available for each -- lets the frontend render a slicer/filter
-    # picker per column instead of baking one fixed value into the JSON spec.
-    filterable_columns: list[str] = []
-    filter_options: dict[str, list[str]] = {}
-    # Deduplicated real combinations of the filterable columns (from the full,
-    # unfiltered session data) -- lets the frontend narrow one slicer's
-    # options to what actually co-occurs with the OTHER slicers' current
-    # selections (e.g. picking Italy narrows Carrier to Italy's carriers)
-    # without a round-trip to the backend.
-    filter_combinations: list[dict[str, str]] = []
+    calculation_intent: str
+    triggered: bool = False
+    child_entry_id: str | None = None
 
 
-class SetReportFiltersRequest(BaseModel):
-    filters: list[PivotFilterSpec] = []
+class AnalysisRepositoryEntry(BaseModel):
+    """One candidate analysis in a session's repository, regardless of which
+    of the five sources proposed it. `calculation_intent` is always a plain-
+    English description of what to aggregate -- the one thing every source
+    can be reduced to, and the only input the Analysis Agent's Think step
+    actually needs. The definitional fields (id..parent_id) are always
+    present; the run-result fields (run_status..drilldown_suggestions) are
+    only populated once the PM has clicked "Run" for this entry."""
+    id: str
+    source: AnalysisSource
+    status: AnalysisEntryStatus
+    name: str
+    description: str
+    calculation_intent: str
+    input_columns: list[str] = []
+    # A precise, agent-thought-through plan already attached to this entry --
+    # set when the Planner pre-generated one at suggest time, or when the
+    # uploaded Analysis Profile's spec shipped with its own formula. None
+    # means the Analysis Agent hasn't thought about this one yet and will
+    # run its own Think step for it at run time.
+    formula: str | None = None
+    # Set only for source == "drilldown": the entry id this one was spawned
+    # from by a PM clicking "Explore this" on a suggested follow-up.
+    parent_id: str | None = None
+
+    run_status: AnalysisRunStatus = "not_run"
+    plan_text: str | None = None
+    generated_code: str | None = None
+    result_table: list[dict[str, Any]] | None = None
+    result_columns: list[str] | None = None
+    chart_type: str | None = None
+    chart_spec: dict[str, Any] | None = None
+    interpretation: str | None = None
+    error: str | None = None
+    drilldown_suggestions: list[AnalysisDrilldownSuggestion] = []
 
 
-class ReportFiltersResponse(BaseModel):
+class AnalysisRepositoryResponse(BaseModel):
     session_id: str
-    filters: list[PivotFilterSpec]
+    entries: list[AnalysisRepositoryEntry]
 
 
-class SetReportFilterScopeRequest(BaseModel):
-    pivot_id: str
-    # None clears the override (back to "every active filter column applies,
-    # the default"). An explicit list -- even [] -- means "only these columns
-    # apply to this pivot; every other active column is ignored for it."
-    columns: list[str] | None = None
+class AddCustomAnalysisRequest(BaseModel):
+    name: str
+    description: str = ""
+    calculation_intent: str
+    input_columns: list[str] = []
 
 
-class ReportFilterScopeResponse(BaseModel):
+class SuggestAnalysisEntriesResponse(BaseModel):
     session_id: str
-    # pivot id -> the columns that apply to it. A pivot id absent here uses
-    # the default (every active report_filters column applies to it).
-    scope: dict[str, list[str]]
+    entries: list[AnalysisRepositoryEntry]
 
 
-class SetReportTitleRequest(BaseModel):
-    pivot_id: str
-    # None clears the override (back to the pivot's own name).
-    title: str | None = None
-
-
-class ReportTitlesResponse(BaseModel):
-    session_id: str
-    # pivot id -> its custom slide title. A pivot id absent here uses its
-    # own name (the default).
-    titles: dict[str, str]
-
-
-class PivotReport(BaseModel):
-    session_id: str
-    row_count: int
-    column_count: int
-    columns: list[str]
-    pivots: list[PivotResult]
-    skipped_notes: list[str] = []
-    # Currently-active runtime slicer filters per pivot id (same shape as
-    # ApplyPivotsRequest.pivot_filters) -- lets a caller that didn't set
-    # these itself (e.g. the Report page, on first load) know what's already
-    # applied, so it can pre-populate its filter UI and merge in new filters
-    # without clobbering the ones already saved.
-    pivot_filters: dict[str, list[dict[str, Any]]] = {}
-
-
-class PivotDefinitionsSummary(BaseModel):
+class AnalysisDefinitionsSummary(BaseModel):
     filename: str
-    pivot_count: int
-    pivot_names: list[str]
+    analysis_count: int
+    analysis_names: list[str]
 
 
-class ReportTemplateSummary(BaseModel):
-    """`filename` is None when no template has been uploaded -- report
-    generation then falls back to the built-in layout."""
-    filename: str | None
-
-
-class PivotSuggestion(BaseModel):
-    """One AI-proposed pivot table -- shaped so the frontend can echo it
-    straight back as an `extra_pivots` entry when the user accepts it."""
+class AnalysisResult(BaseModel):
+    """In-memory-only run output, held on AuditSession.analysis_results
+    keyed by entry id -- mirrors FeatureResult's role for the feature
+    system. Merged with the definitional AnalysisRepositoryEntry by the
+    router at read time; never persisted to analysis_repository.json."""
     id: str
-    name: str
-    description: str
-    group_by: list[str]
-    metrics: list[PivotMetricSpec]
-    filters: list[PivotFilterSpec] = []
-    sort_by: PivotSortSpec | None = None
-    top_n: int | None = None
-
-
-class SuggestPivotsRequest(BaseModel):
-    session_id: str
-
-
-class SuggestPivotsResponse(BaseModel):
-    session_id: str
-    suggestions: list[PivotSuggestion]
-
-
-class ApplyPivotsRequest(BaseModel):
-    # None means "leave whatever AI/custom pivots were last applied for this
-    # session alone" -- a caller that only wants to change slicer filters
-    # (e.g. the Report page) can omit this instead of resending the Analysis
-    # page's full accepted list. An explicit [] means "no extra pivots".
-    extra_pivots: list[dict[str, Any]] | None = None
-    # Runtime slicer selections, keyed by pivot id -- each value is a list of
-    # filter dicts (same shape as a JSON-defined filter, typically {"column":
-    # ..., "op": "in", "value": [...]}) applied IN ADDITION to that pivot's
-    # own declared filters, without needing to edit/re-upload the profile.
-    pivot_filters: dict[str, list[dict[str, Any]]] = {}
+    run_status: AnalysisRunStatus = "done"
+    plan_text: str | None = None
+    generated_code: str | None = None
+    result_table: list[dict[str, Any]] | None = None
+    result_columns: list[str] | None = None
+    chart_type: str | None = None
+    chart_spec: dict[str, Any] | None = None
+    interpretation: str | None = None
+    error: str | None = None
+    drilldown_suggestions: list[AnalysisDrilldownSuggestion] = []
 
 
 class OverallHighlight(BaseModel):

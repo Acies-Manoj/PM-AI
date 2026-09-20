@@ -1,44 +1,95 @@
 import { useState } from "react";
-import type { ProductTemperatureResult, TemperatureOutliersResult } from "../api/audit";
+import Plotly from "plotly.js-dist-min";
+import createPlotlyComponent from "react-plotly.js/factory";
+import type { ProductTemperatureResult, ProductTemperatureTrip, TemperatureOutliersResult } from "../api/audit";
+import { IconChevronRight } from "./icons";
 import "./OutlierTabs.css";
+
+const Plot = createPlotlyComponent(Plotly);
 
 interface Props {
   data: TemperatureOutliersResult;
 }
 
-function TempBarChart({ product }: { product: ProductTemperatureResult }) {
-  const max = product.total;
-  const pct = (n: number) => (max > 0 ? (n / max) * 100 : 0);
+// Same categorical palette as AnalysisChart.tsx / report_style.py -- a trip's
+// bar reads blue when in spec, the shared error red when it's the reason
+// the product got flagged.
+const COLOR_IN_SPEC = "#152C73";
+const COLOR_OUT_OF_RANGE = "#C0392B";
+const COLOR_LOW = "#1891F6";
+const COLOR_IDEAL = "#10B981";
+const COLOR_HIGH = "#C0392B";
 
-  const rows: { label: string; value: number; cls: string }[] = [
-    { label: "In Spec", value: product.in_spec, cls: "in-spec" },
-    { label: "Too Warm", value: product.too_warm, cls: "too-warm" },
-    { label: "Too Cold", value: product.too_cold, cls: "too-cold" },
+function statusLabel(status: ProductTemperatureTrip["status"]): string {
+  return status === "too_warm" ? "Too Warm" : status === "too_cold" ? "Too Cold" : "In Spec";
+}
+
+function ProductTempChart({ product }: { product: ProductTemperatureResult }) {
+  const trips = product.trips;
+  const flaggedCount = product.too_warm + product.too_cold;
+  const withLimits = trips.find((t) => t.limit_low != null || t.limit_ideal != null || t.limit_high != null);
+
+  const traces: Partial<Plotly.PlotData>[] = [
+    {
+      type: "bar",
+      name: product.product,
+      x: trips.map((t) => String(t.trip_id ?? "—")),
+      y: trips.map((t) => t.mean_temp),
+      hovertemplate: "Trip %{x}<br>Mean Temp: %{y}°<extra></extra>",
+      marker: { color: trips.map((t) => (t.status === "in_spec" ? COLOR_IN_SPEC : COLOR_OUT_OF_RANGE)) },
+    },
   ];
 
+  const shapes: Partial<Plotly.Shape>[] = [];
+  const addLine = (y: number | null | undefined, color: string) => {
+    if (y == null) return;
+    shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, y0: y, y1: y, line: { color, width: 1.5, dash: "dash" } });
+  };
+  addLine(withLimits?.limit_low, COLOR_LOW);
+  addLine(withLimits?.limit_ideal, COLOR_IDEAL);
+  addLine(withLimits?.limit_high, COLOR_HIGH);
+
   return (
-    <div className="temp-bar-chart">
-      <div className="temp-bar-chart__title">{product.product} — {product.total} trips</div>
-      <div className="temp-bar-chart__bars">
-        {rows.map(({ label, value, cls }) => (
-          <div key={cls} className="temp-bar-chart__row">
-            <span className="temp-bar-chart__label">{label}</span>
-            <div className="temp-bar-chart__track">
-              <div
-                className={`temp-bar-chart__fill temp-bar-chart__fill--${cls}`}
-                style={{ width: `${pct(value)}%` }}
-              />
-            </div>
-            <span className="temp-bar-chart__value">{value}</span>
-          </div>
-        ))}
+    <div className="temp-chart">
+      <div className="temp-chart__head">
+        <h3 className="temp-chart__title">{product.product}</h3>
+        <div className="temp-chart__pills">
+          {withLimits?.limit_low != null && (
+            <span className="temp-chart__pill temp-chart__pill--low">Low: {withLimits.limit_low}°</span>
+          )}
+          {withLimits?.limit_ideal != null && (
+            <span className="temp-chart__pill temp-chart__pill--ideal">Ideal: {withLimits.limit_ideal}°</span>
+          )}
+          {withLimits?.limit_high != null && (
+            <span className="temp-chart__pill temp-chart__pill--high">High: {withLimits.limit_high}°</span>
+          )}
+          <span className="temp-chart__pill temp-chart__pill--flagged">
+            {flaggedCount} of {trips.length} flagged
+          </span>
+        </div>
       </div>
+      <Plot
+        data={traces}
+        layout={{
+          margin: { l: 56, r: 24, t: 8, b: 50 },
+          height: 280,
+          paper_bgcolor: "transparent",
+          plot_bgcolor: "transparent",
+          showlegend: false,
+          xaxis: { title: { text: "Trip ID" }, type: "category", tickangle: -40 },
+          yaxis: { title: { text: "Mean Temp (°)" }, gridcolor: "#EEF1F6", zeroline: false },
+          shapes,
+        }}
+        config={{ displayModeBar: true, displaylogo: false, responsive: true }}
+        style={{ width: "100%" }}
+        useResizeHandler
+      />
     </div>
   );
 }
 
 export default function TemperatureOutlierTab({ data }: Props) {
-  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+  const [openProduct, setOpenProduct] = useState<string | null>(null);
 
   const missingCols = Object.entries(data.columns_found)
     .filter(([, found]) => !found)
@@ -54,65 +105,84 @@ export default function TemperatureOutlierTab({ data }: Props) {
   }
 
   const totalBreaches = data.too_warm_count + data.too_cold_count;
-  const activeProduct = data.by_product.find((p) => p.product === selectedProduct) ?? null;
+  const activeProduct = data.by_product.find((p) => p.product === openProduct) ?? null;
+  const activeFlaggedTrips = activeProduct?.trips.filter((t) => t.status !== "in_spec") ?? [];
 
   return (
     <div className="outlier-tab">
-      <div className="outlier-tab__summary">
-        <span className="outlier-tab__summary-stat">
-          <strong>{data.total_trips.toLocaleString()}</strong> trips
-        </span>
-        <span className="outlier-tab__summary-stat outlier-tab__summary-stat--flagged">
-          <strong>{data.too_warm_count}</strong> too warm
-        </span>
-        <span className="outlier-tab__summary-stat outlier-tab__summary-stat--cold">
-          <strong>{data.too_cold_count}</strong> too cold
-        </span>
-        <span className="outlier-tab__summary-stat">
-          <strong>{data.by_product.length}</strong> product{data.by_product.length !== 1 ? "s" : ""}
-        </span>
-      </div>
+      <p className="outlier-tab__hint">
+        One card per product -- open one to see its mean-temperature chart and flagged trips.
+      </p>
 
       {totalBreaches === 0 && (
         <p className="outlier-tab__all-clear">No temperature breaches detected. All trips are within their configured limits.</p>
       )}
 
-      <div className="outlier-tab__products">
+      <div className="audit-report__issues">
         {data.by_product.map((p) => {
-          const isActive = selectedProduct === p.product;
-          const hasIssues = p.too_warm + p.too_cold > 0;
+          const flaggedCount = p.too_warm + p.too_cold;
           return (
-            <button
-              key={p.product}
-              type="button"
-              className={`temp-product-card${hasIssues ? " temp-product-card--has-issues" : ""}${isActive ? " temp-product-card--active" : ""}`}
-              onClick={() => setSelectedProduct(isActive ? null : p.product)}
-            >
-              <div className="temp-product-card__name" title={p.product}>{p.product}</div>
-              <div className="temp-product-card__counts">
-                <span className="temp-product-card__count temp-product-card__count--ok">{p.in_spec} ok</span>
-                {p.too_warm > 0 && (
-                  <span className="temp-product-card__count temp-product-card__count--warm">+{p.too_warm} warm</span>
-                )}
-                {p.too_cold > 0 && (
-                  <span className="temp-product-card__count temp-product-card__count--cold">+{p.too_cold} cold</span>
-                )}
-              </div>
-              {p.total > 0 && (
-                <div className="temp-product-card__bar">
-                  <div className="temp-product-card__bar-seg temp-product-card__bar-seg--ok" style={{ width: `${(p.in_spec / p.total) * 100}%` }} />
-                  <div className="temp-product-card__bar-seg temp-product-card__bar-seg--warm" style={{ width: `${(p.too_warm / p.total) * 100}%` }} />
-                  <div className="temp-product-card__bar-seg temp-product-card__bar-seg--cold" style={{ width: `${(p.too_cold / p.total) * 100}%` }} />
+            <div key={p.product} className={`audit-issue ${flaggedCount > 0 ? "audit-issue--warning" : "audit-issue--info"}`}>
+              <button type="button" className="audit-issue__tile" onClick={() => setOpenProduct(p.product)}>
+                <div className="audit-issue__tile-head">
+                  <h4 className="audit-issue__title">{p.product}</h4>
+                  <span className="audit-issue__tile-chevron">
+                    <IconChevronRight />
+                  </span>
                 </div>
-              )}
-            </button>
+                <span className="audit-issue__affected">
+                  {flaggedCount > 0
+                    ? `${flaggedCount} of ${p.total} trip${p.total === 1 ? "" : "s"} flagged`
+                    : `${p.total} trip${p.total === 1 ? "" : "s"} -- none flagged`}
+                </span>
+              </button>
+            </div>
           );
         })}
       </div>
 
       {activeProduct && (
-        <div className="outlier-tab__chart-area">
-          <TempBarChart product={activeProduct} />
+        <div className="audit-issue__modal-backdrop" onClick={() => setOpenProduct(null)}>
+          <div className="audit-issue__modal outlier-tab__product-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="audit-issue__modal-head">
+              <div className="audit-issue__top">
+                <h4 className="audit-issue__title">{activeProduct.product}</h4>
+              </div>
+              <button type="button" className="audit-issue__modal-close" onClick={() => setOpenProduct(null)} aria-label="Close">
+                ✕
+              </button>
+            </div>
+            <div className="audit-issue__modal-body">
+              <ProductTempChart product={activeProduct} />
+
+              {activeFlaggedTrips.length > 0 && (
+                <div className="temp-chart__table-wrap">
+                  <table className="outlier-lane-card__table">
+                    <thead>
+                      <tr>
+                        <th>Serial Number</th>
+                        <th>Trip ID</th>
+                        <th>Flags</th>
+                        <th>Mean Temp</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeFlaggedTrips.map((t, idx) => (
+                        <tr key={`${idx}::${t.serial ?? "?"}::${t.trip_id ?? "?"}`}>
+                          <td>{t.serial ?? "—"}</td>
+                          <td>{t.trip_id ?? "—"}</td>
+                          <td>{t.flag_count}</td>
+                          <td>{t.mean_temp != null ? `${t.mean_temp}°` : "—"}</td>
+                          <td>{statusLabel(t.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,28 +1,18 @@
-import io
 import json
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import Response
-from pptx import Presentation
 
 from app.schemas import (
-    ApplyPivotsRequest,
+    AddCustomAnalysisRequest,
+    AnalysisDefinitionsSummary,
+    AnalysisRepositoryEntry,
+    AnalysisRepositoryResponse,
+    AnalysisResult,
     OverallAnalysisReport,
-    PivotDefinitionsSummary,
-    PivotReport,
-    ReportFilterScopeResponse,
-    ReportFiltersResponse,
-    ReportTemplateSummary,
-    ReportTitlesResponse,
-    SetReportFilterScopeRequest,
-    SetReportFiltersRequest,
-    SetReportTitleRequest,
-    SuggestPivotsRequest,
-    SuggestPivotsResponse,
+    SuggestAnalysisEntriesResponse,
 )
-from app.services import overall_analysis, overall_analysis_agent, pivot_engine, pivot_suggester, report_generator
-from app.services import pivot_definitions_store as pivot_defs_store
-from app.services import report_template_store
+from app.services import analysis_definitions_store as defs_store
+from app.services import analysis_engine, analysis_repository, analysis_suggester, overall_analysis, overall_analysis_agent
 from app.services.audit_store import AuditSession, store
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
@@ -35,20 +25,8 @@ def _get_session_or_404(session_id: str) -> AuditSession:
     return session
 
 
-def _to_pivot_report(session: AuditSession) -> PivotReport:
-    return PivotReport(
-        session_id=session.session_id,
-        row_count=len(session.df),
-        column_count=len(session.df.columns),
-        columns=[str(c) for c in session.df.columns],
-        pivots=session.pivots,
-        skipped_notes=session.pivot_skipped_notes,
-        pivot_filters=session.pivot_filter_state,
-    )
-
-
-@router.post("/definitions", response_model=PivotDefinitionsSummary)
-async def upload_pivot_definitions(file: UploadFile = File(...)) -> PivotDefinitionsSummary:
+@router.post("/definitions", response_model=AnalysisDefinitionsSummary)
+async def upload_analysis_definitions(file: UploadFile = File(...)) -> AnalysisDefinitionsSummary:
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=422, detail="Uploaded file is empty.")
@@ -59,228 +37,180 @@ async def upload_pivot_definitions(file: UploadFile = File(...)) -> PivotDefinit
         raise HTTPException(status_code=422, detail=f"Not valid JSON: {exc}") from exc
 
     try:
-        pivots = pivot_defs_store.validate(payload)
+        analyses = defs_store.validate(payload)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     filename = file.filename or "analysis_profile.json"
-    pivot_defs_store.store.set(filename, pivots)
+    defs_store.store.set(filename, analyses)
 
-    return PivotDefinitionsSummary(
+    return AnalysisDefinitionsSummary(
         filename=filename,
-        pivot_count=len(pivots),
-        pivot_names=[p["name"] for p in pivots],
+        analysis_count=len(analyses),
+        analysis_names=[a["name"] for a in analyses],
     )
 
 
-@router.get("/definitions", response_model=PivotDefinitionsSummary)
-def get_pivot_definitions() -> PivotDefinitionsSummary:
-    if pivot_defs_store.store.definitions is None:
+@router.get("/definitions", response_model=AnalysisDefinitionsSummary)
+def get_analysis_definitions() -> AnalysisDefinitionsSummary:
+    if defs_store.store.definitions is None:
         raise HTTPException(status_code=404, detail="No Analysis Profile has been uploaded yet.")
-    return PivotDefinitionsSummary(
-        filename=pivot_defs_store.store.filename,
-        pivot_count=len(pivot_defs_store.store.definitions),
-        pivot_names=[p["name"] for p in pivot_defs_store.store.definitions],
+    return AnalysisDefinitionsSummary(
+        filename=defs_store.store.filename,
+        analysis_count=len(defs_store.store.definitions),
+        analysis_names=[a["name"] for a in defs_store.store.definitions],
     )
 
 
-@router.post("/report-template", response_model=ReportTemplateSummary)
-async def upload_report_template(file: UploadFile = File(...)) -> ReportTemplateSummary:
-    """Optional -- a .pptx to use as the base for every downloaded report
-    instead of the built-in layout (see report_generator.build_report). Not
-    validated beyond "is it a real pptx" here; report_template_builder falls
-    back to the first available layout for anything it can't name-match, so
-    an unfamiliar template still produces a deck."""
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=422, detail="Uploaded file is empty.")
+def _merge_entry(session: AuditSession, definition: dict) -> AnalysisRepositoryEntry:
+    """Merges a repository definition with its in-memory run result (if
+    "Run" has ever been clicked for it) into the full response shape."""
+    result = session.analysis_results.get(definition["id"])
+    merged = dict(definition)
+    if result:
+        merged.update({
+            "run_status": result.run_status,
+            "plan_text": result.plan_text,
+            "generated_code": result.generated_code,
+            "result_table": result.result_table,
+            "result_columns": result.result_columns,
+            "chart_type": result.chart_type,
+            "chart_spec": result.chart_spec,
+            "interpretation": result.interpretation,
+            "error": result.error,
+            "drilldown_suggestions": result.drilldown_suggestions,
+        })
+    return AnalysisRepositoryEntry(**merged)
+
+
+@router.get("/repository/{session_id}", response_model=AnalysisRepositoryResponse)
+def get_repository(session_id: str) -> AnalysisRepositoryResponse:
+    session = _get_session_or_404(session_id)
+    definitions = analysis_repository.get_repository(session_id)
+    return AnalysisRepositoryResponse(
+        session_id=session_id, entries=[_merge_entry(session, d) for d in definitions]
+    )
+
+
+@router.post("/repository/{session_id}/custom", response_model=AnalysisRepositoryEntry)
+def add_custom_analysis(session_id: str, body: AddCustomAnalysisRequest) -> AnalysisRepositoryEntry:
+    session = _get_session_or_404(session_id)
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="Give the analysis a name.")
+    if not body.calculation_intent.strip():
+        raise HTTPException(status_code=422, detail="Describe what this analysis should show.")
+    entry = analysis_repository.add_custom_entry(
+        session_id, body.name.strip(), body.description.strip(), body.calculation_intent.strip(), body.input_columns
+    )
+    return _merge_entry(session, entry)
+
+
+@router.post("/repository/{session_id}/suggest", response_model=SuggestAnalysisEntriesResponse)
+def suggest_analyses(session_id: str) -> SuggestAnalysisEntriesResponse:
+    session = _get_session_or_404(session_id)
     try:
-        Presentation(io.BytesIO(raw))
+        suggestions = analysis_suggester.suggest_analyses(session.df)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Not a valid .pptx file: {exc}") from exc
-
-    filename = file.filename or "report_template.pptx"
-    report_template_store.store.set(filename, raw)
-    return ReportTemplateSummary(filename=filename)
+        raise HTTPException(status_code=502, detail=f"Analysis suggestion agent (OpenRouter) is unavailable: {exc}") from exc
+    new_entries = analysis_repository.add_ai_suggested_entries(session_id, suggestions)
+    return SuggestAnalysisEntriesResponse(session_id=session_id, entries=[_merge_entry(session, e) for e in new_entries])
 
 
-@router.get("/report-template", response_model=ReportTemplateSummary)
-def get_report_template() -> ReportTemplateSummary:
-    return ReportTemplateSummary(filename=report_template_store.store.filename)
-
-
-@router.delete("/report-template", response_model=ReportTemplateSummary)
-def clear_report_template() -> ReportTemplateSummary:
-    report_template_store.store.clear()
-    return ReportTemplateSummary(filename=None)
-
-
-@router.post("/suggest", response_model=SuggestPivotsResponse)
-def suggest_pivots(body: SuggestPivotsRequest) -> SuggestPivotsResponse:
-    session = _get_session_or_404(body.session_id)
-    try:
-        suggestions = pivot_suggester.suggest_pivots(session.df)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Pivot suggestion agent (Groq) is unavailable: {exc}") from exc
-    return SuggestPivotsResponse(session_id=body.session_id, suggestions=suggestions)
-
-
-@router.post("/{session_id}/pivots", response_model=PivotReport)
-def apply_pivots(session_id: str, body: ApplyPivotsRequest | None = None) -> PivotReport:
+@router.post("/repository/{session_id}/entries/{entry_id}/accept", response_model=AnalysisRepositoryEntry)
+def accept_entry(session_id: str, entry_id: str) -> AnalysisRepositoryEntry:
     session = _get_session_or_404(session_id)
-    if pivot_defs_store.store.definitions is None:
-        raise HTTPException(
-            status_code=422,
-            detail="No Analysis Profile has been uploaded yet -- upload one (with your pivot table "
-                   "definitions) before analysis can run. There is no default.",
-        )
-    # `extra_pivots` omitted (None) means "leave the AI/custom pivots already
-    # applied for this session alone" -- a caller that only wants to change
-    # slicer filters (e.g. the Report page) doesn't have to resend the
-    # Analysis page's full accepted list to avoid dropping them.
-    if body is not None and body.extra_pivots is not None:
-        session.extra_pivot_defs = body.extra_pivots
-    extra_pivots = session.extra_pivot_defs
-
-    # `pivot_filters` is merged per-pivot-id, not replaced wholesale -- a
-    # caller touching one pivot's filters (or adding a shared filter across
-    # several) shouldn't blow away filters already saved for pivots it
-    # didn't mention. Callers that DO want to clear a pivot's filters must
-    # send it explicitly with an empty list, not omit the key.
-    if body is not None and body.pivot_filters:
-        session.pivot_filter_state = {**session.pivot_filter_state, **body.pivot_filters}
-    pivot_filters = session.pivot_filter_state
-
-    combined_defs = list(pivot_defs_store.store.definitions) + extra_pivots
-
-    results, skipped_notes = pivot_engine.apply_pivots(session.df, combined_defs, pivot_filters=pivot_filters)
-    session.pivots = results
-    session.pivot_skipped_notes = skipped_notes
-    return _to_pivot_report(session)
+    entry = analysis_repository.set_entry_status(session_id, entry_id, "approved")
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Analysis entry not found in this session's repository.")
+    return _merge_entry(session, entry)
 
 
-@router.get("/{session_id}/pivots", response_model=PivotReport)
-def get_pivots(session_id: str) -> PivotReport:
-    return _to_pivot_report(_get_session_or_404(session_id))
-
-
-@router.get("/{session_id}/report-filters", response_model=ReportFiltersResponse)
-def get_report_filters(session_id: str) -> ReportFiltersResponse:
+@router.post("/repository/{session_id}/entries/{entry_id}/reject", response_model=AnalysisRepositoryEntry)
+def reject_entry(session_id: str, entry_id: str) -> AnalysisRepositoryEntry:
     session = _get_session_or_404(session_id)
-    return ReportFiltersResponse(session_id=session.session_id, filters=session.report_filters)
+    entry = analysis_repository.set_entry_status(session_id, entry_id, "rejected")
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Analysis entry not found in this session's repository.")
+    return _merge_entry(session, entry)
 
 
-@router.post("/{session_id}/report-filters", response_model=ReportFiltersResponse)
-def set_report_filters(session_id: str, body: SetReportFiltersRequest) -> ReportFiltersResponse:
-    """The ONE shared filter set for the whole downloaded report -- replaces
-    it wholesale (there's only one, unlike the per-pivot pivot_filters map).
-    Report-time only -- never touches session.pivots. Selecting 2+ values
-    for a column here means the report gets one slide per value for every
-    pivot, instead of one slide combining them (see report_generator)."""
+def _run_entry(session: AuditSession, session_id: str, entry: dict) -> AnalysisRepositoryEntry:
+    """Runs the Analysis Agent for one entry and stores the result on the
+    session, in-memory. Never raises on an agent-side failure -- that's
+    recorded as run_status="error" so one entry's failure never blocks the
+    rest of the page, mirroring the feature system's skipped_notes
+    philosophy."""
+    computation = analysis_engine.run_analysis(session_id, entry, session.df)
+    result = AnalysisResult(
+        id=entry["id"],
+        run_status="error" if computation.error and computation.result_table is None else "done",
+        plan_text=computation.plan_text,
+        generated_code=computation.generated_code,
+        result_table=computation.result_table,
+        result_columns=computation.result_columns,
+        chart_type=computation.chart_type,
+        chart_spec=computation.chart_spec,
+        interpretation=computation.interpretation,
+        error=computation.error,
+        drilldown_suggestions=[
+            {"id": f"{entry['id']}_dd{i}", **d} for i, d in enumerate(computation.drilldown_suggestions or [])
+        ],
+    )
+    session.analysis_results[entry["id"]] = result
+    return _merge_entry(session, entry)
+
+
+@router.post("/repository/{session_id}/entries/{entry_id}/run", response_model=AnalysisRepositoryEntry)
+def run_entry(session_id: str, entry_id: str) -> AnalysisRepositoryEntry:
     session = _get_session_or_404(session_id)
-    session.report_filters = body.filters
-    return ReportFiltersResponse(session_id=session.session_id, filters=session.report_filters)
+    entry = analysis_repository.get_entry(session_id, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Analysis entry not found in this session's repository.")
+    if entry["status"] == "rejected":
+        raise HTTPException(status_code=422, detail="This analysis was rejected and can't be run.")
+    return _run_entry(session, session_id, entry)
 
 
-@router.get("/{session_id}/report-filter-scope", response_model=ReportFilterScopeResponse)
-def get_report_filter_scope(session_id: str) -> ReportFilterScopeResponse:
-    """Merges any explicit per-pivot overrides with report_generator's
-    default scope exclusions (see DEFAULT_SCOPE_EXCLUSIONS) so the Report
-    page's filter-scope chips reflect the same defaults the downloaded .pptx
-    actually uses, without requiring the user to have touched a chip first."""
+@router.post("/repository/{session_id}/entries/{entry_id}/drilldowns/{drilldown_id}/trigger", response_model=AnalysisRepositoryEntry)
+def trigger_drilldown(session_id: str, entry_id: str, drilldown_id: str) -> AnalysisRepositoryEntry:
     session = _get_session_or_404(session_id)
-    active_columns = [f.column for f in session.report_filters]
-    scope = dict(session.pivot_filter_scope)
-    for pivot in session.pivots:
-        if pivot.id in scope:
-            continue
-        default = report_generator.resolve_default_scope(pivot.name, active_columns)
-        if default is not None:
-            scope[pivot.id] = default
-    return ReportFilterScopeResponse(session_id=session.session_id, scope=scope)
+    parent_result = session.analysis_results.get(entry_id)
+    if parent_result is None:
+        raise HTTPException(status_code=404, detail="This analysis hasn't been run yet -- run it before exploring a drilldown.")
 
+    suggestion = next((d for d in parent_result.drilldown_suggestions if d.id == drilldown_id), None)
+    if suggestion is None:
+        raise HTTPException(status_code=404, detail="Drilldown suggestion not found for this analysis.")
+    if suggestion.triggered:
+        child = analysis_repository.get_entry(session_id, suggestion.child_entry_id)
+        if child is not None:
+            return _merge_entry(session, child)
 
-@router.post("/{session_id}/report-filter-scope", response_model=ReportFilterScopeResponse)
-def set_report_filter_scope(session_id: str, body: SetReportFilterScopeRequest) -> ReportFilterScopeResponse:
-    """Which of the shared report_filters columns actually apply to ONE
-    pivot -- e.g. pivot_1 scoped to just ["Country of Origin"] ignores
-    Origin/Carrier/Product/departure-range even though they're set overall.
-    `columns=None` clears the override (back to "every active column
-    applies", the default). Only touches this one pivot id."""
-    session = _get_session_or_404(session_id)
-    if body.columns is None:
-        session.pivot_filter_scope.pop(body.pivot_id, None)
-    else:
-        session.pivot_filter_scope[body.pivot_id] = body.columns
-    return ReportFilterScopeResponse(session_id=session.session_id, scope=session.pivot_filter_scope)
+    child_entry = analysis_repository.add_drilldown_entry(session_id, entry_id, suggestion.model_dump())
+    suggestion.triggered = True
+    suggestion.child_entry_id = child_entry["id"]
 
-
-@router.get("/{session_id}/report-titles", response_model=ReportTitlesResponse)
-def get_report_titles(session_id: str) -> ReportTitlesResponse:
-    session = _get_session_or_404(session_id)
-    return ReportTitlesResponse(session_id=session.session_id, titles=session.report_titles)
-
-
-@router.post("/{session_id}/report-titles", response_model=ReportTitlesResponse)
-def set_report_title(session_id: str, body: SetReportTitleRequest) -> ReportTitlesResponse:
-    """Purely cosmetic -- renames a pivot's slide heading in the downloaded
-    report (and the prefix of any of its multiplied variants). `title=None`
-    clears the override, back to the pivot's own name."""
-    session = _get_session_or_404(session_id)
-    if body.title is None or not body.title.strip():
-        session.report_titles.pop(body.pivot_id, None)
-    else:
-        session.report_titles[body.pivot_id] = body.title.strip()
-    return ReportTitlesResponse(session_id=session.session_id, titles=session.report_titles)
+    return _run_entry(session, session_id, child_entry)
 
 
 @router.get("/{session_id}/overall", response_model=OverallAnalysisReport)
 def get_overall_analysis(session_id: str) -> OverallAnalysisReport:
     session = _get_session_or_404(session_id)
-    highlights = overall_analysis.build_highlights(len(session.df), session.features, session.pivots)
+    definitions = analysis_repository.get_repository(session_id)
+    done_entries = [
+        _merge_entry(session, d).model_dump()
+        for d in definitions
+        if session.analysis_results.get(d["id"], None) and session.analysis_results[d["id"]].run_status == "done"
+    ]
+    highlights = overall_analysis.build_highlights(len(session.df), session.features, done_entries)
     try:
         narrative = overall_analysis_agent.generate_narrative(len(session.df), highlights)
     except Exception as exc:
         raise HTTPException(
-            status_code=502, detail=f"Overall analysis narrative agent (Groq) is unavailable: {exc}"
+            status_code=502, detail=f"Overall analysis narrative agent (OpenRouter) is unavailable: {exc}"
         ) from exc
     report = OverallAnalysisReport(
         session_id=session_id, row_count=len(session.df), highlights=highlights, narrative=narrative
     )
     session.overall_analysis = report
     return report
-
-
-@router.get("/{session_id}/report")
-def download_report(session_id: str):
-    """Streams a .pptx built from every current pivot, each recomputed fresh
-    from the raw data using the session's one shared report_filters (see
-    /report-filters) -- a column with 2+ selected values there fans out into
-    one slide per value, per pivot. Every chart is native, built fresh,
-    never a picture."""
-    session = _get_session_or_404(session_id)
-    if not session.pivots:
-        raise HTTPException(
-            status_code=422,
-            detail="No pivot tables have been computed yet -- run the Analysis step before downloading a report.",
-        )
-
-    combined_defs = list(pivot_defs_store.store.definitions or []) + session.extra_pivot_defs
-    pptx_bytes = report_generator.build_report(
-        source_label=report_generator.REPORT_NAME,
-        df=session.df,
-        pivots=session.pivots,
-        definitions=combined_defs,
-        report_filters=[f.model_dump() for f in session.report_filters],
-        pivot_filter_scope=session.pivot_filter_scope,
-        report_titles=session.report_titles,
-        overall=session.overall_analysis,
-        template_bytes=report_template_store.store.content,
-    )
-
-    filename = f"{report_generator.REPORT_NAME}.pptx"
-    return Response(
-        content=pptx_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )

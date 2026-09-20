@@ -1,30 +1,29 @@
 """AI agent that looks at the audited dataframe's columns/dtypes and
-proposes new engineered features -- the "ai_suggested" source in the
-feature repository (see feature_repository.py). It only picks WHICH
-columns to combine and describes the calculation in plain English; it never
-computes a value itself and isn't limited to any fixed set of calculation
-shapes -- the Feature Agent (feature_agent.py) is what actually plans,
-writes, executes and validates the code for whatever gets accepted. Runs on
-OpenRouter, never Groq. Anything referencing a column that doesn't exist in
-the current data (a hallucination) is dropped rather than surfaced, since a
-broken suggestion is worse than a missing one.
+proposes new chart-worthy analyses -- the "ai_suggested" source in the
+analysis repository (see analysis_repository.py). It only picks WHICH
+columns/aggregations to explore and describes the analysis in plain
+English; it never computes a value itself -- the Analysis Agent
+(analysis_agent.py) is what actually plans, writes, and executes the code
+for whatever gets accepted. Runs on OpenRouter, never Groq. Anything
+referencing a column that doesn't exist in the current data (a
+hallucination) is dropped rather than surfaced, since a broken suggestion
+is worse than a missing one.
 """
 import json
-import re
 
 import pandas as pd
 from openai import OpenAI
 
 from app.config import OPENROUTER_API_KEY, OPENROUTER_MODEL
 
-SYSTEM_PROMPT = """You are a data engineer proposing new engineered columns \
-for an operational cold-chain shipment dataset, to help a program manager \
-build KPIs and reports. You'll be given the current column names, dtypes, \
-and a few sample values per column.
+SYSTEM_PROMPT = """You are a data analyst proposing new chart-worthy analyses for an \
+operational cold-chain shipment dataset, to help a program manager spot \
+trends and outliers. You'll be given the current column names, dtypes, and \
+a few sample values per column.
 
-Propose up to 5 NEW feature ideas that would be genuinely useful for \
-cold-chain reporting (e.g. transit duration, percentage breakdowns of time \
-in/out of spec, seasonality, lane- or carrier-level aggregates). Every \
+Propose up to 5 NEW analysis ideas that would be genuinely useful for \
+cold-chain reporting (e.g. shipments by carrier, temperature excursions \
+over time, top origins by volume, compliance rate by lane). Every \
 suggestion MUST reference only columns that appear in the given column \
 list -- never invent a column name.
 
@@ -32,11 +31,10 @@ Respond with ONLY a JSON object of this exact shape, no markdown, no \
 commentary:
 {"suggestions": [
   {
-    "name": "short title, e.g. 'Time in Transit'",
+    "name": "short title, e.g. 'Shipments by Carrier'",
     "description": "one plain-English sentence on why this is useful",
-    "output_column": "short column name for the new field",
-    "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below",
-    "input_columns": ["exact column name(s) this calculation reads"]
+    "calculation_intent": "a precise, unambiguous plain-English description of exactly what to group/aggregate from the columns below",
+    "input_columns": ["exact column name(s) this analysis reads"]
   }
 ]}"""
 
@@ -56,12 +54,12 @@ def _columns_block(df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
-def suggest_features(df: pd.DataFrame) -> list[dict]:
+def suggest_analyses(df: pd.DataFrame) -> list[dict]:
     """Returns repository-shaped candidate dicts: name, description,
-    output_column, calculation_intent, input_columns -- ready to hand to
-    feature_repository.add_ai_suggested_entries."""
+    calculation_intent, input_columns -- ready to hand to
+    analysis_repository.add_ai_suggested_entries."""
     client = _client()
-    user_prompt = f"Columns:\n{_columns_block(df)}\n\nPropose the features now."
+    user_prompt = f"Columns:\n{_columns_block(df)}\n\nPropose the analyses now."
     response = client.chat.completions.create(
         model=OPENROUTER_MODEL,
         temperature=0.4,
@@ -82,16 +80,14 @@ def suggest_features(df: pd.DataFrame) -> list[dict]:
     for spec in candidates:
         if not isinstance(spec, dict):
             continue
-        if not spec.get("name") or not spec.get("output_column") or not spec.get("calculation_intent"):
+        if not spec.get("name") or not spec.get("calculation_intent"):
             continue
         input_columns = spec.get("input_columns") or []
         if input_columns and not set(input_columns).issubset(available_columns):
             continue
-        output_column = re.sub(r"\W+", "_", spec["output_column"].strip().lower()).strip("_")
         suggestions.append({
             "name": spec["name"],
             "description": spec.get("description", ""),
-            "output_column": output_column,
             "calculation_intent": spec["calculation_intent"],
             "input_columns": input_columns,
         })

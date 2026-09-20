@@ -1,81 +1,8 @@
-import { useState } from "react";
-import type { LaneResult, SegmentOutliersResult } from "../api/audit";
+import type { SegmentOutliersResult } from "../api/audit";
 import "./OutlierTabs.css";
 
 interface Props {
   data: SegmentOutliersResult;
-}
-
-function LaneCard({ lane, columns }: { lane: LaneResult; columns: string[] }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="outlier-lane-card">
-      <button
-        type="button"
-        className="outlier-lane-card__header"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <div className="outlier-lane-card__route">
-          <span>{lane.origin || "—"}</span>
-          <span className="outlier-lane-card__arrow">→</span>
-          <span>{lane.destination || "—"}</span>
-        </div>
-        <div className="outlier-lane-card__meta">
-          <span className={`outlier-lane-card__status-badge outlier-lane-card__status-badge--${lane.status_type}`}>
-            {lane.status_type === "own_lane"
-              ? "Own-Lane Fence"
-              : lane.status_type === "peer_shrunk"
-              ? "Peer-Shrunk"
-              : "Insufficient"}
-          </span>
-          {lane.lower_fence !== null && lane.upper_fence !== null && (
-            <span className="outlier-lane-card__fence">
-              [{lane.lower_fence.toFixed(1)} – {lane.upper_fence.toFixed(1)} days]
-            </span>
-          )}
-          <span className={`outlier-lane-card__count${lane.n_outliers > 0 ? " outlier-lane-card__count--flagged" : ""}`}>
-            {lane.n_outliers} / {lane.n_trips} outlier{lane.n_outliers !== 1 ? "s" : ""}
-          </span>
-        </div>
-        <span className="outlier-lane-card__chevron">{expanded ? "▲" : "▼"}</span>
-      </button>
-
-      {expanded && lane.outlier_rows.length > 0 && (
-        <div className="outlier-lane-card__trips">
-          <table className="outlier-lane-card__table">
-            <thead>
-              <tr>
-                {columns.map((col) => (
-                  <th key={col}>{col}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {lane.outlier_rows.map((row, idx) => (
-                <tr key={idx}>
-                  {columns.map((col) => {
-                    const val = row[col];
-                    return (
-                      <td key={col}>
-                        {val === null || val === undefined ? "—" : String(val)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {expanded && lane.outlier_rows.length === 0 && lane.n_outliers === 0 && (
-        <div className="outlier-lane-card__trips outlier-lane-card__trips--empty">
-          No outlier rows in this lane.
-        </div>
-      )}
-    </div>
-  );
 }
 
 export default function SegmentOutlierTab({ data }: Props) {
@@ -89,31 +16,49 @@ export default function SegmentOutlierTab({ data }: Props) {
 
   return (
     <div className="outlier-tab">
-      <div className="outlier-tab__summary">
-        <span className="outlier-tab__summary-stat">
-          <strong>{data.total_trips.toLocaleString()}</strong> trips analyzed
-        </span>
-        <span className="outlier-tab__summary-stat outlier-tab__summary-stat--flagged">
-          <strong>{data.flagged_trips}</strong> outlier{data.flagged_trips !== 1 ? "s" : ""} detected
-        </span>
-        <span className="outlier-tab__summary-stat">
-          <strong>{data.lanes.length}</strong> lane{data.lanes.length !== 1 ? "s" : ""}
-        </span>
-      </div>
+      <p className="outlier-tab__hint">
+        Trips whose own transit duration (Segment Length) falls outside their lane's Tukey fence -- the outliers
+        themselves, not the fence numbers.
+      </p>
 
       {data.flagged_trips === 0 && (
-        <p className="outlier-tab__all-clear">No segment length outliers detected.</p>
+        <p className="outlier-tab__all-clear">No trips fell outside their lane's duration fence.</p>
       )}
 
-      <div className="outlier-tab__lanes">
-        {data.lanes.map((lane) => (
-          <LaneCard
-            key={`${lane.origin}__${lane.destination}`}
-            lane={lane}
-            columns={data.columns}
-          />
-        ))}
-      </div>
+      {data.flagged_trips > 0 && (
+        <div className="outlier-tab__table-wrap">
+          <table className="outlier-tab__table">
+            <thead>
+              <tr>
+                <th>Serial Number</th>
+                <th>Trip ID</th>
+                <th>Origin</th>
+                <th>Destination</th>
+                <th>Segment Days</th>
+                <th>Lane Fence (Days)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.outlier_rows.map((r, idx) => (
+                <tr key={`${idx}::${r.serial ?? "?"}::${r.trip_id ?? "?"}`}>
+                  <td>{r.serial ?? "—"}</td>
+                  <td>{r.trip_id ?? "—"}</td>
+                  <td>{r.origin}</td>
+                  <td>{r.destination}</td>
+                  <td>{r.segment_days ?? "—"}</td>
+                  <td>
+                    {r.lower_fence_days != null && r.upper_fence_days != null
+                      ? `${r.lower_fence_days} – ${r.upper_fence_days}`
+                      : "—"}
+                  </td>
+                  <td>{r.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

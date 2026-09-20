@@ -1,168 +1,95 @@
 import { useRef, useState } from "react";
-import type { FeatureSuggestion } from "../api/audit";
 import "./AddKpiForm.css";
+
+export interface NewCustomKpi {
+  name: string;
+  calculation_intent: string;
+  input_columns: string[];
+}
 
 interface AddKpiFormProps {
   columns: string[];
   busy: boolean;
-  onAdd: (kpi: FeatureSuggestion) => void;
+  onAdd: (kpi: NewCustomKpi) => void;
   onCancel: () => void;
 }
 
-type KpiMode = "formula" | "ai";
-
-// Wraps a column name in backticks for insertion into the formula textarea
-// -- mirrors the backend's own auto-quoting (feature_engineering.py's
-// _autoquote_columns), so a name with spaces still reads correctly, but
-// clicking a chip does it for you instead of requiring you to know the
-// backtick syntax.
-function quoteColumn(col: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(col) ? col : `\`${col}\``;
-}
-
 export default function AddKpiForm({ columns, busy, onAdd, onCancel }: AddKpiFormProps) {
-  const [mode, setMode] = useState<KpiMode>("formula");
   const [name, setName] = useState("");
-  const [formula, setFormula] = useState("");
-  const [calculationPrompt, setCalculationPrompt] = useState("");
+  const [calculationIntent, setCalculationIntent] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const formulaRef = useRef<HTMLTextAreaElement>(null);
+  const [usedColumns, setUsedColumns] = useState<Set<string>>(new Set());
+  const textRef = useRef<HTMLTextAreaElement>(null);
 
   const insertColumn = (col: string) => {
-    const el = formulaRef.current;
-    const token = quoteColumn(col);
+    const el = textRef.current;
     if (!el) {
-      setFormula((prev) => `${prev}${token}`);
+      setCalculationIntent((prev) => `${prev}${col}`);
+      setUsedColumns((prev) => new Set(prev).add(col));
       return;
     }
-    const start = el.selectionStart ?? formula.length;
-    const end = el.selectionEnd ?? formula.length;
-    const next = `${formula.slice(0, start)}${token}${formula.slice(end)}`;
-    setFormula(next);
+    const start = el.selectionStart ?? calculationIntent.length;
+    const end = el.selectionEnd ?? calculationIntent.length;
+    const next = `${calculationIntent.slice(0, start)}${col}${calculationIntent.slice(end)}`;
+    setCalculationIntent(next);
+    setUsedColumns((prev) => new Set(prev).add(col));
     requestAnimationFrame(() => {
       el.focus();
-      el.setSelectionRange(start + token.length, start + token.length);
+      el.setSelectionRange(start + col.length, start + col.length);
     });
   };
 
   const handleSubmit = () => {
     if (!name.trim()) return setError("Give the KPI a name.");
-
-    if (mode === "formula") {
-      if (!formula.trim()) return setError("Write a formula.");
-      setError(null);
-      onAdd({
-        id: `custom_${Date.now().toString(36)}`,
-        name: name.trim(),
-        description: `Formula: ${formula.trim()}`,
-        output_column: name.trim(),
-        type: "custom_formula",
-        formula: formula.trim(),
-        summary: "stats",
-        start_column: null,
-        end_column: null,
-        unit: null,
-        numerator_columns: null,
-        denominator_columns: null,
-        source_columns: null,
-        calculation_prompt: null,
-        generated_code: null,
-      });
-      return;
-    }
-
-    if (!calculationPrompt.trim()) return setError("Describe the calculation you want.");
+    if (!calculationIntent.trim()) return setError("Describe what this feature should calculate.");
     setError(null);
     onAdd({
-      id: `ai_${Date.now().toString(36)}`,
       name: name.trim(),
-      description: calculationPrompt.trim(),
-      output_column: name.trim(),
-      type: "ai_generated",
-      formula: calculationPrompt.trim(),
-      summary: "stats",
-      start_column: null,
-      end_column: null,
-      unit: null,
-      numerator_columns: null,
-      denominator_columns: null,
-      source_columns: null,
-      calculation_prompt: calculationPrompt.trim(),
-      generated_code: null,
+      calculation_intent: calculationIntent.trim(),
+      input_columns: columns.filter((c) => usedColumns.has(c)),
     });
   };
 
   return (
     <div className="add-kpi-form">
-      <div className="add-kpi-form__mode-toggle">
-        <button
-          type="button"
-          className={`add-kpi-form__mode-btn ${mode === "formula" ? "add-kpi-form__mode-btn--active" : ""}`}
-          onClick={() => setMode("formula")}
-        >
-          Write a formula
-        </button>
-        <button
-          type="button"
-          className={`add-kpi-form__mode-btn ${mode === "ai" ? "add-kpi-form__mode-btn--active" : ""}`}
-          onClick={() => setMode("ai")}
-        >
-          Describe it, AI writes the code
-        </button>
-      </div>
-
       <label className="add-kpi-form__field">
         <span>KPI name</span>
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Time in Transit" />
       </label>
 
-      {mode === "formula" ? (
-        <>
-          <label className="add-kpi-form__field">
-            <span>Formula</span>
-            <textarea
-              ref={formulaRef}
-              className="add-kpi-form__formula-input"
-              value={formula}
-              onChange={(e) => setFormula(e.target.value)}
-              rows={3}
-              placeholder="e.g. (`Time Below Ideal Hours` + `Time Above Ideal Hours`) / `Time Below Low Hours` * 100"
-            />
-          </label>
+      <label className="add-kpi-form__field">
+        <span>What should this feature calculate?</span>
+        <textarea
+          ref={textRef}
+          className="add-kpi-form__formula-input"
+          value={calculationIntent}
+          onChange={(e) => setCalculationIntent(e.target.value)}
+          rows={4}
+          placeholder="e.g. Average number of hours between Hub Arrival Time and Hub Departure Time, per Origin-Destination lane"
+        />
+        <p className="add-kpi-form__ai-hint">
+          The Feature Agent plans the calculation, writes pandas code for it, runs it in a restricted
+          sandbox, and validates the result before it's added -- describe the calculation in plain
+          English or as a formula, either works.
+        </p>
+      </label>
 
-          <div className="add-kpi-form__field">
-            <span>Click a column to insert it</span>
-            <div className="add-kpi-form__column-chips">
-              {columns.map((c) => (
-                <button type="button" key={c} className="add-kpi-form__chip" onClick={() => insertColumn(c)}>
-                  {c}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      ) : (
-        <label className="add-kpi-form__field">
-          <span>Describe the calculation</span>
-          <textarea
-            className="add-kpi-form__formula-input"
-            value={calculationPrompt}
-            onChange={(e) => setCalculationPrompt(e.target.value)}
-            rows={4}
-            placeholder="e.g. Average number of hours between Hub Arrival Time and Hub Departure Time, per Origin-Destination lane"
-          />
-          <p className="add-kpi-form__ai-hint">
-            The AI writes pandas code for this and it runs in a restricted sandbox -- no file access, no
-            imports, no loops. Use this only when the calculation can't be written as a plain formula.
-          </p>
-        </label>
-      )}
+      <div className="add-kpi-form__field">
+        <span>Click a column to insert it</span>
+        <div className="add-kpi-form__column-chips">
+          {columns.map((c) => (
+            <button type="button" key={c} className="add-kpi-form__chip" onClick={() => insertColumn(c)}>
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {error && <p className="add-kpi-form__error">{error}</p>}
 
       <div className="add-kpi-form__actions">
         <button type="button" className="add-kpi-form__btn add-kpi-form__btn--primary" disabled={busy} onClick={handleSubmit}>
-          {busy ? (mode === "ai" ? "Generating…" : "Adding…") : "Add KPI"}
+          {busy ? "Adding…" : "Add KPI"}
         </button>
         <button type="button" className="add-kpi-form__btn add-kpi-form__btn--secondary" disabled={busy} onClick={onCancel}>
           Cancel

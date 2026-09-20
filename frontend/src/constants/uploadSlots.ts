@@ -36,18 +36,10 @@ export const UPLOAD_SLOTS: UploadSlotConfig[] = [
   {
     id: "analysisProfile",
     title: "Analysis Profile",
-    description: "JSON pivot definitions for the Analysis step (e.g. carrier reliability).",
+    description: "JSON analysis definitions for the Analysis Agent -- plain-English calculation intents (e.g. carrier reliability trend), not fixed pivot specs.",
     required: false,
     accept: ".json",
     acceptLabel: "JSON",
-  },
-  {
-    id: "reportTemplate",
-    title: "Report Template",
-    description: "Optional PowerPoint template to use as the base for the downloaded report. Falls back to the built-in layout if not provided.",
-    required: false,
-    accept: ".pptx",
-    acceptLabel: "PowerPoint (.pptx)",
   },
   {
     id: "rawLight",

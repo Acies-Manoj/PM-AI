@@ -19,6 +19,17 @@ LLM_MODEL = os.getenv("LLM_MODEL", "google/gemini-2.5-flash-lite")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 
+# The Feature Agent (think / write code / validate) runs entirely on
+# OpenRouter -- never Groq. Defaults to the same cost-effective model as the
+# Planner; override independently in .env if a different model suits the
+# code-generation + validation workload better.
+FEATURE_AGENT_MODEL = os.getenv("FEATURE_AGENT_MODEL", OPENROUTER_MODEL)
+
+# The Analysis Agent (think / write code / choose chart / write chart spec /
+# interpret / suggest drilldowns) runs entirely on OpenRouter -- same
+# convention as the Feature Agent above.
+ANALYSIS_AGENT_MODEL = os.getenv("ANALYSIS_AGENT_MODEL", OPENROUTER_MODEL)
+
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY", "")
 # Free tier uses api-free.deepl.com; Pro uses api.deepl.com
 DEEPL_API_URL = os.getenv("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")

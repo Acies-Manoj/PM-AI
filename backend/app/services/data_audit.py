@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from app.schemas import AuditIssue, IssueOption, OutlierChart
+from app.services.anomaly_detection import SENSOR_TYPE_COL
 
 HIGH_NULL_THRESHOLD_PCT = 50.0
 OUTLIER_IQR_MULTIPLIER = 3.0
@@ -32,6 +33,16 @@ CORE_IDENTITY_COLS = ["Product", "Origin", "Destination"]
 SAMPLE_ROWS = 5
 SAMPLE_COLS = 8
 NS = "::"  # separator for column-namespaced categories, e.g. "statistical_outliers::Mean Value"
+
+# Never offered as a droppable "constant value" column, even when every row
+# shares one value -- a single-sensor-type export (e.g. Temperature-only)
+# makes Sensor Type constant by definition, but outlier_detectors.py's
+# widen_by_sensor_type() needs its literal presence/values to pivot the
+# long (trip, sensor channel) rows into the _Temperature/_Light-suffixed
+# columns the Temperature Outliers tab reads. Dropping it silently breaks
+# that tab with no error -- just "column not found" -- so it's excluded
+# here rather than left to look like a harmless zero-information column.
+_PROTECTED_CONSTANT_COLUMNS = {SENSOR_TYPE_COL}
 
 
 # ---------------------------------------------------------------- helpers --
@@ -112,8 +123,12 @@ def detect_high_null_columns(df: pd.DataFrame, empty_cols: list[str]) -> pd.Seri
 def detect_constant_columns(df: pd.DataFrame) -> list[str]:
     """Columns with exactly one distinct non-null value -- zero information
     content. Naturally excludes fully-empty columns (those have 0 distinct
-    values, not 1)."""
-    return [c for c in df.columns if df[c].nunique(dropna=True) == 1]
+    values, not 1). Also excludes columns a downstream step depends on
+    structurally even when constant -- see _PROTECTED_CONSTANT_COLUMNS."""
+    return [
+        c for c in df.columns
+        if df[c].nunique(dropna=True) == 1 and str(c).strip() not in _PROTECTED_CONSTANT_COLUMNS
+    ]
 
 
 def detect_exact_duplicates(df: pd.DataFrame) -> pd.Series:
@@ -398,27 +413,19 @@ def run_audit(df: pd.DataFrame) -> list[AuditIssue]:
             ],
         ))
 
-    for col, n in detect_outlier_columns(df):
-        mask = detect_outlier_mask_for_column(df, col)
-        issues.append(AuditIssue(
-            id=_new_id(),
-            category=f"statistical_outliers{NS}{col}",
-            severity="warning",
-            title=col,
-            description=(
-                f"{n} row(s) fall far outside the typical range (beyond "
-                f"{OUTLIER_IQR_MULTIPLIER:.0f}x the interquartile range) for '{col}'. Worth a "
-                f"second look before these feed into KPI calculations."
-            ),
-            affected_row_count=n,
-            sample=_sample(df, mask),
-            requires_decision=True,
-            options=[
-                IssueOption(id="remove_affected_rows", label="Remove the outlier rows"),
-                IssueOption(id="keep", label="Keep them as-is"),
-            ],
-            chart=build_outlier_chart(df, col),
-        ))
+    # Generic per-column ("measurement") statistical outlier check
+    # intentionally removed from Overall Checks here: it used to fire one
+    # card per column matching _is_measurement_col (Mean/Min/Max Value,
+    # Standard Deviation, any "...Hours"/"...Days" column, Segment Length) --
+    # e.g. "Time Below Ideal Hours", "Segment Length (Days)". The dedicated
+    # Segment Outlier and Temperature Outlier tabs (outlier_detectors.py) now
+    # cover exactly this ground with domain-aware logic (per-lane Tukey
+    # fences, per-trip configured limits) instead of a blind IQR pass over
+    # every measurement column, so keeping both just duplicated the finding.
+    # detect_outlier_columns/detect_outlier_mask_for_column/build_outlier_chart
+    # are kept for detect_mask_for_category/apply_decision's sake, in case an
+    # older session still has a statistical_outliers issue from before this
+    # change.
 
     id_col = detect_id_column(df)
     for col, n in detect_missing_identifier_columns(df, id_col):

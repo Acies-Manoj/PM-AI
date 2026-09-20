@@ -28,7 +28,6 @@ const EMPTY_FILES: FilesState = {
   thresholds: null,
   customerKpis: null,
   analysisProfile: null,
-  reportTemplate: null,
   rawLight: null,
   rawTemperature: null,
 };

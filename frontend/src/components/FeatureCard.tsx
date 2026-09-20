@@ -1,14 +1,20 @@
 import type { FeatureResult } from "../api/audit";
 import { IconExpand, IconTag, IconShieldCheck, IconClock, IconPercent, IconCalendar } from "./icons";
+import PlanText from "./PlanText";
 import "./FeatureCard.css";
 
 interface FeatureCardProps {
   feature: FeatureResult;
   colorIndex?: number;
-  /** Present for AI-suggested/custom KPIs -- the formula it was built from. */
-  formula?: string;
   onExpand: () => void;
 }
+
+const SOURCE_LABELS: Record<string, string> = {
+  predefined: "Predefined",
+  planner: "Planner",
+  custom: "Custom",
+  ai_suggested: "AI",
+};
 
 export const STAT_LABELS: Record<string, string> = {
   mean: "Average",
@@ -55,7 +61,7 @@ export function Distribution({ entries, maxCount }: { entries: [string, number][
   );
 }
 
-export default function FeatureCard({ feature, colorIndex = 0, formula, onExpand }: FeatureCardProps) {
+export default function FeatureCard({ feature, colorIndex = 0, onExpand }: FeatureCardProps) {
   const total = feature.non_null_count + feature.null_count;
   const distributionEntries = Object.entries(feature.distribution);
   const statsEntries = displayStats(feature.stats);
@@ -73,12 +79,15 @@ export default function FeatureCard({ feature, colorIndex = 0, formula, onExpand
         </span>
         <div className="feature-card__header-text">
           <h3 className="feature-card__name">{feature.name}</h3>
-          {formula && <p className="feature-card__formula">ƒ {formula}</p>}
+          {feature.plan && <PlanText plan={feature.plan} className="feature-card__formula" />}
           <span className="feature-card__column">{feature.output_column}</span>
         </div>
         <div className="feature-card__badges">
-          {feature.id.startsWith("ai_") && <span className="feature-card__ai-badge">AI</span>}
-          {feature.id.startsWith("custom_") && <span className="feature-card__custom-badge">Custom</span>}
+          {feature.source !== "predefined" && (
+            <span className={feature.source === "ai_suggested" ? "feature-card__ai-badge" : "feature-card__custom-badge"}>
+              {SOURCE_LABELS[feature.source] ?? feature.source}
+            </span>
+          )}
         </div>
       </div>
       <p className="feature-card__description">{feature.description}</p>

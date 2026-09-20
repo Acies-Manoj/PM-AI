@@ -1,11 +1,11 @@
 import { useState } from "react";
-import type { FeatureSuggestion } from "../api/audit";
+import type { FeatureRepositoryEntry } from "../api/audit";
 import { IconExpand } from "./icons";
 import Modal from "./Modal";
 import "./FeatureSuggestionCard.css";
 
 interface FeatureSuggestionCardProps {
-  suggestion: FeatureSuggestion;
+  suggestion: FeatureRepositoryEntry;
   added: boolean;
   busy: boolean;
   onAdd: () => void;
@@ -26,7 +26,7 @@ export default function FeatureSuggestionCard({ suggestion, added, busy, onAdd }
 
           <button type="button" className="feature-suggestion__formula-toggle" onClick={() => setShowFormula(true)}>
             <IconExpand />
-            View formula
+            View calculation
           </button>
         </div>
 
@@ -38,7 +38,7 @@ export default function FeatureSuggestionCard({ suggestion, added, busy, onAdd }
       {showFormula && (
         <Modal title={suggestion.name} onClose={() => setShowFormula(false)}>
           <p className="feature-suggestion__modal-description">{suggestion.description}</p>
-          <p className="feature-suggestion__formula">ƒ {suggestion.formula}</p>
+          <p className="feature-suggestion__formula">ƒ {suggestion.calculation_intent}</p>
         </Modal>
       )}
     </>

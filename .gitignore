@@ -19,6 +19,7 @@ frontend/dist-ssr/
 
 # Generated output (not source)
 backend/generated_reports/
+backend/data/sessions/
 
 # Editor/OS
 .vscode/*

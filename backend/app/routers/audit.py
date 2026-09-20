@@ -8,9 +8,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.config import DATA_DIR
-from app.schemas import ApplyFeaturesRequest, AuditIssue, AuditReport, FeatureReport, ResolveRequest
-from app.services import data_audit, feature_engineering
-from app.services import feature_definitions_store as defs_store
+from app.schemas import AuditIssue, AuditReport, FeatureReport, ResolveRequest
+from app.services import data_audit, feature_engineering, feature_repository
 from app.services.audit_agent import generate_audit_analysis
 from app.services.audit_store import AuditSession, store
 from app.services.column_profiler import profile_dataframe
@@ -263,28 +262,56 @@ def get_issue_rows(session_id: str, issue_id: str, limit: int = MAX_ISSUE_ROWS):
     }
 
 
-@router.post("/{session_id}/features", response_model=FeatureReport)
-def apply_features(session_id: str, body: ApplyFeaturesRequest | None = None) -> FeatureReport:
-    session = _get_session_or_404(session_id)
-    if defs_store.store.definitions is None:
-        raise HTTPException(
-            status_code=422,
-            detail="No Customer KPI Profile has been uploaded yet -- upload one (with your feature "
-                   "definitions) before features can be computed. There is no default.",
+def _write_enriched_column_metadata(session: AuditSession) -> None:
+    """Re-profiles the CURRENT session dataframe (post-audit, post-feature)
+    and writes it as a new column_metadata_with_features.json alongside the
+    original column_metadata.json -- so downstream stages (Analysis,
+    Planner re-runs, Report) have a single file describing every column,
+    old and newly agent-computed, without needing to reconstruct it
+    themselves. Best-effort: a profiling failure shouldn't block the
+    feature response the PM is waiting on."""
+    try:
+        session_dir = _SESSIONS_DIR / session.session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        combined = {
+            "session_id": session.session_id,
+            "filename": session.filename,
+            "source": session.source,
+            "row_count": len(session.df),
+            "column_count": len(session.df.columns),
+            "columns": profile_dataframe(session.df),
+            "feature_columns": [f.output_column for f in session.features],
+        }
+        (session_dir / "column_metadata_with_features.json").write_text(
+            json.dumps(combined, indent=2, ensure_ascii=False), encoding="utf-8"
         )
+    except Exception:
+        pass
+
+
+@router.post("/{session_id}/features", response_model=FeatureReport)
+def apply_features(session_id: str) -> FeatureReport:
+    """Computes every APPROVED entry in this session's feature repository
+    (predefined + planner-approved + custom + accepted AI suggestions --
+    see feature_repository.py) via the Feature Agent. No Customer KPI
+    Profile is required: if none was uploaded, predefined simply
+    contributes zero entries and the other three sources still run."""
+    session = _get_session_or_404(session_id)
     # Always recompute from the pre-feature snapshot (not the possibly
-    # already-engineered `session.df`) so accepting another AI suggestion
-    # re-runs the full definition set cleanly instead of layering feature
+    # already-engineered `session.df`) so accepting another suggestion
+    # re-runs the full entry set cleanly instead of layering feature
     # columns on top of feature columns.
     if session.pre_feature_df is None:
         session.pre_feature_df = session.df.copy()
-    extra_features = body.extra_features if body else []
-    combined_defs = list(defs_store.store.definitions) + extra_features
 
-    new_df, results, skipped_notes = feature_engineering.apply_features(session.pre_feature_df, combined_defs)
+    entries = feature_repository.get_approved_entries(session_id)
+    new_df, results, skipped_notes = feature_engineering.apply_features(session_id, session.pre_feature_df, entries)
     session.df = new_df
     session.features = results
     session.feature_skipped_notes = skipped_notes
+
+    _write_enriched_column_metadata(session)
+
     return _to_feature_report(session)
 
 

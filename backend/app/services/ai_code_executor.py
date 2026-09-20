@@ -1,7 +1,7 @@
-"""Sandboxed execution for AI-generated pandas calculations. Used only by
-the "ai_generated" feature type (see feature_engineering.py), when no
-existing template -- lookup, extract_month, ratio, duration_hours,
-custom_formula -- can express the requested calculation.
+"""Sandboxed execution for AI-generated pandas calculations. Used by the
+Feature Agent (feature_agent.py, via run_generated_code -- one value per
+row) and the Analysis Agent (analysis_agent.py, via run_generated_table_code
+-- an aggregated chart table).
 
 Generated code is never trusted at face value: it's AST-validated against
 an allowlist before it's compiled, and executed with no builtins beyond a
@@ -19,6 +19,7 @@ API, not a hardened defense against a deliberately adversarial prompt.
 import ast
 import builtins
 
+import numpy as np
 import pandas as pd
 
 _ALLOWED_BUILTIN_NAMES = {
@@ -77,7 +78,7 @@ def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
     _validate_ast(tree)
 
     compiled = compile(tree, filename="<ai_generated_feature>", mode="exec")
-    sandbox_globals = {"__builtins__": _SAFE_BUILTINS, "pd": pd}
+    sandbox_globals = {"__builtins__": _SAFE_BUILTINS, "pd": pd, "np": np}
     sandbox_locals: dict = {"df": df.copy()}
 
     try:
@@ -91,3 +92,34 @@ def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
     if len(result) != len(df):
         raise ValueError("Generated code's `result` doesn't have one value per row.")
     return result.set_axis(df.index)
+
+
+def run_generated_table_code(code: str, df: pd.DataFrame, max_rows: int = 500) -> list[dict]:
+    """Same AST-sandboxed execution as run_generated_code, but for the
+    Analysis Agent (see analysis_agent.py): `result` here is expected to be
+    an aggregated pd.DataFrame (a groupby/pivot-shaped chart table), not a
+    per-row Series, since a chart's underlying table always has fewer rows
+    than the source data. Returns the table as a list of row dicts, capped
+    at `max_rows` so a runaway group-by can't ship an unbounded payload."""
+    try:
+        tree = ast.parse(code, mode="exec")
+    except SyntaxError as exc:
+        raise ValueError(f"Generated code has a syntax error: {exc}") from exc
+
+    _validate_ast(tree)
+
+    compiled = compile(tree, filename="<ai_generated_analysis>", mode="exec")
+    sandbox_globals = {"__builtins__": _SAFE_BUILTINS, "pd": pd, "np": np}
+    sandbox_locals: dict = {"df": df.copy()}
+
+    try:
+        exec(compiled, sandbox_globals, sandbox_locals)  # noqa: S102 -- sandboxed above
+    except Exception as exc:
+        raise ValueError(f"Generated code raised an error while running: {exc}") from exc
+
+    result = sandbox_locals.get("result")
+    if not isinstance(result, pd.DataFrame):
+        raise ValueError("Generated code did not assign a pandas DataFrame to `result`.")
+    if result.empty:
+        raise ValueError("Generated code's `result` table is empty.")
+    return result.head(max_rows).to_dict(orient="records")

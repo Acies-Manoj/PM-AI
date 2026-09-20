@@ -62,9 +62,16 @@ export interface FeatureResult {
   null_count: number;
   distribution: Record<string, number>;
   stats: Record<string, number>;
-  // Only set for an "ai_generated" feature -- the pandas code Groq wrote to
-  // compute it, after it ran successfully through the backend's sandbox.
+  // The pandas code the Feature Agent wrote to compute this column, after it
+  // ran successfully through the backend's sandbox.
   generated_code?: string | null;
+  // Which of the four repository sources this feature came from.
+  source: FeatureSource;
+  // The Feature Agent's own plain-English computation plan (its "Think"
+  // step) -- shown in place of a static formula string.
+  plan?: string | null;
+  // The Feature Agent's own validation verdict on its result.
+  validation_note?: string | null;
 }
 
 export interface FeatureReport {
@@ -90,100 +97,100 @@ export interface FeatureDefinitionsSummary {
   feature_names: string[];
 }
 
-export type FeatureSuggestionType = "duration_hours" | "ratio" | "extract_month" | "custom_formula" | "ai_generated";
+// The four sources that can contribute a candidate feature to a session's
+// repository -- see backend/app/services/feature_repository.py.
+export type FeatureSource = "predefined" | "planner" | "custom" | "ai_suggested";
+export type FeatureEntryStatus = "approved" | "pending" | "rejected";
 
-export interface FeatureSuggestion {
+export interface FeatureRepositoryEntry {
   id: string;
+  source: FeatureSource;
+  status: FeatureEntryStatus;
   name: string;
   description: string;
   output_column: string;
-  type: FeatureSuggestionType;
-  formula: string;
-  summary: string;
-  start_column: string | null;
-  end_column: string | null;
-  unit: string | null;
-  numerator_columns: string[] | null;
-  denominator_columns: string[] | null;
-  source_columns: string[] | null;
-  // Only used by type "ai_generated": the plain-English ask, and the
-  // pandas code Groq wrote for it (filled in after the backend computes
-  // it once -- not set when the KPI is first submitted).
-  calculation_prompt?: string | null;
-  generated_code?: string | null;
+  // Plain-English description of the calculation -- the one input the
+  // Feature Agent's Think step needs, regardless of which source proposed it.
+  calculation_intent: string;
+  input_columns: string[];
+  // A precise plan already attached to this entry (Planner-generated and
+  // PM-approved, or a fully structured predefined spec) -- null means the
+  // Feature Agent hasn't thought about this one yet.
+  formula: string | null;
 }
 
-export interface FeatureSuggestionsResponse {
+export interface FeatureRepositoryResponse {
   session_id: string;
-  suggestions: FeatureSuggestion[];
+  entries: FeatureRepositoryEntry[];
 }
 
-export type PivotAgg = "sum" | "mean" | "count" | "min" | "max" | "median" | "distinct_count" | "pct_of_total";
-
-export interface PivotMetric {
-  column: string;
-  agg: PivotAgg;
-  output_label: string;
+export interface SuggestFeatureEntriesResponse {
+  session_id: string;
+  entries: FeatureRepositoryEntry[];
 }
 
-export interface PivotFilter {
-  column: string;
-  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in";
-  value: string | number | (string | number)[];
-}
+// The five sources that can contribute a candidate analysis to a session's
+// repository -- see backend/app/services/analysis_repository.py.
+export type AnalysisSource = "predefined" | "planner" | "custom" | "ai_suggested" | "drilldown";
+export type AnalysisEntryStatus = "approved" | "pending" | "rejected";
+export type AnalysisRunStatus = "not_run" | "done" | "error";
 
-export interface PivotSort {
-  metric: string;
-  direction: "asc" | "desc";
-}
-
-export interface PivotSuggestion {
+export interface AnalysisDrilldownSuggestion {
   id: string;
   name: string;
   description: string;
-  group_by: string[];
-  metrics: PivotMetric[];
-  filters: PivotFilter[];
-  sort_by: PivotSort | null;
-  top_n: number | null;
+  calculation_intent: string;
+  triggered: boolean;
+  child_entry_id: string | null;
 }
 
-export interface PivotResult {
+export interface AnalysisChartSpec {
+  data: unknown[];
+  layout: Record<string, unknown>;
+}
+
+export interface AnalysisRepositoryEntry {
   id: string;
+  source: AnalysisSource;
+  status: AnalysisEntryStatus;
   name: string;
   description: string;
-  group_by: string[];
-  metric_labels: string[];
-  rows: Record<string, unknown>[];
-  row_count: number;
-  filterable_columns: string[];
-  filter_options: Record<string, string[]>;
-  filter_combinations: Record<string, string>[];
+  calculation_intent: string;
+  input_columns: string[];
+  // A precise plan already attached to this entry (Planner-generated and
+  // PM-approved, or a predefined spec with its own formula) -- null means
+  // the Analysis Agent hasn't thought about this one yet.
+  formula: string | null;
+  // Set only for source === "drilldown": the entry id this one was spawned
+  // from.
+  parent_id: string | null;
+
+  run_status: AnalysisRunStatus;
+  plan_text: string | null;
+  generated_code: string | null;
+  result_table: Record<string, unknown>[] | null;
+  result_columns: string[] | null;
+  chart_type: string | null;
+  chart_spec: AnalysisChartSpec | null;
+  interpretation: string | null;
+  error: string | null;
+  drilldown_suggestions: AnalysisDrilldownSuggestion[];
 }
 
-export interface PivotReport {
+export interface AnalysisRepositoryResponse {
   session_id: string;
-  row_count: number;
-  column_count: number;
-  columns: string[];
-  pivots: PivotResult[];
-  skipped_notes: string[];
-  pivot_filters: Record<string, PivotFilter[]>;
+  entries: AnalysisRepositoryEntry[];
 }
 
-export interface PivotDefinitionsSummary {
+export interface SuggestAnalysisEntriesResponse {
+  session_id: string;
+  entries: AnalysisRepositoryEntry[];
+}
+
+export interface AnalysisDefinitionsSummary {
   filename: string;
-  pivot_count: number;
-  pivot_names: string[];
-}
-
-export interface ReportTemplateSummary {
-  filename: string | null;
-}
-
-export interface PivotSuggestionsResponse {
-  session_id: string;
-  suggestions: PivotSuggestion[];
+  analysis_count: number;
+  analysis_names: string[];
 }
 
 export interface OverallHighlight {
@@ -279,16 +286,10 @@ export function downloadCleansedFileUrl(sessionId: string): string {
   return `${API_BASE_URL}/api/audit/${sessionId}/download`;
 }
 
-export function downloadReportUrl(sessionId: string): string {
-  return `${API_BASE_URL}/api/analysis/${sessionId}/report`;
-}
-
-export async function applyFeatures(sessionId: string, extraFeatures: FeatureSuggestion[] = []): Promise<FeatureReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/features`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ extra_features: extraFeatures }),
-  });
+export async function applyFeatures(sessionId: string): Promise<FeatureReport> {
+  // Computes every APPROVED entry in this session's feature repository --
+  // no body needed, the repository already holds everything server-side.
+  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/features`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -303,12 +304,47 @@ export async function fetchFeatureReport(sessionId: string): Promise<FeatureRepo
   return response.json();
 }
 
-export async function suggestFeatures(sessionId: string): Promise<FeatureSuggestionsResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/features/suggest`, {
+export async function fetchFeatureRepository(sessionId: string): Promise<FeatureRepositoryResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export async function addCustomFeature(
+  sessionId: string,
+  body: { name: string; description?: string; calculation_intent: string; input_columns?: string[] }
+): Promise<FeatureRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/custom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId }),
+    body: JSON.stringify(body),
   });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export async function suggestFeatureEntries(sessionId: string): Promise<SuggestFeatureEntriesResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/suggest`, { method: "POST" });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export async function acceptFeatureEntry(sessionId: string, entryId: string): Promise<FeatureRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export async function rejectFeatureEntry(sessionId: string, entryId: string): Promise<FeatureRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -354,7 +390,7 @@ export async function uploadFeatureDefinitions(file: File): Promise<FeatureDefin
   return response.json();
 }
 
-export async function uploadPivotDefinitions(file: File): Promise<PivotDefinitionsSummary> {
+export async function uploadAnalysisDefinitions(file: File): Promise<AnalysisDefinitionsSummary> {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -369,48 +405,22 @@ export async function uploadPivotDefinitions(file: File): Promise<PivotDefinitio
   return response.json();
 }
 
-export async function uploadReportTemplate(file: File): Promise<ReportTemplateSummary> {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const response = await fetch(`${API_BASE_URL}/api/analysis/report-template`, {
-    method: "POST",
-    body: formData,
-  });
-
+export async function fetchAnalysisRepository(sessionId: string): Promise<AnalysisRepositoryResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
   return response.json();
 }
 
-export async function suggestPivots(sessionId: string): Promise<PivotSuggestionsResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/suggest`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId }),
-  });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function applyPivots(
+export async function addCustomAnalysis(
   sessionId: string,
-  /** Omit (undefined) to leave whatever AI/custom pivots were last applied
-   * for this session alone -- e.g. the Report page changing only filters
-   * shouldn't have to resend the Analysis page's full accepted list. */
-  extraPivots?: PivotSuggestion[],
-  pivotFilters: Record<string, PivotFilter[]> = {}
-): Promise<PivotReport> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/pivots`, {
+  body: { name: string; description?: string; calculation_intent: string; input_columns?: string[] }
+): Promise<AnalysisRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/custom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ...(extraPivots !== undefined ? { extra_pivots: extraPivots } : {}),
-      pivot_filters: pivotFilters,
-    }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
@@ -418,102 +428,43 @@ export async function applyPivots(
   return response.json();
 }
 
-// -- Overall report filter ---------------------------------------------------
-// Report-time only -- never recomputes a pivot's own rows/table on the
-// Analysis page. ONE shared filter set for the whole report: a column with
-// 2+ selected values fans out into one slide per value, for every pivot.
-
-export interface ReportFiltersResponse {
-  session_id: string;
-  filters: PivotFilter[];
-}
-
-export async function fetchReportFilters(sessionId: string): Promise<ReportFiltersResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/report-filters`);
+export async function suggestAnalysisEntries(sessionId: string): Promise<SuggestAnalysisEntriesResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/suggest`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
   return response.json();
 }
 
-export async function saveReportFilters(sessionId: string, filters: PivotFilter[]): Promise<ReportFiltersResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/report-filters`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filters }),
-  });
+export async function acceptAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
   return response.json();
 }
 
-// -- Per-pivot filter scope ---------------------------------------------------
-// Which of the shared report_filters columns actually apply to ONE pivot --
-// a pivot id absent from `scope` uses every active column (the default).
-
-export interface ReportFilterScopeResponse {
-  session_id: string;
-  scope: Record<string, string[]>;
-}
-
-export async function fetchReportFilterScope(sessionId: string): Promise<ReportFilterScopeResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/report-filter-scope`);
+export async function rejectAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
   return response.json();
 }
 
-/** `columns: null` clears the override (back to "every active column applies"). */
-export async function saveReportFilterScope(
-  sessionId: string,
-  pivotId: string,
-  columns: string[] | null
-): Promise<ReportFilterScopeResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/report-filter-scope`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pivot_id: pivotId, columns }),
-  });
+export async function runAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/run`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
   return response.json();
 }
 
-// -- Per-pivot report title ---------------------------------------------------
-// Purely cosmetic -- renames a pivot's slide heading in the downloaded
-// report. A pivot id absent from `titles` uses its own name (the default).
-
-export interface ReportTitlesResponse {
-  session_id: string;
-  titles: Record<string, string>;
-}
-
-export async function fetchReportTitles(sessionId: string): Promise<ReportTitlesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/report-titles`);
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-/** `title: null` (or blank) clears the override, back to the pivot's own name. */
-export async function saveReportTitle(sessionId: string, pivotId: string, title: string | null): Promise<ReportTitlesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/report-titles`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pivot_id: pivotId, title }),
-  });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function fetchPivotReport(sessionId: string): Promise<PivotReport> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/pivots`);
+export async function triggerDrilldown(sessionId: string, entryId: string, drilldownId: string): Promise<AnalysisRepositoryEntry> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/${drilldownId}/trigger`,
+    { method: "POST" }
+  );
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -543,12 +494,40 @@ export interface LaneResult {
   outlier_rows: Record<string, unknown>[];
 }
 
+// One flagged trip, flattened out of its lane -- the "outliers themselves,
+// not the fence numbers" table (Segment Outlier tab).
+export interface SegmentOutlierRow {
+  serial: string | null;
+  trip_id: number | string | null;
+  origin: string;
+  destination: string;
+  segment_days: number | null;
+  lower_fence_days: number | null;
+  upper_fence_days: number | null;
+  status: string;
+}
+
 export interface SegmentOutliersResult {
   column_found: boolean;
   total_trips: number;
   flagged_trips: number;
   columns: string[];
   lanes: LaneResult[];
+  outlier_rows: SegmentOutlierRow[];
+}
+
+// One trip's mean-temperature reading against its own configured limits --
+// every trip for a product, not just the flagged ones, so the product's
+// chart can plot the full picture.
+export interface ProductTemperatureTrip {
+  serial: string | null;
+  trip_id: number | string | null;
+  mean_temp: number | null;
+  limit_low: number | null;
+  limit_ideal: number | null;
+  limit_high: number | null;
+  status: "too_warm" | "too_cold" | "in_spec";
+  flag_count: number;
 }
 
 export interface ProductTemperatureResult {
@@ -557,6 +536,7 @@ export interface ProductTemperatureResult {
   too_warm: number;
   too_cold: number;
   in_spec: number;
+  trips: ProductTemperatureTrip[];
 }
 
 export interface TemperatureOutliersResult {

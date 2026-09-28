@@ -7,9 +7,10 @@ whatever is already there."""
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
+from app.dependencies import get_session_or_404 as _get_session_or_404
 from app.schemas import LanguageOption, SupportedLanguagesResponse
 from app.services.analysis import analysis_repository
-from app.services.audit.audit_store import AuditSession, store
+from app.services.audit.audit_store import AuditSession
 from app.services.report import report_generator, translation_service
 
 router = APIRouter(prefix="/api/report", tags=["report"])
@@ -26,13 +27,6 @@ def get_supported_languages() -> SupportedLanguagesResponse:
         for code, (name, _) in sorted(translation_service.SUPPORTED_LANGUAGES.items(), key=lambda kv: kv[1][0])
     ]
     return SupportedLanguagesResponse(languages=languages)
-
-
-def _get_session_or_404(session_id: str) -> AuditSession:
-    session = store.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Audit session not found.")
-    return session
 
 
 def _report_ready_entries(session: AuditSession, session_id: str, entry_ids: list[str] | None) -> list[dict]:

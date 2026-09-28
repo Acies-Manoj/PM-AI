@@ -1,4 +1,3 @@
-import json
 import logging
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -16,6 +15,7 @@ from app.schemas import (
     SuggestAnalysisEntriesResponse,
 )
 from app.services.analysis import analysis_definitions_store as defs_store
+from app.services.common.definitions_upload import upload_definitions
 from app.services.analysis import (
     analysis_designer,
     analysis_engine,
@@ -26,39 +26,17 @@ from app.services.analysis import (
     overall_analysis,
     overall_analysis_agent,
 )
+from app.dependencies import get_session_or_404 as _get_session_or_404
 from app.services.analysis.analysis_agent import AnalysisComputation
-from app.services.audit.audit_store import AuditSession, store
+from app.services.audit.audit_store import AuditSession
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 logger = logging.getLogger(__name__)
 
 
-def _get_session_or_404(session_id: str) -> AuditSession:
-    session = store.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Audit session not found.")
-    return session
-
-
 @router.post("/definitions", response_model=AnalysisDefinitionsSummary)
 async def upload_analysis_definitions(file: UploadFile = File(...)) -> AnalysisDefinitionsSummary:
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=422, detail="Uploaded file is empty.")
-
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail=f"Not valid JSON: {exc}") from exc
-
-    try:
-        analyses = defs_store.validate(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    filename = file.filename or "analysis_profile.json"
-    defs_store.store.set(filename, analyses)
-
+    filename, analyses = await upload_definitions(file, defs_store, "analysis_profile.json")
     return AnalysisDefinitionsSummary(
         filename=filename,
         analysis_count=len(analyses),

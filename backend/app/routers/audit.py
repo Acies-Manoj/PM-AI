@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.config import DATA_DIR
+from app.dependencies import get_session_or_404 as _get_session_or_404
 from app.schemas import AuditIssue, AuditReport, FeatureReport, ResolveRequest, UpdateTripValueRequest
 from app.services.audit import data_audit
 from app.services.audit.audit_agent import generate_audit_analysis
@@ -56,13 +57,6 @@ def _to_feature_report(session: AuditSession) -> FeatureReport:
         features=session.features,
         skipped_notes=session.feature_skipped_notes,
     )
-
-
-def _get_session_or_404(session_id: str) -> AuditSession:
-    session = store.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Audit session not found.")
-    return session
 
 
 class UploadOnlyResponse(BaseModel):

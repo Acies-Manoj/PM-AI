@@ -20,6 +20,10 @@ frontend/dist-ssr/
 # Generated output (not source)
 backend/generated_reports/
 backend/data/sessions/
+backend/*.log
+backend/out.txt
+backend/out2.txt
+backend/label_counts.txt
 
 # Editor/OS
 .vscode/*

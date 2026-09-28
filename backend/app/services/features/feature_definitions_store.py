@@ -5,29 +5,11 @@ nothing has been uploaded, `store.definitions` is None and feature
 engineering simply cannot run yet. Single-slot, thread-safe -- same scope as
 the other in-memory stores in this app (one demo session at a time).
 """
-import threading
+from app.services.common.definitions_store import DefinitionsStore
 
 SUPPORTED_TYPES = {"lookup", "extract_month", "ratio", "duration_hours", "custom_formula", "ai_generated"}
 
-
-class FeatureDefinitionsStore:
-    def __init__(self):
-        self._lock = threading.Lock()
-        self.filename: str | None = None
-        self.definitions: list[dict] | None = None
-
-    def set(self, filename: str, definitions: list[dict]) -> None:
-        with self._lock:
-            self.filename = filename
-            self.definitions = definitions
-
-    def clear(self) -> None:
-        with self._lock:
-            self.filename = None
-            self.definitions = None
-
-
-store = FeatureDefinitionsStore()
+store = DefinitionsStore()
 
 
 def validate(payload: dict) -> list[dict]:

@@ -8,27 +8,9 @@ Deliberately looser than the old pivot-table JSON schema: no group_by/
 metrics/agg vocabulary, since the Analysis Agent now derives the
 aggregation itself from a plain-English `calculation_intent`.
 """
-import threading
+from app.services.common.definitions_store import DefinitionsStore
 
-
-class AnalysisDefinitionsStore:
-    def __init__(self):
-        self._lock = threading.Lock()
-        self.filename: str | None = None
-        self.definitions: list[dict] | None = None
-
-    def set(self, filename: str, definitions: list[dict]) -> None:
-        with self._lock:
-            self.filename = filename
-            self.definitions = definitions
-
-    def clear(self) -> None:
-        with self._lock:
-            self.filename = None
-            self.definitions = None
-
-
-store = AnalysisDefinitionsStore()
+store = DefinitionsStore()
 
 
 def validate(payload: dict) -> list[dict]:

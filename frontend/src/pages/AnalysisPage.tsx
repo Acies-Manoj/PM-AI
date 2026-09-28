@@ -12,7 +12,7 @@ import AnalysisSuggestionCard from "../components/AnalysisSuggestionCard";
 import AddAnalysisForm from "../components/AddAnalysisForm";
 import OverallAnalysisCard from "../components/OverallAnalysisCard";
 import { categorizeAnalysis } from "../utils/analysisCategory";
-import { IconDoc, IconGrid, IconChevronLeft, IconChevronRight, IconBarChart, IconLayers, IconSparkle } from "../components/icons";
+import { IconDoc, IconGrid, IconChevronLeft, IconChevronRight, IconBarChart, IconLayers, IconSparkle, IconPlus } from "../components/icons";
 import {
   acceptAnalysisEntry,
   addCustomAnalysis,
@@ -36,7 +36,6 @@ import {
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
 import type { AuditReportsState, FilesState } from "../App";
-import "../components/AnalysisDetailModal.css";
 import "./AnalysisPage.css";
 
 interface AnalysisPageProps {
@@ -403,13 +402,6 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           const visibleEntries = repo.filter((e) => e.status === "approved");
           const topLevelEntries = visibleEntries.filter((e) => !e.parent_id);
           const drilldownEntries = visibleEntries.filter((e) => e.parent_id);
-          // Not-yet-triggered drilldown suggestions live on the main page (not the
-          // modal) so a PM can see and explore them without opening each analysis.
-          const suggestedDrilldowns = visibleEntries.flatMap((e) =>
-            e.drilldown_suggestions
-              .filter((d) => !d.triggered)
-              .map((suggestion) => ({ parentId: e.id, parentName: e.name, suggestion }))
-          );
 
           const categorized = topLevelEntries.map((entry) => ({ entry, category: categorizeAnalysis(entry.name, entry.description) }));
           const availableCategories = Array.from(new Set(categorized.map((c) => c.category.label))).sort();
@@ -463,9 +455,6 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                 <StatTile icon={<IconGrid />} color="teal" value={featureReports[id]?.column_count ?? 0} label="Columns" />
                 <StatTile icon={<IconLayers />} color="purple" value={topLevelEntries.length} label="Analyses" />
                 {drilldownEntries.length > 0 && <StatTile icon={<IconBarChart />} color="amber" value={drilldownEntries.length} label="Drilldowns" />}
-                {suggestedDrilldowns.length > 0 && (
-                  <StatTile icon={<IconSparkle />} color="teal" value={suggestedDrilldowns.length} label="Suggested Drilldowns" />
-                )}
               </div>
 
               <OverallAnalysisCard
@@ -561,37 +550,52 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                       </div>
                     </div>
                   )}
-
-                  {suggestedDrilldowns.length > 0 && (
-                    <div className="analysis-page__suggested-drilldowns">
-                      <h3 className="analysis-drilldowns__title">
-                        <IconSparkle /> Suggested Drilldowns
-                      </h3>
-                      <div className="analysis-drilldowns__list">
-                        {suggestedDrilldowns.map(({ parentId, parentName, suggestion }) => (
-                          <div className="analysis-drilldowns__item" key={suggestion.id}>
-                            <div className="analysis-drilldowns__item-text">
-                              <span className="analysis-drilldowns__item-name">{suggestion.name}</span>
-                              <p className="analysis-drilldowns__item-description">
-                                <span className="analysis-page__suggested-drilldown-parent">From {parentName}:</span>{" "}
-                                {suggestion.description}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              className="analysis-drilldowns__btn"
-                              disabled={triggeringDrilldownId === suggestion.id}
-                              onClick={() => handleTriggerDrilldown(id, parentId, suggestion.id)}
-                            >
-                              {triggeringDrilldownId === suggestion.id ? "Exploring…" : "Explore this"}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
+
+              <div className="analysis-page__cta-row">
+                <div className="analysis-page__cta">
+                  <span className="analysis-page__cta-icon analysis-page__cta-icon--purple">
+                    <IconSparkle />
+                  </span>
+                  <div className="analysis-page__cta-text">
+                    <span className="analysis-page__cta-title">AI Analysis Suggestions</span>
+                    <span className="analysis-page__cta-desc">Let the agent propose analysis tables from this data's columns.</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="analysis-page__cta-btn analysis-page__cta-btn--primary"
+                    disabled={!!suggestLoading[id]}
+                    onClick={() => {
+                      if (pendingSuggestions.length === 0) runSuggest(id);
+                      setShowSuggestionsModal((prev) => ({ ...prev, [id]: true }));
+                    }}
+                  >
+                    {suggestLoading[id]
+                      ? "Thinking…"
+                      : pendingSuggestions.length > 0
+                        ? `View Suggestions (${pendingSuggestions.length})`
+                        : "Suggest Analyses"}
+                  </button>
+                </div>
+
+                <div className="analysis-page__cta">
+                  <span className="analysis-page__cta-icon analysis-page__cta-icon--blue">
+                    <IconPlus />
+                  </span>
+                  <div className="analysis-page__cta-text">
+                    <span className="analysis-page__cta-title">Add a Custom Analysis</span>
+                    <span className="analysis-page__cta-desc">Define your own group-by + aggregation logic from this data's columns.</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="analysis-page__cta-btn"
+                    onClick={() => setShowAddForm((prev) => ({ ...prev, [id]: true }))}
+                  >
+                    + Add Custom
+                  </button>
+                </div>
+              </div>
 
               {showSuggestionsModal[id] && (
                 <Modal
@@ -659,13 +663,13 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           const parentName = openEntryData.parent_id
             ? openRepo.find((e) => e.id === openEntryData.parent_id)?.name
             : undefined;
-          const childEntries = openRepo.filter((e) => e.parent_id === openEntryData.id);
           return (
             <AnalysisDetailModal
               entry={openEntryData}
               parentName={parentName}
-              childEntries={childEntries}
+              triggeringDrilldownId={triggeringDrilldownId}
               onClose={() => setOpenEntry(null)}
+              onTriggerDrilldown={(drilldownId) => handleTriggerDrilldown(openEntry.slotId, openEntry.entryId, drilldownId)}
               onOpenChild={(childEntryId) => setOpenEntry({ slotId: openEntry.slotId, entryId: childEntryId })}
               onApplyFilters={(filters: AnalysisFilterSelections) =>
                 filterAnalysisEntry(auditReports[openEntry.slotId]!.session_id, openEntry.entryId, filters)

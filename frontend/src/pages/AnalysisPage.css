@@ -274,17 +274,108 @@
   text-align: center;
 }
 
-/* -- suggested drilldowns (moved out of the modal onto the main page) -- */
+/* -- bottom CTA row (AI suggestions / add custom) -- kept thin, a single
+   line each, unlike the old tall stacked panels. -- */
 
-.analysis-page__suggested-drilldowns {
-  margin-top: 18px;
-  padding-top: 16px;
+.analysis-page__cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--color-border);
 }
 
-.analysis-page__suggested-drilldown-parent {
+.analysis-page__cta {
+  flex: 1 1 300px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px 8px 8px;
+  background: var(--color-surface);
+}
+
+.analysis-page__cta-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.analysis-page__cta-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.analysis-page__cta-icon--purple { background: var(--accent-purple); }
+.analysis-page__cta-icon--blue { background: var(--carrier-blue); }
+
+.analysis-page__cta-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.analysis-page__cta-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.analysis-page__cta-desc {
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analysis-page__cta-btn {
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 11.5px;
   font-weight: 700;
-  color: var(--accent-purple);
+  cursor: pointer;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.analysis-page__cta-btn:hover:not(:disabled) {
+  border-color: var(--carrier-blue);
+  color: var(--carrier-blue);
+}
+
+.analysis-page__cta-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.analysis-page__cta-btn--primary {
+  background: var(--accent-purple);
+  border-color: var(--accent-purple);
+  color: #fff;
+}
+
+.analysis-page__cta-btn--primary:hover:not(:disabled) {
+  background: var(--accent-purple);
+  border-color: var(--accent-purple);
+  color: #fff;
+  opacity: 0.9;
+}
+
+@media (max-width: 720px) {
+  .analysis-page__cta-desc {
+    white-space: normal;
+  }
 }
 
 /* -- footer buttons ----------------------------- */

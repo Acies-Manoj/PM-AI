@@ -15,9 +15,9 @@ interface AnalysisDetailModalProps {
   /** Name of the analysis this one was drilled down from -- undefined for a
    * top-level (non-drilldown) entry. */
   parentName?: string;
-  /** This entry's own already-triggered drilldown children, if any. */
-  childEntries: AnalysisRepositoryEntry[];
+  triggeringDrilldownId: string | null;
   onClose: () => void;
+  onTriggerDrilldown: (drilldownId: string) => void;
   onOpenChild: (childEntryId: string) => void;
   /** Returns a filtered VIEW of this entry; the stored result is untouched. */
   onApplyFilters: (filters: AnalysisFilterSelections) => Promise<AnalysisRepositoryEntry>;
@@ -28,8 +28,9 @@ type ModalTab = "data" | "drilldown";
 export default function AnalysisDetailModal({
   entry,
   parentName,
-  childEntries,
+  triggeringDrilldownId,
   onClose,
+  onTriggerDrilldown,
   onOpenChild,
   onApplyFilters,
 }: AnalysisDetailModalProps) {
@@ -54,7 +55,7 @@ export default function AnalysisDetailModal({
 
   const shown = view ?? entry;
   const canFilter = entry.run_status === "done" && entry.filters.length > 0;
-  const drilldownCount = childEntries.length;
+  const drilldownCount = entry.drilldown_suggestions.length;
 
   const changeFilters = (filters: AnalysisFilterSelections) => {
     const request = ++latestRequest.current;
@@ -190,30 +191,28 @@ export default function AnalysisDetailModal({
             </>
           ) : (
             <div className="analysis-detail__drilldown-tab">
-              {childEntries.length > 0 ? (
-                <div className="analysis-detail__explored">
-                  <h4 className="analysis-drilldowns__title">
-                    <IconLayers /> Already explored
-                  </h4>
-                  <div className="analysis-detail__explored-list">
-                    {childEntries.map((child) => (
+              {entry.drilldown_suggestions.length === 0 ? (
+                <p className="analysis-detail__empty-drilldown">No follow-up analyses suggested for this one yet.</p>
+              ) : (
+                <ol className="analysis-detail__drilldown-list">
+                  {entry.drilldown_suggestions.map((d, i) => (
+                    <li key={d.id}>
                       <button
                         type="button"
-                        key={child.id}
-                        className="analysis-detail__explored-item"
-                        onClick={() => onOpenChild(child.id)}
+                        className="analysis-detail__drilldown-item"
+                        disabled={triggeringDrilldownId === d.id}
+                        onClick={() => (d.triggered && d.child_entry_id ? onOpenChild(d.child_entry_id) : onTriggerDrilldown(d.id))}
                       >
-                        <span className="analysis-detail__explored-name">{child.name}</span>
+                        <span className="analysis-detail__drilldown-index">{i + 1}</span>
+                        <span className="analysis-detail__drilldown-name">{d.name}</span>
+                        <span className="analysis-detail__drilldown-action">
+                          {triggeringDrilldownId === d.id ? "Exploring…" : d.triggered ? "View" : "Explore"}
+                        </span>
                         <IconChevronRight />
                       </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="analysis-detail__empty-drilldown">
-                  No drilldowns explored yet for this analysis. Check "Suggested Drilldowns" on the main
-                  Analysis page to explore one.
-                </p>
+                    </li>
+                  ))}
+                </ol>
               )}
             </div>
           )}

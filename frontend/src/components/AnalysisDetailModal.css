@@ -22,77 +22,6 @@
   text-decoration: underline;
 }
 
-.analysis-drilldowns {
-  margin-top: 6px;
-}
-
-.analysis-drilldowns__title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--accent-purple);
-}
-
-.analysis-drilldowns__title svg {
-  width: 15px;
-  height: 15px;
-}
-
-.analysis-drilldowns__list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.analysis-drilldowns__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 1px dashed var(--accent-purple);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  background: var(--accent-purple-bg);
-}
-
-.analysis-drilldowns__item-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.analysis-drilldowns__item-name {
-  display: block;
-  font-size: 12.5px;
-  font-weight: 800;
-  color: var(--accent-purple);
-}
-
-.analysis-drilldowns__item-description {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  line-height: 1.4;
-}
-
-.analysis-drilldowns__btn {
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  padding: 7px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  background: var(--accent-purple);
-  border: 1px solid var(--accent-purple);
-  color: #fff;
-}
-
-.analysis-drilldowns__btn:disabled {
-  opacity: 0.7;
-  cursor: default;
-}
 
 .analysis-detail__method {
   display: flex;
@@ -226,17 +155,20 @@
   gap: 14px;
 }
 
-.analysis-detail__explored-list {
+.analysis-detail__drilldown-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.analysis-detail__explored-item {
+.analysis-detail__drilldown-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
+  width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
@@ -246,17 +178,45 @@
   text-align: left;
 }
 
-.analysis-detail__explored-item:hover {
+.analysis-detail__drilldown-item:hover:not(:disabled) {
   border-color: var(--carrier-blue);
 }
 
-.analysis-detail__explored-name {
+.analysis-detail__drilldown-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.analysis-detail__drilldown-index {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--carrier-blue-tint);
+  color: var(--carrier-blue);
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.analysis-detail__drilldown-name {
+  flex: 1;
+  min-width: 0;
   font-size: 12.5px;
   font-weight: 700;
   color: var(--color-text);
 }
 
-.analysis-detail__explored-item svg {
+.analysis-detail__drilldown-action {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-purple);
+}
+
+.analysis-detail__drilldown-item svg {
   width: 14px;
   height: 14px;
   color: var(--color-text-muted);

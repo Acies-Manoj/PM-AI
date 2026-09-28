@@ -1,0 +1,54 @@
+{
+  "_purpose": "Example 'Analysis Profile' upload -- this is the file the Analysis page reads. It defines pivot tables (group-by + aggregation logic) to run against the audited + feature-engineered data. Nothing is computed until a file like this is uploaded to that slot; there is no backend default. Group-by/metric/filterable_columns can be either raw source columns (e.g. 'Carrier', 'Origin', 'Product', 'Serial Number') or feature-engineered ones (e.g. 'Country of Origin', 'Arrival Month', '% In Spec') -- edit freely and re-upload. Every pivot shows ALL data by default; 'filterable_columns' declares which columns the Analysis page renders as interactive slicers (multi-select filter pickers) so the PM can narrow the view at runtime without editing this file.",
+  "_supported_aggregations": ["sum", "mean", "count", "min", "max", "median", "distinct_count", "pct_of_total"],
+  "_supported_filter_ops": ["eq", "neq", "gt", "gte", "lt", "lte", "in"],
+  "pivots": [
+    {
+      "id": "pivot_shipments_by_product_grower",
+      "name": "Shipments by Product & Origin",
+      "description": "Counts shipments grouped by Product then by Origin -- slice by Country of Origin, Origin, Carrier, or Product to answer 'how many shipments per product, and which origin shipped them' for any subset.",
+      "group_by": ["Product", "Origin"],
+      "metrics": [
+        { "column": "Serial Number", "agg": "count", "output_label": "Shipments" }
+      ],
+      "filterable_columns": ["Country of Origin", "Origin", "Carrier", "Product"],
+      "sort_by": { "metric": "Shipments", "direction": "desc" }
+    },
+    {
+      "id": "pivot_carrier_compliance_ranking",
+      "name": "Carrier Compliance Ranking",
+      "description": "All carriers ranked by shipment volume, with average % In Spec alongside -- slice by Country of Origin, Origin, Carrier, or Product to answer 'which carrier is worst for compliance' for any subset (e.g. just a group of growers, or just one country).",
+      "group_by": ["Carrier"],
+      "metrics": [
+        { "column": "% In Spec", "agg": "mean", "output_label": "% In Spec" },
+        { "column": "Serial Number", "agg": "count", "output_label": "# Transporte" }
+      ],
+      "filterable_columns": ["Country of Origin", "Origin", "Carrier", "Product"],
+      "sort_by": { "metric": "# Transporte", "direction": "desc" }
+    },
+    {
+      "id": "pivot_monthly_compliance_trend",
+      "name": "Monthly Compliance Trend",
+      "description": "% In Spec and shipment volume by arrival month -- slice by Country of Origin, Origin, Carrier, or Product to answer 'for this subset, is compliance improving or worsening as the season/volume ramps up.'",
+      "group_by": ["Arrival Month"],
+      "metrics": [
+        { "column": "% In Spec", "agg": "mean", "output_label": "% In Spec" },
+        { "column": "Serial Number", "agg": "count", "output_label": "# Transporte" }
+      ],
+      "filterable_columns": ["Country of Origin", "Origin", "Carrier", "Product"],
+      "sort_by": { "metric": "Arrival Month", "direction": "asc" }
+    },
+    {
+      "id": "pivot_mode_share",
+      "name": "Shipment Mix by Mode of Transportation",
+      "description": "What share of shipments moved by each transportation mode -- slice by Country of Origin, Origin, Carrier, or Product to see the mix for any subset.",
+      "group_by": ["Mode Of Transportation"],
+      "metrics": [
+        { "column": "Serial Number", "agg": "count", "output_label": "Shipments" },
+        { "column": "Serial Number", "agg": "pct_of_total", "output_label": "Share of Shipments" }
+      ],
+      "filterable_columns": ["Country of Origin", "Origin", "Carrier", "Product"],
+      "sort_by": { "metric": "Shipments", "direction": "desc" }
+    }
+  ]
+}

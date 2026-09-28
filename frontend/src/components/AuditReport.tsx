@@ -124,10 +124,10 @@ export default function AuditReport({
 
   useEffect(() => {
     if (activeTab !== "segment" && activeTab !== "temperature") return;
-    if (outlierData || outlierLoading) return;
+    if (outlierData || outlierLoading || outlierError) return;
     loadOutliers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, report.session_id, outlierData, outlierLoading]);
+  }, [activeTab, report.session_id, outlierData, outlierLoading, outlierError]);
 
   const visibleIssues = useMemo(
     () => qualityIssues.filter((i) => issueMatchesColumnQuery(i, columnQuery)),

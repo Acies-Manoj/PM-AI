@@ -1,21 +1,36 @@
 import json
+import logging
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.schemas import (
     AddCustomAnalysisRequest,
     AnalysisDefinitionsSummary,
+    AnalysisDraft,
     AnalysisRepositoryEntry,
     AnalysisRepositoryResponse,
     AnalysisResult,
+    DraftAnalysisRequest,
+    FilterAnalysisRequest,
     OverallAnalysisReport,
     SuggestAnalysisEntriesResponse,
 )
-from app.services import analysis_definitions_store as defs_store
-from app.services import analysis_engine, analysis_repository, analysis_suggester, overall_analysis, overall_analysis_agent
-from app.services.audit_store import AuditSession, store
+from app.services.analysis import analysis_definitions_store as defs_store
+from app.services.analysis import (
+    analysis_designer,
+    analysis_engine,
+    analysis_filters,
+    analysis_repository,
+    analysis_suggester,
+    analysis_templates,
+    overall_analysis,
+    overall_analysis_agent,
+)
+from app.services.analysis.analysis_agent import AnalysisComputation
+from app.services.audit.audit_store import AuditSession, store
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
+logger = logging.getLogger(__name__)
 
 
 def _get_session_or_404(session_id: str) -> AuditSession:
@@ -64,9 +79,12 @@ def get_analysis_definitions() -> AnalysisDefinitionsSummary:
 
 def _merge_entry(session: AuditSession, definition: dict) -> AnalysisRepositoryEntry:
     """Merges a repository definition with its in-memory run result (if
-    "Run" has ever been clicked for it) into the full response shape."""
+    "Run" has ever been clicked for it) into the full response shape. Filter
+    options are computed from the CURRENT data on every read."""
     result = session.analysis_results.get(definition["id"])
     merged = dict(definition)
+    merged["template_summary"] = analysis_templates.summarize(definition.get("template"))
+    merged["filters"] = analysis_filters.options(session.df, definition.get("filters") or [])
     if result:
         merged.update({
             "run_status": result.run_status,
@@ -79,7 +97,16 @@ def _merge_entry(session: AuditSession, definition: dict) -> AnalysisRepositoryE
             "interpretation": result.interpretation,
             "error": result.error,
             "drilldown_suggestions": result.drilldown_suggestions,
+            "computation_mode": result.computation_mode,
+            "notes": result.notes,
         })
+        # A designed entry keeps the PM's chosen chart; every other entry
+        # shows the chart its run picked from the logic before computing.
+        if not definition.get("chart_recommendation") and result.chart_recommendation:
+            merged["chart_recommendation"] = result.chart_recommendation
+        # Same for the template: every source can now run on one.
+        if not definition.get("template") and result.template:
+            merged["template_summary"] = analysis_templates.summarize(result.template)
     return AnalysisRepositoryEntry(**merged)
 
 
@@ -92,6 +119,26 @@ def get_repository(session_id: str) -> AnalysisRepositoryResponse:
     )
 
 
+@router.post("/repository/{session_id}/draft", response_model=AnalysisDraft)
+def draft_analysis(session_id: str, body: DraftAnalysisRequest) -> AnalysisDraft:
+    """Turns the PM's description into reviewable computation logic, a
+    template match (or code generation), a chart recommendation and
+    filters. Nothing is saved -- the PM confirms via /custom."""
+    session = _get_session_or_404(session_id)
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="Give the analysis a name.")
+    if not body.description.strip():
+        raise HTTPException(status_code=422, detail="Describe what this analysis should show.")
+    try:
+        draft = analysis_designer.draft_analysis(body.name.strip(), body.description.strip(), session.df, body.formula)
+    except Exception as exc:
+        logger.exception("Analysis designer failed for session %s", session_id)
+        raise HTTPException(
+            status_code=502, detail="Couldn't draft the computation logic right now. Please try again."
+        ) from exc
+    return AnalysisDraft(**draft)
+
+
 @router.post("/repository/{session_id}/custom", response_model=AnalysisRepositoryEntry)
 def add_custom_analysis(session_id: str, body: AddCustomAnalysisRequest) -> AnalysisRepositoryEntry:
     session = _get_session_or_404(session_id)
@@ -99,8 +146,14 @@ def add_custom_analysis(session_id: str, body: AddCustomAnalysisRequest) -> Anal
         raise HTTPException(status_code=422, detail="Give the analysis a name.")
     if not body.calculation_intent.strip():
         raise HTTPException(status_code=422, detail="Describe what this analysis should show.")
+    template, chart_recommendation, filters = analysis_designer.finalize_custom(
+        session.df, body.template, body.chart_type, body.chart_reason,
+        [a.model_dump() for a in body.chart_alternatives], body.filters,
+    )
+    formula = body.formula.strip() if body.formula and body.formula.strip() else None
     entry = analysis_repository.add_custom_entry(
-        session_id, body.name.strip(), body.description.strip(), body.calculation_intent.strip(), body.input_columns
+        session_id, body.name.strip(), body.description.strip(), body.calculation_intent.strip(), body.input_columns,
+        formula=formula, template=template, chart_recommendation=chart_recommendation, filters=filters,
     )
     return _merge_entry(session, entry)
 
@@ -109,9 +162,12 @@ def add_custom_analysis(session_id: str, body: AddCustomAnalysisRequest) -> Anal
 def suggest_analyses(session_id: str) -> SuggestAnalysisEntriesResponse:
     session = _get_session_or_404(session_id)
     try:
-        suggestions = analysis_suggester.suggest_analyses(session.df)
+        suggestions = analysis_suggester.suggest_analyses(session.df, analysis_repository.get_repository(session_id))
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Analysis suggestion agent (OpenRouter) is unavailable: {exc}") from exc
+        logger.exception("Analysis suggestion agent failed for session %s", session_id)
+        raise HTTPException(
+            status_code=502, detail="Analysis suggestion agent is unavailable right now. Please try again."
+        ) from exc
     new_entries = analysis_repository.add_ai_suggested_entries(session_id, suggestions)
     return SuggestAnalysisEntriesResponse(session_id=session_id, entries=[_merge_entry(session, e) for e in new_entries])
 
@@ -141,7 +197,12 @@ def _run_entry(session: AuditSession, session_id: str, entry: dict) -> AnalysisR
     rest of the page, mirroring the feature system's skipped_notes
     philosophy."""
     computation = analysis_engine.run_analysis(session_id, entry, session.df)
-    result = AnalysisResult(
+    session.analysis_results[entry["id"]] = _to_result(entry, computation)
+    return _merge_entry(session, entry)
+
+
+def _to_result(entry: dict, computation: AnalysisComputation) -> AnalysisResult:
+    return AnalysisResult(
         id=entry["id"],
         run_status="error" if computation.error and computation.result_table is None else "done",
         plan_text=computation.plan_text,
@@ -155,9 +216,11 @@ def _run_entry(session: AuditSession, session_id: str, entry: dict) -> AnalysisR
         drilldown_suggestions=[
             {"id": f"{entry['id']}_dd{i}", **d} for i, d in enumerate(computation.drilldown_suggestions or [])
         ],
+        computation_mode=computation.computation_mode if computation.result_table is not None else None,
+        notes=computation.notes,
+        chart_recommendation=computation.chart_recommendation,
+        template=computation.template,
     )
-    session.analysis_results[entry["id"]] = result
-    return _merge_entry(session, entry)
 
 
 @router.post("/repository/{session_id}/entries/{entry_id}/run", response_model=AnalysisRepositoryEntry)
@@ -169,6 +232,36 @@ def run_entry(session_id: str, entry_id: str) -> AnalysisRepositoryEntry:
     if entry["status"] == "rejected":
         raise HTTPException(status_code=422, detail="This analysis was rejected and can't be run.")
     return _run_entry(session, session_id, entry)
+
+
+@router.post("/repository/{session_id}/entries/{entry_id}/filter", response_model=AnalysisRepositoryEntry)
+def filter_entry(session_id: str, entry_id: str, body: FilterAnalysisRequest) -> AnalysisRepositoryEntry:
+    """A filtered VIEW of an already-run analysis, for its chart's filter
+    controls. Never calls an LLM and never replaces the stored (unfiltered)
+    result -- the report and the repository always use the unfiltered run.
+    The interpretation and drilldowns shown are the unfiltered run's."""
+    session = _get_session_or_404(session_id)
+    entry = analysis_repository.get_entry(session_id, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Analysis entry not found in this session's repository.")
+    base = session.analysis_results.get(entry_id)
+    if base is None or base.run_status != "done":
+        raise HTTPException(status_code=409, detail="Run this analysis before filtering it.")
+
+    applied = analysis_filters.active(body.filters, entry.get("filters") or [])
+    if not applied:
+        return _merge_entry(session, entry)
+    computation = analysis_engine.filter_analysis(session_id, entry, session.df, body.filters, base.chart_type)
+    view = _to_result(entry, computation)
+    view.interpretation = base.interpretation
+    view.drilldown_suggestions = base.drilldown_suggestions
+
+    merged = _merge_entry(session, entry).model_dump()
+    # chart_recommendation comes from _merge_entry above (the stored run's),
+    # not from the filtered view.
+    merged.update(view.model_dump(exclude={"id", "chart_recommendation", "template"}))
+    merged["applied_filters"] = applied
+    return AnalysisRepositoryEntry(**merged)
 
 
 @router.post("/repository/{session_id}/entries/{entry_id}/drilldowns/{drilldown_id}/trigger", response_model=AnalysisRepositoryEntry)

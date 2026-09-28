@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import DATA_DIR
-from app.services import planner as planner_service
+from app.services.planner import planner as planner_service
 
 router = APIRouter(prefix="/api/planner", tags=["planner"])
 

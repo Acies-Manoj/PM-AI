@@ -13,7 +13,34 @@ import { uploadOnly } from "../api/audit";
 import { finalizeBrief } from "../api/brief";
 import "./UploadPage.css";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
 type ErrorsState = Partial<Record<UploadSlotId, string>>;
+
+// Bundled example files (see backend/data/samples/, served statically at
+// /samples/* by main.py) for the "Add all samples" button below -- lets
+// trying the app end to end skip hunting down real source files each time.
+// Not every slot has a sample; coldstream/thresholds/reportTemplate are
+// left for the user to provide since there's nothing representative bundled.
+const SAMPLE_FILES: { id: UploadSlotId; filename: string; mimeType: string }[] = [
+  {
+    id: "sensiwatch",
+    filename: "sensiwatch_sample.xlsm",
+    mimeType: "application/vnd.ms-excel.sheet.macroEnabled.12",
+  },
+  {
+    id: "rawTemperature",
+    filename: "temperature_matrix_sample.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+  {
+    id: "rawLight",
+    filename: "light_matrix_sample.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+  { id: "customerKpis", filename: "customer_kpi_profile_sample.json", mimeType: "application/json" },
+  { id: "analysisProfile", filename: "analysis_profile_sample.json", mimeType: "application/json" },
+];
 
 interface UploadPageProps {
   files: FilesState;
@@ -39,11 +66,32 @@ export default function UploadPage({
   const [highlighted, setHighlighted] = useState<UploadSlotId | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [samplesLoading, setSamplesLoading] = useState(false);
   const cardRefs: Partial<Record<UploadSlotId, HTMLDivElement | null>> = {};
 
   const handleSelect = (id: UploadSlotId, file: File) => {
     onSelect(id, file);
     setErrors((prev) => ({ ...prev, [id]: undefined }));
+  };
+
+  const handleAddAllSamples = async () => {
+    setSamplesLoading(true);
+    setUploadError(null);
+    try {
+      const files = await Promise.all(
+        SAMPLE_FILES.map(async ({ id, filename, mimeType }) => {
+          const response = await fetch(`${API_BASE_URL}/samples/${filename}`);
+          if (!response.ok) throw new Error(`Could not load sample "${filename}" (${response.status}).`);
+          const blob = await response.blob();
+          return { id, file: new File([blob], filename, { type: mimeType }) };
+        })
+      );
+      for (const { id, file } of files) handleSelect(id, file);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Could not load the sample files.");
+    } finally {
+      setSamplesLoading(false);
+    }
   };
 
   const handleContinue = async () => {
@@ -119,6 +167,15 @@ export default function UploadPage({
         <div className="upload-page__actions">
           <span className="upload-page__count">{selectedCount} of {UPLOAD_SLOTS.length} files selected</span>
           <div className="upload-page__buttons">
+            <button
+              type="button"
+              className="upload-page__btn upload-page__btn--secondary"
+              onClick={handleAddAllSamples}
+              disabled={uploading || samplesLoading}
+              title="Fills every slot with a bundled example file, so you can skip hunting one down each time you try the app."
+            >
+              {samplesLoading ? "Loading samples…" : "Add all samples"}
+            </button>
             <button type="button" className="upload-page__btn upload-page__btn--secondary" onClick={onClearAll} disabled={uploading}>
               Clear All
             </button>

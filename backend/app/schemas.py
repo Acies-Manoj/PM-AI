@@ -168,6 +168,46 @@ class AddCustomFeatureRequest(BaseModel):
     description: str = ""
     calculation_intent: str
     input_columns: list[str] = []
+    # From a reviewed FeatureDraft: the formula the PM approved, and the
+    # token of the dry run that validated it (lets the server reuse that
+    # run's code -- the code itself is never sent by the browser).
+    formula: str | None = None
+    draft_token: str | None = None
+
+
+class DraftFeatureRequest(BaseModel):
+    name: str
+    description: str
+    input_columns: list[str] = []
+    # Set when the PM edited the formula and asked to re-check it: used
+    # verbatim (no Think) and only dry-run again.
+    formula: str | None = None
+
+
+class FeatureDraftSummary(BaseModel):
+    non_null_count: int
+    null_count: int
+    stats: dict[str, float] = {}
+    distribution: dict[str, int] = {}
+
+
+class FeatureDraft(BaseModel):
+    """A reviewed-before-adding custom feature (see features/feature_designer.py):
+    the formula the Feature Agent wrote, plus a dry run of it on the real data."""
+    draft_token: str | None = None
+    name: str
+    output_column: str
+    formula: str
+    formula_steps: list[str] = []
+    columns_used: list[str] = []
+    output_dtype: str | None = None
+    status: Literal["ok", "failed"]
+    error: str | None = None
+    validation_note: str | None = None
+    preview_columns: list[str] = []
+    preview_rows: list[dict[str, Any]] = []
+    summary: FeatureDraftSummary | None = None
+    notes: list[str] = []
 
 
 class SuggestFeatureEntriesResponse(BaseModel):
@@ -223,6 +263,47 @@ class AnalysisDrilldownSuggestion(BaseModel):
     child_entry_id: str | None = None
 
 
+AnalysisChartType = Literal["bar", "grouped_bar", "line", "pie", "scatter", "heatmap", "table"]
+AnalysisFilterKind = Literal["categorical", "numeric_range", "date_range"]
+AnalysisComputationMode = Literal["template", "code"]
+
+
+class AnalysisChartAlternative(BaseModel):
+    chart_type: AnalysisChartType
+    reason: str = ""
+
+
+class AnalysisChartRecommendation(BaseModel):
+    """The chart the Analysis Designer recommended (or the PM picked from
+    its alternatives) for this analysis's result table."""
+    chart_type: AnalysisChartType
+    reason: str = ""
+    alternatives: list[AnalysisChartAlternative] = []
+
+
+class AnalysisFilter(BaseModel):
+    """One interactive filter declared for an analysis, plus the values /
+    range the current data offers for it (see analysis_filters.options)."""
+    column: str
+    kind: AnalysisFilterKind
+    reason: str = ""
+    values: list[str] | None = None
+    min: float | None = None
+    max: float | None = None
+    start: str | None = None
+    end: str | None = None
+
+
+class AnalysisFilterSelection(BaseModel):
+    """What the PM picked for one filter. Which fields apply depends on the
+    filter's kind; unset fields mean "no restriction on that side"."""
+    values: list[str] | None = None
+    min: float | None = None
+    max: float | None = None
+    start: str | None = None
+    end: str | None = None
+
+
 class AnalysisRepositoryEntry(BaseModel):
     """One candidate analysis in a session's repository, regardless of which
     of the five sources proposed it. `calculation_intent` is always a plain-
@@ -247,6 +328,12 @@ class AnalysisRepositoryEntry(BaseModel):
     # Set only for source == "drilldown": the entry id this one was spawned
     # from by a PM clicking "Explore this" on a suggested follow-up.
     parent_id: str | None = None
+    # Deterministic template spec (analysis_templates.py) fitted by the
+    # Analysis Designer -- None means the entry is computed by generated code.
+    template: dict[str, Any] | None = None
+    template_summary: str | None = None
+    chart_recommendation: AnalysisChartRecommendation | None = None
+    filters: list[AnalysisFilter] = []
 
     run_status: AnalysisRunStatus = "not_run"
     plan_text: str | None = None
@@ -258,6 +345,11 @@ class AnalysisRepositoryEntry(BaseModel):
     interpretation: str | None = None
     error: str | None = None
     drilldown_suggestions: list[AnalysisDrilldownSuggestion] = []
+    computation_mode: AnalysisComputationMode | None = None
+    notes: list[str] = []
+    # Set only on a filtered view (POST .../filter): the selections applied.
+    # The stored run result is always the unfiltered one.
+    applied_filters: dict[str, dict[str, Any]] | None = None
 
 
 class AnalysisRepositoryResponse(BaseModel):
@@ -270,6 +362,49 @@ class AddCustomAnalysisRequest(BaseModel):
     description: str = ""
     calculation_intent: str
     input_columns: list[str] = []
+    # Everything below comes from a reviewed AnalysisDraft and is re-validated
+    # server-side on save -- the browser's copy is never trusted.
+    formula: str | None = None
+    template: dict[str, Any] | None = None
+    chart_type: AnalysisChartType | None = None
+    chart_reason: str = ""
+    chart_alternatives: list[AnalysisChartAlternative] = []
+    # [{"column": ..., "reason": ...}] -- the filter kind is recomputed from the data.
+    filters: list[dict[str, Any]] = []
+
+
+class DraftAnalysisRequest(BaseModel):
+    name: str
+    description: str
+    # Set when the PM edited the computation logic and asked to re-check it:
+    # used verbatim instead of generating new logic.
+    formula: str | None = None
+
+
+class AnalysisDraft(BaseModel):
+    """A fully specified, not-yet-saved analysis for the PM to review in the
+    Add Analysis form (see analysis_designer.draft_analysis)."""
+    name: str
+    description: str
+    formula: str
+    formula_steps: list[str] = []
+    group_by: list[str] = []
+    metrics: list[str] = []
+    computation_mode: AnalysisComputationMode
+    template: dict[str, Any] | None = None
+    template_name: str | None = None
+    template_summary: str | None = None
+    template_reason: str = ""
+    chart: AnalysisChartRecommendation
+    filters: list[AnalysisFilter] = []
+    preview_columns: list[str] = []
+    preview_rows: list[dict[str, Any]] = []
+    preview_chart_spec: dict[str, Any] | None = None
+    notes: list[str] = []
+
+
+class FilterAnalysisRequest(BaseModel):
+    filters: dict[str, AnalysisFilterSelection] = {}
 
 
 class SuggestAnalysisEntriesResponse(BaseModel):
@@ -299,6 +434,14 @@ class AnalysisResult(BaseModel):
     interpretation: str | None = None
     error: str | None = None
     drilldown_suggestions: list[AnalysisDrilldownSuggestion] = []
+    computation_mode: AnalysisComputationMode | None = None
+    notes: list[str] = []
+    # The chart picked from the computation logic before this run computed
+    # anything -- set for entries that didn't already carry the PM's choice.
+    chart_recommendation: AnalysisChartRecommendation | None = None
+    # The analysis_templates spec this run was computed with (any source), or
+    # None when it used generated code.
+    template: dict[str, Any] | None = None
 
 
 class OverallHighlight(BaseModel):
@@ -311,3 +454,12 @@ class OverallAnalysisReport(BaseModel):
     row_count: int
     highlights: list[OverallHighlight]
     narrative: str
+
+
+class LanguageOption(BaseModel):
+    code: str
+    name: str
+
+
+class SupportedLanguagesResponse(BaseModel):
+    languages: list[LanguageOption]

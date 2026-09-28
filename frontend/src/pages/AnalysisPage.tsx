@@ -1,28 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
 import StatTile from "../components/StatTile";
-import AnalysisCard from "../components/AnalysisCard";
+import AnalysisEntryTree from "../components/AnalysisEntryTree";
 import AnalysisDetailModal from "../components/AnalysisDetailModal";
 import Modal from "../components/Modal";
 import AnalysisSuggestionCard from "../components/AnalysisSuggestionCard";
 import AddAnalysisForm from "../components/AddAnalysisForm";
-import type { NewCustomAnalysis } from "../components/AddAnalysisForm";
 import OverallAnalysisCard from "../components/OverallAnalysisCard";
 import { IconDoc, IconGrid, IconSparkle, IconChevronLeft, IconChevronRight, IconBarChart, IconLayers } from "../components/icons";
 import {
   acceptAnalysisEntry,
   addCustomAnalysis,
+  draftAnalysis,
   fetchAnalysisRepository,
   fetchFeatureReport,
   fetchOverallAnalysis,
+  filterAnalysisEntry,
   runAnalysisEntry,
   suggestAnalysisEntries,
   triggerDrilldown,
   uploadAnalysisDefinitions,
   AuditApiError,
+  type AddCustomAnalysisBody,
+  type AnalysisFilterSelections,
   type AnalysisRepositoryEntry,
   type FeatureReport,
   type OverallAnalysisReport,
@@ -30,6 +33,7 @@ import {
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
 import type { AuditReportsState, FilesState } from "../App";
+import { buildAnalysisTree } from "../utils/analysisTree";
 import "./AnalysisPage.css";
 
 interface AnalysisPageProps {
@@ -43,6 +47,9 @@ type OverallReportsState = Partial<Record<UploadSlotId, OverallAnalysisReport>>;
 type LoadingState = Partial<Record<UploadSlotId, boolean>>;
 type ErrorsState = Partial<Record<UploadSlotId, string>>;
 type BusyIdState = Partial<Record<UploadSlotId, string>>;
+
+// Each analysis run is several LLM calls, so only this many run at once.
+const MAX_CONCURRENT_RUNS = 2;
 
 const SOURCE_GROUP_LABELS: { source: AnalysisRepositoryEntry["source"]; label: string }[] = [
   { source: "predefined", label: "Predefined (Analysis Profile)" },
@@ -63,6 +70,13 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const [repoError, setRepoError] = useState<ErrorsState>({});
 
   const [runningIds, setRunningIds] = useState<Record<string, boolean>>({});
+  const [runFailures, setRunFailures] = useState<Record<string, string | undefined>>({});
+  // Entries the auto-runner has already started once -- it never starts the
+  // same entry twice; a failed run is retried only from the card.
+  const autoStarted = useRef<Set<string>>(new Set());
+  // Per slot: the set of finished analyses the last summary was generated
+  // for, so the summary regenerates only when that set actually changes.
+  const summarizedFor = useRef<Partial<Record<UploadSlotId, string>>>({});
   const [suggestLoading, setSuggestLoading] = useState<LoadingState>({});
   const [suggestError, setSuggestError] = useState<ErrorsState>({});
   const [applyingEntryId, setApplyingEntryId] = useState<BusyIdState>({});
@@ -129,9 +143,8 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
     fetchAnalysisRepository(sessionId).then((repo) => setRepositories((prev) => ({ ...prev, [id]: repo.entries })));
 
   // Step 2: once the Analysis Profile upload has settled (or there wasn't
-  // one), load the repository for each ready slot -- no auto-run: each entry
-  // is computed on demand when the PM clicks "Run", since a run can be up to
-  // six LLM calls.
+  // one), load the repository for each ready slot. Entries then run on
+  // their own (see the auto-run effect below).
   useEffect(() => {
     if (!defsAttempted) return;
     for (const id of slotsReady) {
@@ -159,13 +172,17 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
 
   const runEntry = (id: UploadSlotId, entry: AnalysisRepositoryEntry) => {
     const sessionId = auditReports[id]!.session_id;
+    setRunFailures((prev) => ({ ...prev, [entry.id]: undefined }));
     setRunningIds((prev) => ({ ...prev, [entry.id]: true }));
     runAnalysisEntry(sessionId, entry.id)
       .then((updated) => updateEntry(id, updated))
       .catch((err) =>
-        setRepoError((prev) => ({
+        // Recorded per entry (not as a page-level error) so the card can say
+        // what went wrong -- the auto-runner never retries a failed entry on
+        // its own, which would loop on a persistent failure.
+        setRunFailures((prev) => ({
           ...prev,
-          [id]: err instanceof AuditApiError ? err.message : "Could not run that analysis.",
+          [entry.id]: err instanceof AuditApiError ? err.message : "Could not run this analysis.",
         }))
       )
       .finally(() => setRunningIds((prev) => ({ ...prev, [entry.id]: false })));
@@ -200,18 +217,14 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       .finally(() => setApplyingEntryId((prev) => ({ ...prev, [id]: undefined })));
   };
 
-  const addAnalysis = (id: UploadSlotId, analysis: NewCustomAnalysis) => {
+  // Rejects on failure so the Add Analysis form (a modal) can show the error
+  // itself -- the page-level error line is hidden behind the modal.
+  const addAnalysis = (id: UploadSlotId, analysis: AddCustomAnalysisBody): Promise<void> => {
     const sessionId = auditReports[id]!.session_id;
     setAddingAnalysis((prev) => ({ ...prev, [id]: true }));
-    addCustomAnalysis(sessionId, analysis)
+    return addCustomAnalysis(sessionId, analysis)
       .then(() => refreshRepository(id, sessionId))
       .then(() => setShowAddForm((prev) => ({ ...prev, [id]: false })))
-      .catch((err) =>
-        setRepoError((prev) => ({
-          ...prev,
-          [id]: err instanceof AuditApiError ? err.message : "Could not add that analysis.",
-        }))
-      )
       .finally(() => setAddingAnalysis((prev) => ({ ...prev, [id]: false })));
   };
 
@@ -243,6 +256,42 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       )
       .finally(() => setOverallLoading((prev) => ({ ...prev, [id]: false })));
   };
+
+  // Auto-run: every approved analysis that hasn't been computed yet starts
+  // on its own -- predefined and planner entries on page load, custom and
+  // accepted AI suggestions as soon as they're added. Capped at
+  // MAX_CONCURRENT_RUNS because each run is several LLM calls.
+  useEffect(() => {
+    let slots = MAX_CONCURRENT_RUNS - Object.values(runningIds).filter(Boolean).length;
+    for (const id of slotsReady) {
+      for (const entry of repositories[id] ?? []) {
+        if (slots <= 0) return;
+        if (entry.status !== "approved" || entry.run_status !== "not_run") continue;
+        if (autoStarted.current.has(entry.id) || runningIds[entry.id]) continue;
+        autoStarted.current.add(entry.id);
+        runEntry(id, entry);
+        slots -= 1;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repositories, runningIds, slotsReady]);
+
+  // Auto-summary: once no analysis in a slot is still waiting or running,
+  // generate the summary -- and regenerate it whenever the set of finished
+  // analyses changes (a new analysis ran, a drilldown was explored).
+  useEffect(() => {
+    for (const id of slotsReady) {
+      const approved = (repositories[id] ?? []).filter((e) => e.status === "approved");
+      const pending = approved.some(
+        (e) => runningIds[e.id] || (e.run_status === "not_run" && !runFailures[e.id])
+      );
+      const done = approved.filter((e) => e.run_status === "done").map((e) => e.id).sort().join("|");
+      if (pending || !done || overallLoading[id] || summarizedFor.current[id] === done) continue;
+      summarizedFor.current[id] = done;
+      runOverallAnalysis(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repositories, runningIds, runFailures, slotsReady, overallLoading]);
 
   if (AUDITED_SLOTS.every((id) => !files[id])) {
     return (
@@ -308,7 +357,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
         <PageHeader
           icon={<IconBarChart />}
           title="Analysis"
-          subtitle="The Analysis Agent drafts a formula, writes the code, picks a chart, and interprets the result for each analysis below -- predefined, planner-approved, custom, and AI-suggested -- one click at a time."
+          subtitle="The Analysis Agent drafts a formula, writes the code, picks a chart, and interprets the result for each analysis below -- predefined, planner-approved, custom, and AI-suggested -- automatically, as soon as each one is added."
         />
 
         {defsLoading && <div className="analysis-page__loading">Reading analysis definitions from {files.analysisProfile!.name}…</div>}
@@ -326,9 +375,9 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           const featureColumns = featureReports[id]?.columns ?? [];
           const pendingSuggestions = repo.filter((e) => e.source === "ai_suggested" && e.status === "pending");
           const visibleEntries = repo.filter((e) => e.status === "approved");
+          const tree = buildAnalysisTree(visibleEntries);
           const topLevelEntries = visibleEntries.filter((e) => !e.parent_id);
           const drilldownEntries = visibleEntries.filter((e) => e.parent_id);
-          const nameById = Object.fromEntries(repo.map((e) => [e.id, e.name]));
 
           const panelsSection = (
             <div className="analysis-page__panels-grid">
@@ -427,6 +476,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                     <AddAnalysisForm
                       columns={featureColumns}
                       busy={!!addingAnalysis[id]}
+                      onDraft={(request) => draftAnalysis(auditReports[id]!.session_id, request)}
                       onAdd={(analysis) => addAnalysis(id, analysis)}
                       onCancel={() => setShowAddForm((prev) => ({ ...prev, [id]: false }))}
                     />
@@ -487,7 +537,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                 </div>
               )}
 
-              {topLevelEntries.length === 0 ? (
+              {tree.length === 0 ? (
                 <p className="analysis-page__none">
                   No analyses in this session's repository yet -- upload an Analysis Profile, wait for
                   planner-approved analyses, or add a custom/AI-suggested one below.
@@ -498,35 +548,16 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                     <IconLayers /> Analyses
                   </h3>
                   <div className="analysis-page__grid">
-                    {topLevelEntries.map((entry) => (
-                      <AnalysisCard
-                        key={entry.id}
-                        entry={entry}
-                        running={!!runningIds[entry.id]}
-                        onRun={() => runEntry(id, entry)}
-                        onExpand={() => setOpenEntry({ slotId: id, entryId: entry.id })}
+                    {tree.map((node) => (
+                      <AnalysisEntryTree
+                        key={node.entry.id}
+                        node={node}
+                        depth={0}
+                        runningIds={runningIds}
+                        runFailures={runFailures}
+                        onRun={(entry) => runEntry(id, entry)}
+                        onExpand={(entryId) => setOpenEntry({ slotId: id, entryId })}
                       />
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {drilldownEntries.length > 0 && (
-                <>
-                  <h3 className="analysis-page__section-title analysis-page__section-title--drilldowns">
-                    <IconSparkle /> Drilldowns
-                  </h3>
-                  <div className="analysis-page__grid">
-                    {drilldownEntries.map((entry) => (
-                      <div key={entry.id}>
-                        <span className="analysis-page__drilldown-origin">↳ from {nameById[entry.parent_id ?? ""] ?? "an analysis"}</span>
-                        <AnalysisCard
-                          entry={entry}
-                          running={!!runningIds[entry.id]}
-                          onRun={() => runEntry(id, entry)}
-                          onExpand={() => setOpenEntry({ slotId: id, entryId: entry.id })}
-                        />
-                      </div>
                     ))}
                   </div>
                 </>
@@ -536,7 +567,10 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                 report={overallReports[id]}
                 loading={!!overallLoading[id]}
                 error={overallError[id]}
-                onRefresh={() => runOverallAnalysis(id)}
+                waitingForAnalyses={visibleEntries.some(
+                  (e) => runningIds[e.id] || (e.run_status === "not_run" && !runFailures[e.id])
+                )}
+                onRetry={() => runOverallAnalysis(id)}
               />
 
               {panelsSection}
@@ -556,15 +590,23 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
 
       {openEntry &&
         (() => {
-          const openEntryData = repositories[openEntry.slotId]?.find((e) => e.id === openEntry.entryId);
+          const openRepo = repositories[openEntry.slotId] ?? [];
+          const openEntryData = openRepo.find((e) => e.id === openEntry.entryId);
           if (!openEntryData) return null;
+          const parentName = openEntryData.parent_id
+            ? openRepo.find((e) => e.id === openEntryData.parent_id)?.name
+            : undefined;
           return (
             <AnalysisDetailModal
               entry={openEntryData}
+              parentName={parentName}
               triggeringDrilldownId={triggeringDrilldownId}
               onClose={() => setOpenEntry(null)}
               onTriggerDrilldown={(drilldownId) => handleTriggerDrilldown(openEntry.slotId, openEntry.entryId, drilldownId)}
               onOpenChild={(childEntryId) => setOpenEntry({ slotId: openEntry.slotId, entryId: childEntryId })}
+              onApplyFilters={(filters: AnalysisFilterSelections) =>
+                filterAnalysisEntry(auditReports[openEntry.slotId]!.session_id, openEntry.entryId, filters)
+              }
             />
           );
         })()}

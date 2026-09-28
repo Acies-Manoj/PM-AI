@@ -332,20 +332,11 @@
 .analysis-page__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  align-items: stretch;
+  /* start, not stretch -- a root whose drilldowns nest underneath it grows
+     taller than its siblings; stretch would force every other cell in the
+     row to match that height instead of sitting at its own natural size. */
+  align-items: start;
   gap: 14px;
-}
-
-.analysis-page__section-title--drilldowns {
-  margin-top: 24px;
-}
-
-.analysis-page__drilldown-origin {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-purple);
 }
 
 .analysis-page__skipped {

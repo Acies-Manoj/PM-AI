@@ -9,11 +9,12 @@ from pydantic import BaseModel
 
 from app.config import DATA_DIR
 from app.schemas import AuditIssue, AuditReport, FeatureReport, ResolveRequest, UpdateTripValueRequest
-from app.services import data_audit, feature_engineering, feature_repository
-from app.services.audit_agent import generate_audit_analysis
-from app.services.audit_store import AuditSession, store
-from app.services.column_profiler import profile_dataframe
-from app.services.excel_parser import load_spreadsheet
+from app.services.audit import data_audit
+from app.services.audit.audit_agent import generate_audit_analysis
+from app.services.audit.audit_store import AuditSession, store
+from app.services.audit.column_profiler import profile_dataframe
+from app.services.audit.excel_parser import load_spreadsheet
+from app.services.features import feature_engineering, feature_repository
 
 _SESSIONS_DIR = DATA_DIR / "sessions"
 
@@ -322,7 +323,7 @@ def get_features(session_id: str) -> FeatureReport:
 
 @router.get("/{session_id}/outliers")
 def get_outliers(session_id: str):
-    from app.services.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
+    from app.services.audit.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
     session = _get_session_or_404(session_id)
     return {
         "session_id": session_id,
@@ -343,8 +344,8 @@ def edit_trip_value(session_id: str, body: UpdateTripValueRequest):
     so an edit made AFTER Features has run once still reaches every later
     step (Features, Analysis, the downloaded cleansed file, the report)
     instead of being silently overwritten the next time features recompute."""
-    from app.services.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
-    from app.services.outlier_detectors import update_trip_value as apply_trip_value_edit
+    from app.services.audit.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
+    from app.services.audit.outlier_detectors import update_trip_value as apply_trip_value_edit
     session = _get_session_or_404(session_id)
     try:
         session.df = apply_trip_value_edit(session.df, body.serial, body.trip_id, body.field, body.value)

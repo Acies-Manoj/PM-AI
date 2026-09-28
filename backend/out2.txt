@@ -1,0 +1,16 @@
+Sheets: ['Pipeline Steps', 'Legend', 'Agents', 'Diagram Notes', 'LLM Prompts']
+Notes label present: False
+Guardrails count: 12
+
+Agents dims: A1:B79
+ - 1. Planner Agent   (orchestrator_agent.py)
+ - 2. Data Audit Agent   (audit_agent.py)
+ - 3. Feature Suggestion Agent   (feature_suggester.py)
+ - 4. Feature Request Agent   (feature_request_agent.py)
+ - 5. AI Feature Code Generator   (ai_feature_generator.py)
+ - 6. Chart/Pivot Suggestion Agent   (pivot_suggester.py)
+ - 7. Formula Agent   (formula_agent.py)
+ - 8. Overall Analysis Agent   (overall_analysis_agent.py)
+ - 9. Chart Interpretation Agent   (chart_interpretation_agent.py)
+ - 10. Drill-Down Agent   (drill_down_agent.py)
+ - 11. (legacy, not in diagram) Analysis Requirement Extractor   (analysis_orchestrator.py)

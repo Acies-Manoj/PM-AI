@@ -16,7 +16,6 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # Override in .env with any model slug from https://openrouter.ai/models
 LLM_MODEL = os.getenv("LLM_MODEL", "google/gemini-2.5-flash-lite")
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 
 # The Feature Agent (think / write code / validate) runs entirely on

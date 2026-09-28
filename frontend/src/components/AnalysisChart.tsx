@@ -9,12 +9,15 @@ interface AnalysisChartProps {
   chartSpec: AnalysisChartSpec | null;
   chartType: string | null;
   resultTable: Record<string, unknown>[] | null;
+  /** Rows shown when rendering the plain table (default 20). */
+  maxTableRows?: number;
 }
 
+const CHART_HEIGHT = 360;
 const AXIS_FONT = { family: "inherit", size: 10.5, color: "#5B6478" };
 const BASE_LAYOUT: Partial<Plotly.Layout> = {
   margin: { l: 48, r: 48, t: 16, b: 90 },
-  height: 360,
+  height: CHART_HEIGHT,
   font: AXIS_FONT,
   paper_bgcolor: "transparent",
   plot_bgcolor: "transparent",
@@ -27,7 +30,7 @@ const PLOTLY_CONFIG: Partial<Plotly.Config> = { displayModeBar: true, displaylog
  * so this component only merges in the shared theme/config, never reshapes
  * the trace data itself. Falls back to a plain table when chart-spec
  * generation failed but the underlying table still computed. */
-export default function AnalysisChart({ chartSpec, resultTable }: AnalysisChartProps) {
+export default function AnalysisChart({ chartSpec, resultTable, maxTableRows = 20 }: AnalysisChartProps) {
   if (chartSpec) {
     return (
       <div className="analysis-chart">
@@ -39,7 +42,10 @@ export default function AnalysisChart({ chartSpec, resultTable }: AnalysisChartP
           // never allowed to override sizing-critical keys like height.
           layout={{ ...chartSpec.layout, ...BASE_LAYOUT }}
           config={PLOTLY_CONFIG}
-          style={{ width: "100%" }}
+          // An explicit height is required: with `responsive` on, Plotly sizes
+          // its inner container to 100% of this element, which collapses to 0
+          // if the element's height is left to content.
+          style={{ width: "100%", height: CHART_HEIGHT }}
           useResizeHandler
         />
       </div>
@@ -59,7 +65,7 @@ export default function AnalysisChart({ chartSpec, resultTable }: AnalysisChartP
             </tr>
           </thead>
           <tbody>
-            {resultTable.slice(0, 20).map((row, idx) => (
+            {resultTable.slice(0, maxTableRows).map((row, idx) => (
               <tr key={idx}>
                 {columns.map((c) => (
                   <td key={c}>{String(row[c] ?? "—")}</td>

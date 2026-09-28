@@ -4,9 +4,9 @@
     {
       "name": "backend",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--reload", "--port", "8000"],
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--reload", "--port", "8123"],
       "cwd": "backend",
-      "port": 8000
+      "port": 8123
     },
     {
       "name": "frontend",

@@ -1,3 +1,27 @@
+.analysis-detail__back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-bottom: 4px;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-purple);
+  cursor: pointer;
+}
+
+.analysis-detail__back-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.analysis-detail__back-btn:hover {
+  text-decoration: underline;
+}
+
 .analysis-drilldowns {
   margin-top: 6px;
 }
@@ -68,4 +92,79 @@
 .analysis-drilldowns__btn:disabled {
   opacity: 0.7;
   cursor: default;
+}
+
+.analysis-detail__method {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.analysis-detail__method-badge {
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.analysis-detail__method-badge--template {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+.analysis-detail__method-badge--code {
+  color: var(--accent-purple);
+  background: var(--accent-purple-bg);
+}
+
+.analysis-detail__notes {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  color: var(--accent-amber);
+}
+
+/* Same look as the Audit report's tabs. */
+.analysis-detail__tabs {
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.analysis-detail__tab {
+  margin-bottom: -1px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 2px 9px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  background: none;
+  cursor: pointer;
+}
+
+.analysis-detail__tab:hover {
+  color: var(--carrier-blue);
+}
+
+.analysis-detail__tab--active {
+  color: var(--carrier-blue);
+  border-bottom-color: var(--carrier-blue);
+}
+
+.analysis-detail__chart-choice {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.analysis-detail__chart-choice strong {
+  color: var(--color-text);
 }

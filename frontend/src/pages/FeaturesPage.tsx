@@ -9,13 +9,13 @@ import FeatureDetailModal from "../components/FeatureDetailModal";
 import Modal from "../components/Modal";
 import FeatureSuggestionCard from "../components/FeatureSuggestionCard";
 import AddKpiForm from "../components/AddKpiForm";
-import type { NewCustomKpi } from "../components/AddKpiForm";
 import DataPreviewTable from "../components/DataPreviewTable";
 import { IconDoc, IconGrid, IconSparkle, IconWarnTriangle, IconShieldCheck, IconDownload, IconClipboard, IconChevronLeft, IconChevronRight } from "../components/icons";
 import {
   acceptFeatureEntry,
   addCustomFeature,
   applyFeatures,
+  draftCustomFeature,
   downloadCleansedFileUrl,
   fetchFeatureRepository,
   fetchPreview,
@@ -24,6 +24,7 @@ import {
   AuditApiError,
   type DataPreview,
   type FeatureReport,
+  type AddCustomFeatureBody,
   type FeatureRepositoryEntry,
 } from "../api/audit";
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
@@ -170,18 +171,14 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
       .finally(() => setApplyingEntryId((prev) => ({ ...prev, [id]: undefined })));
   };
 
-  const addCustomKpi = (id: UploadSlotId, kpi: NewCustomKpi) => {
+  // Rejects on failure so the Add KPI form (a modal) can show the error
+  // itself -- the page-level error line is hidden behind the modal.
+  const addCustomKpi = (id: UploadSlotId, kpi: AddCustomFeatureBody): Promise<void> => {
     const sessionId = auditReports[id]!.session_id;
     setAddingKpi((prev) => ({ ...prev, [id]: true }));
-    addCustomFeature(sessionId, kpi)
-      .then(() => computeAndRefresh(id))
+    return addCustomFeature(sessionId, kpi)
       .then(() => setShowAddKpiForm((prev) => ({ ...prev, [id]: false })))
-      .catch((err) =>
-        setErrors((prev) => ({
-          ...prev,
-          [id]: err instanceof AuditApiError ? err.message : "Could not add that feature.",
-        }))
-      )
+      .then(() => computeAndRefresh(id))
       .finally(() => setAddingKpi((prev) => ({ ...prev, [id]: false })));
   };
 
@@ -344,6 +341,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                     <AddKpiForm
                       columns={report.columns}
                       busy={!!addingKpi[id]}
+                      onDraft={(request) => draftCustomFeature(auditReports[id]!.session_id, request)}
                       onAdd={(kpi) => addCustomKpi(id, kpi)}
                       onCancel={() => setShowAddKpiForm((prev) => ({ ...prev, [id]: false }))}
                     />

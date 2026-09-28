@@ -1,6 +1,5 @@
 import type { FeatureResult } from "../api/audit";
 import { IconExpand, IconTag, IconShieldCheck, IconClock, IconPercent, IconCalendar } from "./icons";
-import PlanText from "./PlanText";
 import "./FeatureCard.css";
 
 interface FeatureCardProps {
@@ -79,7 +78,6 @@ export default function FeatureCard({ feature, colorIndex = 0, onExpand }: Featu
         </span>
         <div className="feature-card__header-text">
           <h3 className="feature-card__name">{feature.name}</h3>
-          {feature.plan && <PlanText plan={feature.plan} className="feature-card__formula" />}
           <span className="feature-card__column">{feature.output_column}</span>
         </div>
         <div className="feature-card__badges">

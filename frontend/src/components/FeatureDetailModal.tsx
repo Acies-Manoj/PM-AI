@@ -1,7 +1,6 @@
 import type { FeatureResult } from "../api/audit";
 import Modal from "./Modal";
 import { Distribution, STAT_LABELS, displayStats } from "./FeatureCard";
-import PlanText from "./PlanText";
 import "./FeatureCard.css";
 
 interface FeatureDetailModalProps {
@@ -16,7 +15,6 @@ export default function FeatureDetailModal({ feature, onClose }: FeatureDetailMo
 
   return (
     <Modal title={feature.name} onClose={onClose}>
-      {feature.plan && <PlanText plan={feature.plan} className="feature-card__formula" />}
       <p className="feature-card__modal-description">{feature.description}</p>
       {feature.validation_note && (
         <p className="feature-card__validation-note">✓ Feature Agent validation: {feature.validation_note}</p>

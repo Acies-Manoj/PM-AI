@@ -149,6 +149,67 @@ export interface AnalysisChartSpec {
   layout: Record<string, unknown>;
 }
 
+export type AnalysisChartType = "bar" | "grouped_bar" | "line" | "pie" | "scatter" | "heatmap" | "table";
+export type AnalysisFilterKind = "categorical" | "numeric_range" | "date_range";
+export type AnalysisComputationMode = "template" | "code";
+
+export interface AnalysisChartAlternative {
+  chart_type: AnalysisChartType;
+  reason: string;
+}
+
+export interface AnalysisChartRecommendation {
+  chart_type: AnalysisChartType;
+  reason: string;
+  alternatives: AnalysisChartAlternative[];
+}
+
+// One interactive filter declared for an analysis, plus what the current
+// data offers for it: `values` for categorical, min/max for numeric_range,
+// start/end (YYYY-MM-DD) for date_range.
+export interface AnalysisFilter {
+  column: string;
+  kind: AnalysisFilterKind;
+  reason: string;
+  values: string[] | null;
+  min: number | null;
+  max: number | null;
+  start: string | null;
+  end: string | null;
+}
+
+export interface AnalysisFilterSelection {
+  values?: string[];
+  min?: number;
+  max?: number;
+  start?: string;
+  end?: string;
+}
+
+export type AnalysisFilterSelections = Record<string, AnalysisFilterSelection>;
+
+// A fully specified, not-yet-saved analysis returned by the Analysis
+// Designer for the PM to review in the Add Analysis form.
+export interface AnalysisDraft {
+  name: string;
+  description: string;
+  formula: string;
+  formula_steps: string[];
+  group_by: string[];
+  metrics: string[];
+  computation_mode: AnalysisComputationMode;
+  template: Record<string, unknown> | null;
+  template_name: string | null;
+  template_summary: string | null;
+  template_reason: string;
+  chart: AnalysisChartRecommendation;
+  filters: AnalysisFilter[];
+  preview_columns: string[];
+  preview_rows: Record<string, unknown>[];
+  preview_chart_spec: AnalysisChartSpec | null;
+  notes: string[];
+}
+
 export interface AnalysisRepositoryEntry {
   id: string;
   source: AnalysisSource;
@@ -158,12 +219,19 @@ export interface AnalysisRepositoryEntry {
   calculation_intent: string;
   input_columns: string[];
   // A precise plan already attached to this entry (Planner-generated and
-  // PM-approved, or a predefined spec with its own formula) -- null means
-  // the Analysis Agent hasn't thought about this one yet.
+  // PM-approved, drafted in the Add Analysis form, or a predefined spec with
+  // its own formula) -- null means the Analysis Agent hasn't thought about
+  // this one yet.
   formula: string | null;
   // Set only for source === "drilldown": the entry id this one was spawned
   // from.
   parent_id: string | null;
+  // Deterministic template this entry is computed with -- null means code
+  // generation.
+  template: Record<string, unknown> | null;
+  template_summary: string | null;
+  chart_recommendation: AnalysisChartRecommendation | null;
+  filters: AnalysisFilter[];
 
   run_status: AnalysisRunStatus;
   plan_text: string | null;
@@ -175,6 +243,10 @@ export interface AnalysisRepositoryEntry {
   interpretation: string | null;
   error: string | null;
   drilldown_suggestions: AnalysisDrilldownSuggestion[];
+  computation_mode: AnalysisComputationMode | null;
+  notes: string[];
+  // Set only on a filtered view returned by filterAnalysisEntry.
+  applied_filters: Record<string, AnalysisFilterSelection> | null;
 }
 
 export interface AnalysisRepositoryResponse {
@@ -312,10 +384,57 @@ export async function fetchFeatureRepository(sessionId: string): Promise<Feature
   return response.json();
 }
 
-export async function addCustomFeature(
+// A user-requested feature drafted for review before it's added: the
+// formula the Feature Agent wrote, dry-run on the real data.
+export interface FeatureDraft {
+  draft_token: string | null;
+  name: string;
+  output_column: string;
+  formula: string;
+  formula_steps: string[];
+  columns_used: string[];
+  output_dtype: string | null;
+  status: "ok" | "failed";
+  error: string | null;
+  validation_note: string | null;
+  preview_columns: string[];
+  preview_rows: Record<string, unknown>[];
+  summary: {
+    non_null_count: number;
+    null_count: number;
+    stats: Record<string, number>;
+    distribution: Record<string, number>;
+  } | null;
+  notes: string[];
+}
+
+export async function draftCustomFeature(
   sessionId: string,
-  body: { name: string; description?: string; calculation_intent: string; input_columns?: string[] }
-): Promise<FeatureRepositoryEntry> {
+  body: { name: string; description: string; input_columns?: string[]; formula?: string }
+): Promise<FeatureDraft> {
+  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/draft`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export interface AddCustomFeatureBody {
+  name: string;
+  description?: string;
+  calculation_intent: string;
+  input_columns?: string[];
+  // From a reviewed FeatureDraft. The server reuses that dry run's code only
+  // if `formula` is exactly what was dry-run.
+  formula?: string;
+  draft_token?: string | null;
+}
+
+export async function addCustomFeature(sessionId: string, body: AddCustomFeatureBody): Promise<FeatureRepositoryEntry> {
   const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/custom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -413,10 +532,36 @@ export async function fetchAnalysisRepository(sessionId: string): Promise<Analys
   return response.json();
 }
 
-export async function addCustomAnalysis(
+export async function draftAnalysis(
   sessionId: string,
-  body: { name: string; description?: string; calculation_intent: string; input_columns?: string[] }
-): Promise<AnalysisRepositoryEntry> {
+  body: { name: string; description: string; formula?: string }
+): Promise<AnalysisDraft> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/draft`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+export interface AddCustomAnalysisBody {
+  name: string;
+  description?: string;
+  calculation_intent: string;
+  input_columns?: string[];
+  // From a reviewed AnalysisDraft -- re-validated by the backend on save.
+  formula?: string;
+  template?: Record<string, unknown> | null;
+  chart_type?: AnalysisChartType;
+  chart_reason?: string;
+  chart_alternatives?: AnalysisChartAlternative[];
+  filters?: { column: string; reason: string }[];
+}
+
+export async function addCustomAnalysis(sessionId: string, body: AddCustomAnalysisBody): Promise<AnalysisRepositoryEntry> {
   const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/custom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -460,6 +605,24 @@ export async function runAnalysisEntry(sessionId: string, entryId: string): Prom
   return response.json();
 }
 
+/** A filtered view of an already-run analysis. Never replaces the stored
+ * (unfiltered) result, and never calls an LLM on the backend. */
+export async function filterAnalysisEntry(
+  sessionId: string,
+  entryId: string,
+  filters: AnalysisFilterSelections
+): Promise<AnalysisRepositoryEntry> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/filter`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filters }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
 export async function triggerDrilldown(sessionId: string, entryId: string, drilldownId: string): Promise<AnalysisRepositoryEntry> {
   const response = await fetch(
     `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/${drilldownId}/trigger`,
@@ -473,6 +636,37 @@ export async function triggerDrilldown(sessionId: string, entryId: string, drill
 
 export async function fetchOverallAnalysis(sessionId: string): Promise<OverallAnalysisReport> {
   const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/overall`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+/** Builds the .pptx download link for whichever done analysis entries the
+ * PM chose to include -- an empty list downloads nothing selected, so
+ * callers should keep the Download control disabled in that case.
+ * `language` optionally translates the report's own fixed phrases (see
+ * report_generator.TRANSLATABLE_PHRASES) -- never the underlying analysis
+ * names/interpretations/data, which always stay in their original language. */
+export function downloadReportUrl(sessionId: string, entryIds: string[], language = "en"): string {
+  const params = new URLSearchParams();
+  for (const id of entryIds) params.append("entry_id", id);
+  if (language !== "en") params.set("language", language);
+  const query = params.toString();
+  return `${API_BASE_URL}/api/report/${sessionId}/download${query ? `?${query}` : ""}`;
+}
+
+export interface LanguageOption {
+  code: string;
+  name: string;
+}
+
+export interface SupportedLanguagesResponse {
+  languages: LanguageOption[];
+}
+
+export async function fetchSupportedReportLanguages(): Promise<SupportedLanguagesResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/report/languages`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }

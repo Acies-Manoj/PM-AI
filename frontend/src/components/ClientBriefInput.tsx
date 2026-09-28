@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import "./ClientBriefInput.css";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
 export interface BriefState {
   rawText: string;
   detectedLanguage: string | null;
@@ -37,7 +39,7 @@ export default function ClientBriefInput({ value, onChange }: Props) {
       if (!text.trim() || text.trim().length < 15) return;
       setIsDetecting(true);
       try {
-        const res = await fetch("/api/brief/detect-translate", {
+        const res = await fetch(`${API_BASE_URL}/api/brief/detect-translate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text }),

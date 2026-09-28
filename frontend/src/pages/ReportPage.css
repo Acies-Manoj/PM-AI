@@ -31,11 +31,23 @@
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .report-page__btn svg {
   width: 15px;
   height: 15px;
+}
+
+.report-page__btn--primary {
+  background: var(--carrier-blue);
+  border: 1px solid var(--carrier-blue);
+  color: #fff;
+}
+
+.report-page__btn--primary:hover {
+  background: var(--carrier-light-blue);
+  border-color: var(--carrier-light-blue);
 }
 
 .report-page__btn--secondary {
@@ -47,4 +59,276 @@
 .report-page__btn--secondary:hover {
   border-color: var(--color-text-muted);
   color: var(--color-text);
+}
+
+.report-page__nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* -- card shell -------------------------------------------------------- */
+
+.report-page__card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 18px 20px 20px;
+  margin-bottom: 18px;
+}
+
+.report-page__card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.report-page__card-head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.report-page__slot-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--carrier-blue);
+}
+
+.report-page__pill {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--carrier-blue);
+  background: var(--carrier-blue-tint);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.report-page__filename {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.report-page__error {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+/* -- language picker ----------------------------------------------------- */
+
+.report-page__language-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.report-page__language-picker label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.report-page__language-picker select {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.report-page__language-hint {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* -- stat tiles ----------------------------------------------------------- */
+
+.report-page__stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.report-page__stat-row .stat-tile {
+  flex: 1 1 140px;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  min-height: 0;
+}
+
+.report-page__stat-row .stat-tile__icon {
+  width: 38px;
+  height: 38px;
+}
+
+.report-page__stat-row .stat-tile__icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.report-page__stat-row .stat-tile__value {
+  font-size: 19px;
+  line-height: 1.2;
+}
+
+.report-page__stat-row .stat-tile__label {
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+.report-page__stat-row .stat-tile__flourish {
+  display: none;
+}
+
+/* -- included analyses list ---------------------------------------------- */
+
+.report-page__included-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--carrier-blue);
+}
+
+.report-page__included-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.report-page__included-summary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding: 6px 2px;
+}
+
+/* -- slide thumbnail (mirrors the exported slide's own look: navy heading,
+   chart, muted caption) ---------------------------------------------------- */
+
+.report-page__slide-thumb {
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--carrier-blue);
+  border-radius: var(--radius-md);
+  padding: 12px 14px 14px;
+  background: var(--color-surface);
+}
+
+.report-page__slide-thumb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+
+.report-page__slide-thumb-head input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.report-page__slide-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--carrier-blue);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.report-page__entry-name {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--carrier-blue);
+  flex: 1;
+}
+
+.report-page__chart-type-pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  background: var(--color-bg-subtle, #f4f6f8);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.report-page__slide-thumb-body {
+  margin-top: 8px;
+}
+
+.report-page__slide-thumb-caption {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* -- download button ---------------------------------------------------- */
+
+.report-page__download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  border-radius: var(--radius-sm);
+  padding: 10px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: none;
+  background: var(--carrier-blue);
+  border: 1px solid var(--carrier-blue);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.report-page__download-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.report-page__download-btn:hover {
+  background: var(--carrier-light-blue);
+  border-color: var(--carrier-light-blue);
+}
+
+.report-page__download-btn--disabled {
+  background: var(--color-bg-subtle, #f4f6f8);
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  cursor: default;
+  pointer-events: none;
+}
+
+.report-page__actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
 }

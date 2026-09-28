@@ -12,6 +12,8 @@ import warnings
 
 import pandas as pd
 
+from app.services.common import llm_client
+
 # Share of non-null values that must convert before a column is treated as
 # numeric / date. High enough that free text never qualifies by accident.
 _MIN_CONVERTED_SHARE = 0.8
@@ -66,26 +68,6 @@ def as_labels(series: pd.Series) -> pd.Series:
     return labels.fillna("(blank)").astype(str)
 
 
-SAMPLE_VALUES_PER_COLUMN = 3
-SAMPLE_VALUE_MAX_CHARS = 200
-
-
-def sample_preview(series: pd.Series) -> str:
-    """A few real values from the column for an LLM prompt. Takes the
-    sample BEFORE converting to text so a large column isn't stringified in
-    full, and cuts very long values (free-text notes) to keep prompts small."""
-    sample = series.dropna().head(SAMPLE_VALUES_PER_COLUMN).astype(str).tolist()
-    if not sample:
-        return "(all null)"
-    cleaned = []
-    for value in sample:
-        value = " ".join(value.split())
-        if len(value) > SAMPLE_VALUE_MAX_CHARS:
-            value = value[:SAMPLE_VALUE_MAX_CHARS] + "…"
-        cleaned.append(value)
-    return ", ".join(cleaned)
-
-
 def column_catalog(df: pd.DataFrame) -> str:
     """One line per column -- name, dtype, sample values -- for LLM prompts."""
-    return "\n".join(f"- {col} ({df[col].dtype}): e.g. {sample_preview(df[col])}" for col in df.columns)
+    return llm_client.column_preview_block(df)

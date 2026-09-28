@@ -15,30 +15,8 @@ import re
 import pandas as pd
 
 from app.config import OPENROUTER_MODEL
+from app.prompts import feature_suggester as prompts
 from app.services.common import llm_client
-
-SYSTEM_PROMPT = """You are a data engineer proposing new engineered columns \
-for an operational cold-chain shipment dataset, to help a program manager \
-build KPIs and reports. You'll be given the current column names, dtypes, \
-and a few sample values per column.
-
-Propose up to 5 NEW feature ideas that would be genuinely useful for \
-cold-chain reporting (e.g. transit duration, percentage breakdowns of time \
-in/out of spec, seasonality, lane- or carrier-level aggregates). Every \
-suggestion MUST reference only columns that appear in the given column \
-list -- never invent a column name.
-
-Respond with ONLY a JSON object of this exact shape, no markdown, no \
-commentary:
-{"suggestions": [
-  {
-    "name": "short title, e.g. 'Time in Transit'",
-    "description": "one plain-English sentence on why this is useful",
-    "output_column": "short column name for the new field",
-    "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below",
-    "input_columns": ["exact column name(s) this calculation reads"]
-  }
-]}"""
 
 
 def suggest_features(df: pd.DataFrame) -> list[dict]:
@@ -47,7 +25,7 @@ def suggest_features(df: pd.DataFrame) -> list[dict]:
     feature_repository.add_ai_suggested_entries."""
     user_prompt = f"Columns:\n{llm_client.column_preview_block(df)}\n\nPropose the features now."
     raw = llm_client.call(
-        SYSTEM_PROMPT, user_prompt,
+        prompts.SYSTEM_PROMPT, user_prompt,
         model=OPENROUTER_MODEL, json_mode=True, temperature=0.4, call_name="feature_suggester",
     )
     payload = json.loads(llm_client.strip_json_fence(raw))

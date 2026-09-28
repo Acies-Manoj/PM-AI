@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
+from app.prompts import analysis_designer as prompts
 from app.services.analysis import analysis_agent, analysis_charts, analysis_filters, analysis_templates
 from app.services.analysis.analysis_templates import TemplateError
 
@@ -32,47 +33,7 @@ logger = logging.getLogger(__name__)
 
 TEMPLATE_MATCH_ATTEMPTS = 2
 PREVIEW_ROWS = 10
-MAX_ALTERNATIVES = 2
-
-_TEMPLATE_SYSTEM = f"""You are the template-matching step of an analytics tool for cold-chain \
-shipment data. You are given an analysis request, the computation logic already \
-written for it, and the dataset's column catalog. Decide whether the logic can be \
-computed EXACTLY by one of the deterministic templates below.
-
-Only choose a template when it computes the same result as the logic -- never an \
-approximation. Answer "none" when the logic needs something no template expresses: \
-a derived or calculated column, a ratio between two different aggregates, \
-period-over-period comparison, joins, ranking within groups, multi-step logic, or \
-anything else the parameters can't state.
-
-TEMPLATES:
-{analysis_templates.catalog_prompt()}
-
-If the computation logic and the request disagree (e.g. the logic filters rows \
-before computing a rate, which would make every rate 100%), match what the request \
-asks for. Use column names exactly as they appear in the catalog; omit optional \
-parameters you don't need.
-
-Respond with ONLY a JSON object, no markdown:
-{{"template_id": "<template id, or none>", "params": {{<the complete template spec including "template_id", or {{}} when none>}}, "reason": "one short sentence"}}"""
-
-_CHART_SYSTEM = """You are the chart-recommendation step of an analytics tool for cold-chain \
-shipment data. You are given an analysis request and the computation logic that \
-defines the result table -- the table has NOT been computed yet. Recommend how to \
-visualise that table, and which source columns a program manager would want as \
-interactive filters on the chart.
-
-""" + analysis_agent.CHART_TYPE_GUIDANCE + """
-
-Filters: up to 4 columns from the catalog that are useful to slice this analysis \
-by -- key business dimensions (carrier, lane, origin, product, customer, status) and \
-the main date column. Never propose the metric being measured, IDs, or free-text \
-columns.
-
-Respond with ONLY a JSON object, no markdown:
-{"chart_type": "<type>", "reason": "one short sentence",
- "alternatives": [{"chart_type": "<type>", "reason": "one short sentence"}],
- "filters": [{"column": "exact column name", "reason": "one short sentence"}]}"""
+MAX_ALTERNATIVES = analysis_charts.MAX_CHART_ALTERNATIVES
 
 
 def _json(raw: str) -> dict:
@@ -101,7 +62,7 @@ def match_template(name: str, description: str, plan: dict, columns_block: str, 
     reason = "No template fits this logic, so the Analysis Agent will generate code for it."
     for _ in range(TEMPLATE_MATCH_ATTEMPTS):
         raw = analysis_agent.call_llm(
-            _TEMPLATE_SYSTEM, f"{base_prompt}{feedback}\n\nDecide now.",
+            prompts.TEMPLATE_SYSTEM, f"{base_prompt}{feedback}\n\nDecide now.",
             json_mode=True, temperature=0.1, call_name="analysis_designer_template_match",
         )
         payload = _json(raw)
@@ -131,7 +92,7 @@ def _valid_chart(value) -> str | None:
 def suggest_chart_and_filters(name: str, description: str, plan: dict, columns_block: str, df: pd.DataFrame) -> dict:
     user_prompt = f"{_request_block(name, description, plan)}\n\nCOLUMN CATALOG:\n{columns_block}\n\nRecommend now."
     payload = _json(analysis_agent.call_llm(
-        _CHART_SYSTEM, user_prompt, json_mode=True, temperature=0.2, call_name="analysis_designer_chart",
+        prompts.CHART_SYSTEM, user_prompt, json_mode=True, temperature=0.2, call_name="analysis_designer_chart",
     ))
     chart_type = _valid_chart(payload.get("chart_type")) or "table"
     alternatives = []

@@ -83,14 +83,60 @@ def strip_json_fence(text: str) -> str:
     return stripped
 
 
+SAMPLE_VALUES_PER_COLUMN = 3
+SAMPLE_VALUE_MAX_CHARS = 200
+
+
+def _sample_preview(series: pd.Series) -> str:
+    """A few real values from the column for an LLM prompt. Takes the
+    sample BEFORE converting to text so a large column isn't stringified in
+    full, and cuts very long values (free-text notes) to keep prompts small."""
+    sample = series.dropna().head(SAMPLE_VALUES_PER_COLUMN).astype(str).tolist()
+    if not sample:
+        return "(all null)"
+    cleaned = []
+    for value in sample:
+        value = " ".join(value.split())
+        if len(value) > SAMPLE_VALUE_MAX_CHARS:
+            value = value[:SAMPLE_VALUE_MAX_CHARS] + "…"
+        cleaned.append(value)
+    return ", ".join(cleaned)
+
+
 def column_preview_block(df: pd.DataFrame) -> str:
     """`- col (dtype): e.g. sample1, sample2` per column, for a live
-    DataFrame -- shared by the Feature Agent and the feature suggester.
-    Not used by the Planner, which profiles columns from stored metadata
-    JSON rather than a live df and needs a differently-shaped block."""
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
+    DataFrame -- shared by the Feature Agent, the feature suggester, and
+    (via analysis_columns.column_catalog) the Analysis Agent side. Not
+    used by the Planner, which profiles columns from stored metadata JSON
+    rather than a live df and needs a differently-shaped block."""
+    return "\n".join(f"- {col} ({df[col].dtype}): e.g. {_sample_preview(df[col])}" for col in df.columns)
+
+
+def entry_block(entry: dict, *, label: str, include_output_column: bool = False) -> str:
+    """Renders a repository entry (name/description/calculation_intent,
+    plus an optional output-column line and an input-columns hint) as the
+    plain-English block every agent's Think/chart/template prompt starts
+    from. `label` is the entity noun shown before "name:" (e.g. "Feature",
+    "Analysis")."""
+    lines = [f"{label} name: {entry['name']}"]
+    if include_output_column:
+        lines.append(f"Output column name: {entry['output_column']}")
+    lines.append(f"Description: {entry.get('description', '')}")
+    lines.append(f"Calculation intent: {entry['calculation_intent']}")
+    cols_hint = (
+        f"\nColumns likely involved (hint, not exhaustive): {', '.join(entry['input_columns'])}"
+        if entry.get("input_columns")
+        else ""
+    )
+    return "\n".join(lines) + cols_hint
+
+
+def render_plan_steps(plan: dict) -> str:
+    """Renders a Think result's `steps` array as one numbered paragraph --
+    used wherever a single string is needed (LLM prompts, storage, the
+    Planner's pre-generated formula). Falls back to a `plan` key for
+    anything that hands in the older single-string shape."""
+    steps = plan.get("steps")
+    if isinstance(steps, list) and steps:
+        return "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
+    return plan.get("plan", "")

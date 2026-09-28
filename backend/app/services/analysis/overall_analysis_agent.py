@@ -5,17 +5,9 @@ explains the highlights already given, same guardrail as audit_agent.py.
 There is no fallback: if Groq isn't configured or the call fails, that's a
 real error and the caller surfaces it as one.
 """
+from app.prompts.overall_analysis_agent import SYSTEM_PROMPT
 from app.schemas import OverallHighlight
 from app.services.common.groq_client import chat_text
-
-SYSTEM_PROMPT = """You are a program manager writing the executive-summary \
-paragraph for a recurring cold-chain shipment report. You've been given a \
-list of already-computed headline numbers (rows analyzed, feature averages, \
-top categories, and best/worst performers from the pivot tables below). Do \
-NOT invent any number, name, or trend that isn't in the list given, and do \
-NOT restate every bullet -- synthesize the 2-3 most report-worthy points \
-into plain prose. Write exactly 2-4 plain-English sentences, no markdown, \
-no bullet lists, no restating these instructions."""
 
 
 def _highlights_block(highlights: list[OverallHighlight]) -> str:

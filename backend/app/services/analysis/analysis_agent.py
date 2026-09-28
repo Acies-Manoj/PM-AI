@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from app.config import ANALYSIS_AGENT_MODEL
+from app.prompts import analysis_agent as prompts
 from app.services.analysis import analysis_charts
 from app.services.analysis.analysis_charts import ChartRoles
 from app.services.analysis.analysis_columns import column_catalog
@@ -58,20 +59,6 @@ def describe_columns(df: pd.DataFrame) -> str:
     return column_catalog(df)
 
 
-def _entry_block(entry: dict) -> str:
-    cols_hint = (
-        f"\nColumns likely involved (hint, not exhaustive): {', '.join(entry['input_columns'])}"
-        if entry.get("input_columns")
-        else ""
-    )
-    return (
-        f"Analysis name: {entry['name']}\n"
-        f"Description: {entry.get('description', '')}\n"
-        f"Calculation intent: {entry['calculation_intent']}"
-        f"{cols_hint}"
-    )
-
-
 def _table_sample_block(table: list[dict], n: int = 8) -> str:
     if not table:
         return "(empty table)"
@@ -80,40 +67,9 @@ def _table_sample_block(table: list[dict], n: int = 8) -> str:
 
 # --- Call 1: Think -----------------------------------------------------------
 
-_THINK_SYSTEM = """You are the planning step of the Analysis Agent for a cold-chain shipment \
-analytics tool. You are given one requested analysis and the full column \
-catalog of the current dataset. Produce a precise, unambiguous, step-by-step \
-plan for computing an AGGREGATED TABLE that a chart can be built from -- \
-e.g. a group-by with one or more metrics, a time trend, a ranking, or a \
-distribution. This is NOT a per-row calculation like a feature column; the \
-output table almost always has FEWER rows than the source data.
-
-The plan MUST:
-- Name the EXACT column(s) from the catalog it uses. Never invent a column \
-name that isn't in the catalog.
-- State what to group by (if anything) and what metric(s) to aggregate \
-(sum, mean, count, min, max, median, distinct count, or share of total).
-- State how nulls / missing values are handled.
-- Be specific enough that a pandas engineer could implement it without \
-asking a follow-up question.
-- If the requested analysis genuinely cannot be computed from the available \
-columns, say so plainly in the plan instead of inventing a substitute.
-
-Respond with ONLY a JSON object, no markdown, no commentary. `steps` is an \
-array of short, self-contained instructions, each written as its own \
-sentence with no leading number -- the caller numbers them for display:
-{"steps": ["first step", "second step", "..."], "group_by": ["exact column names, or [] if none"], "metrics": ["short description of each aggregated metric"]}"""
-
-
-def plan_text(plan: dict) -> str:
-    """Renders a Think result's `steps` array as one numbered paragraph --
-    used wherever a single string is needed (LLM prompts, storage, the
-    Planner's pre-generated formula). Falls back to a `plan` key for
-    anything that hands in the older single-string shape."""
-    steps = plan.get("steps")
-    if isinstance(steps, list) and steps:
-        return "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
-    return plan.get("plan", "")
+# Kept as a public wrapper -- analysis_designer.py and analysis_engine.py
+# call this by name.
+plan_text = llm_client.render_plan_steps
 
 
 def think(entry: dict, columns_block: str, feedback: str | None = None) -> dict:
@@ -122,39 +78,15 @@ def think(entry: dict, columns_block: str, feedback: str | None = None) -> dict:
         if feedback
         else ""
     )
-    user_prompt = f"{_entry_block(entry)}\n\nCOLUMN CATALOG:\n{columns_block}{feedback_block}\n\nProduce the plan now."
-    raw = call_llm(_THINK_SYSTEM, user_prompt, json_mode=True, temperature=0.2, call_name="analysis_agent_think")
+    entry_block = llm_client.entry_block(entry, label="Analysis")
+    user_prompt = f"{entry_block}\n\nCOLUMN CATALOG:\n{columns_block}{feedback_block}\n\nProduce the plan now."
+    raw = call_llm(prompts.THINK_SYSTEM, user_prompt, json_mode=True, temperature=0.2, call_name="analysis_agent_think")
     parsed = json.loads(strip_json_fence(raw))
     parsed["plan"] = plan_text(parsed)
     return parsed
 
 
 # --- Call 2: Write code -------------------------------------------------------
-
-_CODE_SYSTEM = """You are the code-writing step of the Analysis Agent. You are given a \
-plan (already decided -- do not second-guess it) for computing an \
-AGGREGATED table for a chart. A pandas DataFrame is already available as \
-`df`, and `pandas` is already available as `pd`.
-
-Write vectorized pandas code (no explicit for/while loops, no function or \
-class definitions, no imports) that implements EXACTLY the given plan and \
-assigns the final result -- a pandas DataFrame, one row per group/category/ \
-time-bucket, with plain column names describing what each column holds -- \
-to a variable named exactly `result`.
-
-Rules:
-- Only reference columns that actually appear in the column list given below.
-- Never read or write files, never use eval/exec/open, never import \
-anything, never call any to_csv/to_excel/read_csv/etc-style I/O method.
-- `result` must end up as a DataFrame with a plain RangeIndex (call \
-`.reset_index()` after any groupby before assigning to `result`), so every \
-grouping column and every metric appears as its own named column.
-- Cap the result at a reasonable number of rows for a chart (e.g. sort and \
-`.head(50)` for a ranking) rather than returning every group unsorted.
-- Round float columns to 2 decimal places for a clean chart.
-- Respond with ONLY the Python code. No markdown fences, no explanation, \
-no comments."""
-
 
 def _chart_layout_hint(chart_type: str | None) -> str:
     """Tells the code step how the table will be drawn, so it orders the
@@ -187,42 +119,19 @@ def generate_code(
         f"Columns available in `df`:\n{columns_block}{_chart_layout_hint(chart_type)}{feedback_block}\n\n"
         "Write the code now."
     )
-    raw = call_llm(_CODE_SYSTEM, user_prompt, json_mode=False, temperature=0.1, call_name="analysis_agent_write_code")
+    raw = call_llm(prompts.CODE_SYSTEM, user_prompt, json_mode=False, temperature=0.1, call_name="analysis_agent_write_code")
     return llm_client.strip_code_fence(raw)
 
 
 # --- Call 2b: Suggest chart (from the logic, before computing) ----------------
 
-# Shared with analysis_designer.py so the Add Analysis form and every run
-# describe the chart types identically.
-CHART_TYPE_GUIDANCE = """Chart types:
-- "bar": one category + one metric -- comparisons, rankings.
-- "grouped_bar": one category + several metrics, or two categories + one metric.
-- "line": a time or ordered axis + one or more metrics -- trends.
-- "pie": shares of a whole, one category with few (<= 8) values.
-- "scatter": two numeric measures against each other.
-- "heatmap": two categories + one metric with many combinations.
-- "table": nothing above fits, or the result is a few headline numbers."""
-
-_CHART_SYSTEM = (
-    "You are the chart-suggestion step of the Analysis Agent. You are given an analysis "
-    "and the computation logic that defines its result table -- the table has NOT been "
-    "computed yet. From the logic alone (what is grouped, over what, and which metrics), "
-    "recommend the single best chart type, plus up to 2 alternatives.\n\n"
-    + CHART_TYPE_GUIDANCE
-    + '\n\nRespond with ONLY a JSON object, no markdown:\n'
-    '{"chart_type": "<type>", "reason": "one short sentence", '
-    '"alternatives": [{"chart_type": "<type>", "reason": "one short sentence"}]}'
-)
-MAX_CHART_ALTERNATIVES = 2
-
-
 def suggest_chart(entry: dict, plan: dict) -> dict:
     """Picks the chart from the computation logic, BEFORE any code is written
     or run, so the code step can shape the table for that chart. Returns
     {"chart_type", "reason", "alternatives"}; an unknown type becomes "table"."""
-    user_prompt = f"{_entry_block(entry)}\n\nComputation logic:\n{plan['plan']}\n\nSuggest the chart now."
-    raw = call_llm(_CHART_SYSTEM, user_prompt, json_mode=True, temperature=0.1, call_name="analysis_agent_chart_suggestion")
+    entry_block = llm_client.entry_block(entry, label="Analysis")
+    user_prompt = f"{entry_block}\n\nComputation logic:\n{plan['plan']}\n\nSuggest the chart now."
+    raw = call_llm(prompts.CHART_SYSTEM, user_prompt, json_mode=True, temperature=0.1, call_name="analysis_agent_chart_suggestion")
     parsed = json.loads(strip_json_fence(raw))
     chart_type = parsed.get("chart_type") if parsed.get("chart_type") in _ALLOWED_CHART_TYPES else "table"
     alternatives = []
@@ -230,7 +139,7 @@ def suggest_chart(entry: dict, plan: dict) -> dict:
         alt_type = alt.get("chart_type") if isinstance(alt, dict) else None
         if alt_type in _ALLOWED_CHART_TYPES and alt_type != chart_type and alt_type not in {a["chart_type"] for a in alternatives}:
             alternatives.append({"chart_type": alt_type, "reason": str(alt.get("reason") or "")})
-    return {"chart_type": chart_type, "reason": str(parsed.get("reason") or ""), "alternatives": alternatives[:MAX_CHART_ALTERNATIVES]}
+    return {"chart_type": chart_type, "reason": str(parsed.get("reason") or ""), "alternatives": alternatives[:analysis_charts.MAX_CHART_ALTERNATIVES]}
 
 
 def ensure_chart(entry: dict, plan: dict, options: dict) -> None:
@@ -254,42 +163,16 @@ def ensure_chart(entry: dict, plan: dict, options: dict) -> None:
 
 # --- Call 4: Interpret ---------------------------------------------------------
 
-_INTERPRET_SYSTEM = """You are the interpretation step of the Analysis Agent. You are given one \
-computed analysis table and its chart type. Write a short, plain-English \
-interpretation of what this chart shows -- the standout value(s), any clear \
-pattern, and why it might matter to a program manager. Do NOT invent any \
-number that isn't in the table. Write 2-4 plain sentences, no markdown, no \
-bullet lists."""
-
-
 def interpret(entry: dict, plan: dict, table_sample: str, chart_type: str) -> str:
     user_prompt = (
         f"Analysis: {entry['name']}\nPlan:\n{plan['plan']}\nChart type: {chart_type}\n\n"
         f"Computed table sample:\n{table_sample}\n\nWrite the interpretation now."
     )
-    text = call_llm(_INTERPRET_SYSTEM, user_prompt, json_mode=False, temperature=0.3, call_name="analysis_agent_interpret")
+    text = call_llm(prompts.INTERPRET_SYSTEM, user_prompt, json_mode=False, temperature=0.3, call_name="analysis_agent_interpret")
     return text.strip()
 
 
 # --- Call 5: Suggest drilldowns -----------------------------------------------
-
-_DRILLDOWN_SYSTEM = """You are the drilldown-suggestion step of the Analysis Agent. Given an \
-analysis that was just computed and interpreted, propose up to 3 genuinely \
-useful FOLLOW-UP analyses a program manager might want to explore next -- \
-e.g. breaking a top-level finding down by another dimension, or zooming \
-into the specific group/time-period that stood out. Every suggestion MUST \
-reference only columns that appear in the given column list -- never invent \
-a column name.
-
-Respond with ONLY a JSON object, no markdown, no commentary:
-{"drilldowns": [
-  {
-    "name": "short title",
-    "description": "one plain-English sentence on what this drilldown would show",
-    "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below"
-  }
-]}"""
-
 
 def suggest_drilldowns(entry: dict, plan: dict, table_sample: str, interpretation: str, columns_block: str) -> list[dict]:
     user_prompt = (
@@ -297,7 +180,7 @@ def suggest_drilldowns(entry: dict, plan: dict, table_sample: str, interpretatio
         f"Computed table sample:\n{table_sample}\n\nInterpretation:\n{interpretation}\n\n"
         f"COLUMN CATALOG:\n{columns_block}\n\nPropose the drilldowns now."
     )
-    raw = call_llm(_DRILLDOWN_SYSTEM, user_prompt, json_mode=True, temperature=0.4, call_name="analysis_agent_drilldown")
+    raw = call_llm(prompts.DRILLDOWN_SYSTEM, user_prompt, json_mode=True, temperature=0.4, call_name="analysis_agent_drilldown")
     payload = json.loads(strip_json_fence(raw))
     candidates = payload.get("drilldowns", [])
     if not isinstance(candidates, list):

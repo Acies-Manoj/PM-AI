@@ -16,6 +16,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 CHART_TYPES = ("bar", "grouped_bar", "line", "pie", "scatter", "heatmap", "table")
+# Shared by analysis_agent.suggest_chart and analysis_designer's chart+filter
+# recommendation -- both cap the alternates shown to the PM at the same count.
+MAX_CHART_ALTERNATIVES = 2
 
 MAX_SERIES = 12
 MAX_PIE_SLICES = 20

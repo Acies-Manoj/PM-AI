@@ -13,10 +13,9 @@ import json
 import re
 
 import pandas as pd
-from openai import OpenAI
 
-from app.config import OPENROUTER_API_KEY, OPENROUTER_MODEL
-from app.services.common import token_usage
+from app.config import OPENROUTER_MODEL
+from app.services.common import llm_client
 
 SYSTEM_PROMPT = """You are a data engineer proposing new engineered columns \
 for an operational cold-chain shipment dataset, to help a program manager \
@@ -42,39 +41,16 @@ commentary:
 ]}"""
 
 
-def _client() -> OpenAI:
-    if not OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY is not set. Add your key from https://openrouter.ai/keys to backend/.env")
-    return OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
-
-
-def _columns_block(df: pd.DataFrame) -> str:
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
-
-
 def suggest_features(df: pd.DataFrame) -> list[dict]:
     """Returns repository-shaped candidate dicts: name, description,
     output_column, calculation_intent, input_columns -- ready to hand to
     feature_repository.add_ai_suggested_entries."""
-    client = _client()
-    user_prompt = f"Columns:\n{_columns_block(df)}\n\nPropose the features now."
-    response = client.chat.completions.create(
-        model=OPENROUTER_MODEL,
-        temperature=0.4,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
+    user_prompt = f"Columns:\n{llm_client.column_preview_block(df)}\n\nPropose the features now."
+    raw = llm_client.call(
+        SYSTEM_PROMPT, user_prompt,
+        model=OPENROUTER_MODEL, json_mode=True, temperature=0.4, call_name="feature_suggester",
     )
-    token_usage.record("feature_suggester", OPENROUTER_MODEL, response)
-    raw = response.choices[0].message.content or "{}"
-    payload = json.loads(raw)
+    payload = json.loads(llm_client.strip_json_fence(raw))
     candidates = payload.get("suggestions", [])
     if not isinstance(candidates, list):
         return []

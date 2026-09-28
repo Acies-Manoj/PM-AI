@@ -16,10 +16,9 @@ import re
 from dataclasses import dataclass
 
 import pandas as pd
-from openai import OpenAI
 
-from app.config import FEATURE_AGENT_MODEL, OPENROUTER_API_KEY
-from app.services.common import ai_code_executor, token_usage
+from app.config import FEATURE_AGENT_MODEL
+from app.services.common import ai_code_executor, llm_client
 
 MAX_ATTEMPTS = 3
 # A pre-supplied formula (Planner-generated and PM-approved, or a fully
@@ -30,64 +29,19 @@ MAX_ATTEMPTS = 3
 # actually converge instead of stopping right after the first correction.
 FIXED_FORMULA_MAX_ATTEMPTS = 3
 
-_client: OpenAI | None = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        if not OPENROUTER_API_KEY:
-            raise RuntimeError(
-                "OPENROUTER_API_KEY is not set. Add your key from https://openrouter.ai/keys to backend/.env"
-            )
-        _client = OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
-    return _client
-
 
 def _call(
     system_prompt: str, user_prompt: str, *, json_mode: bool, temperature: float, call_name: str
 ) -> str:
-    client = _get_client()
-    kwargs: dict = {
-        "model": FEATURE_AGENT_MODEL,
-        "temperature": temperature,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-    if json_mode:
-        try:
-            response = client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
-        except Exception:
-            response = client.chat.completions.create(**kwargs)
-    else:
-        response = client.chat.completions.create(**kwargs)
-    token_usage.record(call_name, FEATURE_AGENT_MODEL, response)
-    return response.choices[0].message.content or ""
-
-
-def _strip_code_fence(text: str) -> str:
-    stripped = text.strip()
-    match = re.match(r"^```(?:python)?\s*\n(.*)\n```$", stripped, re.DOTALL)
-    return match.group(1) if match else stripped
-
-
-def _strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("```", 2)[-1] if stripped.count("```") >= 2 else stripped
-        stripped = stripped[4:].strip() if stripped.lower().startswith("json") else stripped
-    return stripped
+    return llm_client.call(
+        system_prompt, user_prompt,
+        model=FEATURE_AGENT_MODEL, json_mode=json_mode, temperature=temperature, call_name=call_name,
+    )
 
 
 def _columns_block(df: pd.DataFrame) -> str:
-    lines = []
-    for col in df.columns:
-        sample = df[col].dropna().astype(str).head(3).tolist()
-        preview = ", ".join(sample) if sample else "(all null)"
-        lines.append(f"- {col} ({df[col].dtype}): e.g. {preview}")
-    return "\n".join(lines)
+    # feature_designer.py imports this name directly.
+    return llm_client.column_preview_block(df)
 
 
 def _entry_block(entry: dict) -> str:
@@ -149,7 +103,7 @@ def think(entry: dict, columns_block: str, feedback: str | None = None) -> dict:
     feedback_block = f"\n\nA PREVIOUS ATTEMPT FAILED: {feedback}\nRevise the plan so this doesn't happen again." if feedback else ""
     user_prompt = f"{_entry_block(entry)}\n\nCOLUMN CATALOG:\n{columns_block}{feedback_block}\n\nProduce the plan now."
     raw = _call(_THINK_SYSTEM, user_prompt, json_mode=True, temperature=0.2, call_name="feature_agent_think")
-    parsed = json.loads(_strip_json_fence(raw))
+    parsed = json.loads(llm_client.strip_json_fence(raw))
     # Normalize to a single "plan" string for every downstream consumer
     # (code generation, validation, storage, the Planner's pre-generated
     # formula) -- `steps` stays available for anything that wants the list.
@@ -218,7 +172,7 @@ def generate_code(entry: dict, plan: dict, columns_block: str, feedback: str | N
         "Write the code now."
     )
     raw = _call(_CODE_SYSTEM, user_prompt, json_mode=False, temperature=0.1, call_name="feature_agent_write_code")
-    return _strip_code_fence(raw)
+    return llm_client.strip_code_fence(raw)
 
 
 # --- Call 3: Validate --------------------------------------------------------
@@ -255,7 +209,7 @@ def validate(entry: dict, plan: dict, sample_block: str) -> dict:
         "Validate now."
     )
     raw = _call(_VALIDATE_SYSTEM, user_prompt, json_mode=True, temperature=0.0, call_name="feature_agent_validate")
-    return json.loads(_strip_json_fence(raw))
+    return json.loads(llm_client.strip_json_fence(raw))
 
 
 _COLUMN_REF = re.compile(r"""\[\s*(['"])(.+?)\1\s*\]""")

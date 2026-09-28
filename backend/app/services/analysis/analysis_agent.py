@@ -17,17 +17,15 @@ from __future__ import annotations
 
 import json
 import math
-import re
 from dataclasses import dataclass, field
 
 import pandas as pd
-from openai import OpenAI
 
-from app.config import ANALYSIS_AGENT_MODEL, OPENROUTER_API_KEY
+from app.config import ANALYSIS_AGENT_MODEL
 from app.services.analysis import analysis_charts
 from app.services.analysis.analysis_charts import ChartRoles
 from app.services.analysis.analysis_columns import column_catalog
-from app.services.common import ai_code_executor, token_usage
+from app.services.common import ai_code_executor, llm_client
 
 MAX_ATTEMPTS = 3
 # A pre-supplied formula (Planner-generated and PM-approved, or a predefined
@@ -41,60 +39,19 @@ _ALLOWED_CHART_TYPES = set(analysis_charts.CHART_TYPES)
 # retries transient connection/5xx errors.
 REQUEST_TIMEOUT_S = 60.0
 
-_client: OpenAI | None = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        if not OPENROUTER_API_KEY:
-            raise RuntimeError(
-                "OPENROUTER_API_KEY is not set. Add your key from https://openrouter.ai/keys to backend/.env"
-            )
-        _client = OpenAI(
-            api_key=OPENROUTER_API_KEY,
-            base_url="https://openrouter.ai/api/v1",
-            timeout=REQUEST_TIMEOUT_S,
-            max_retries=2,
-        )
-    return _client
-
 
 def call_llm(
     system_prompt: str, user_prompt: str, *, json_mode: bool, temperature: float, call_name: str
 ) -> str:
-    client = _get_client()
-    kwargs: dict = {
-        "model": ANALYSIS_AGENT_MODEL,
-        "temperature": temperature,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-    if json_mode:
-        try:
-            response = client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
-        except Exception:
-            response = client.chat.completions.create(**kwargs)
-    else:
-        response = client.chat.completions.create(**kwargs)
-    token_usage.record(call_name, ANALYSIS_AGENT_MODEL, response)
-    return response.choices[0].message.content or ""
+    return llm_client.call(
+        system_prompt, user_prompt,
+        model=ANALYSIS_AGENT_MODEL, json_mode=json_mode, temperature=temperature, call_name=call_name,
+        timeout=REQUEST_TIMEOUT_S, max_retries=2,
+    )
 
 
-def _strip_code_fence(text: str) -> str:
-    stripped = text.strip()
-    match = re.match(r"^```(?:python)?\s*\n(.*)\n```$", stripped, re.DOTALL)
-    return match.group(1) if match else stripped
-
-
-def strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("```", 2)[-1] if stripped.count("```") >= 2 else stripped
-        stripped = stripped[4:].strip() if stripped.lower().startswith("json") else stripped
-    return stripped
+# analysis_designer.py imports this name directly (`analysis_agent.strip_json_fence`).
+strip_json_fence = llm_client.strip_json_fence
 
 
 def describe_columns(df: pd.DataFrame) -> str:
@@ -231,7 +188,7 @@ def generate_code(
         "Write the code now."
     )
     raw = call_llm(_CODE_SYSTEM, user_prompt, json_mode=False, temperature=0.1, call_name="analysis_agent_write_code")
-    return _strip_code_fence(raw)
+    return llm_client.strip_code_fence(raw)
 
 
 # --- Call 2b: Suggest chart (from the logic, before computing) ----------------

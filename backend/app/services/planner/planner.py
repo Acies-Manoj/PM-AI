@@ -7,11 +7,9 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from openai import OpenAI
-
-from app.config import DATA_DIR, OPENROUTER_API_KEY, OPENROUTER_MODEL
+from app.config import DATA_DIR, OPENROUTER_MODEL
 from app.services.analysis import analysis_agent
-from app.services.common import token_usage
+from app.services.common import llm_client
 from app.services.features import feature_agent
 
 _SESSIONS_DIR = DATA_DIR / "sessions"
@@ -352,30 +350,13 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
 
     catalog_block = "\n".join(lines)
 
-    if not OPENROUTER_API_KEY:
-        raise RuntimeError(
-            "OPENROUTER_API_KEY is not set. Add it to your .env file."
-        )
-
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
-    )
-
     user_prompt = _build_user_prompt(final_brief, columns_block, catalog_block, additional_context)
 
-    response = client.chat.completions.create(
-        model=OPENROUTER_MODEL,
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.2,
+    raw = llm_client.call(
+        _SYSTEM_PROMPT, user_prompt,
+        model=OPENROUTER_MODEL, json_mode=False, temperature=0.2, call_name="planner_agent",
         max_tokens=4096,
     )
-    token_usage.record("planner_agent", OPENROUTER_MODEL, response)
-
-    raw = response.choices[0].message.content or ""
 
     # Strip any accidental markdown fences
     raw = raw.strip()

@@ -19,8 +19,8 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.config import OPENROUTER_MODEL
 from app.services.analysis.analysis_columns import column_catalog
-from app.services.analysis.analysis_repository import _normalize_name
 from app.services.common import token_usage
+from app.services.common.entry_repository import normalize_name as _normalize_name
 from app.services.common.groq_client import get_client
 
 logger = logging.getLogger(__name__)

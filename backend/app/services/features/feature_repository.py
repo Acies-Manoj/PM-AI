@@ -19,29 +19,12 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from pathlib import Path
-from typing import Any
 
-from app.config import DATA_DIR
+from app.services.common import entry_repository
 from app.services.features import feature_definitions_store as defs_store
 
-_SESSIONS_DIR = DATA_DIR / "sessions"
-
 _PERSISTED_SOURCES = {"custom", "ai_suggested"}
-
-
-def _session_dir(session_id: str) -> Path:
-    d = _SESSIONS_DIR / session_id
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def _repo_path(session_id: str) -> Path:
-    return _session_dir(session_id) / "feature_repository.json"
-
-
-def _planner_output_path(session_id: str) -> Path:
-    return _session_dir(session_id) / "planner_output.json"
+_REPO_FILENAME = "feature_repository.json"
 
 
 # --- describing a structured spec in plain English -----------------------
@@ -129,7 +112,7 @@ def predefined_catalog_lines() -> list[str]:
 
 
 def _planner_entries(session_id: str) -> list[dict]:
-    path = _planner_output_path(session_id)
+    path = entry_repository.planner_output_path(session_id)
     if not path.exists():
         return []
     try:
@@ -167,21 +150,7 @@ def _planner_entries(session_id: str) -> list[dict]:
 
 
 def _load_persisted(session_id: str) -> list[dict]:
-    path = _repo_path(session_id)
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-    return [e for e in data.get("entries", []) if e.get("source") in _PERSISTED_SOURCES]
-
-
-def _save(session_id: str, entries: list[dict]) -> None:
-    _repo_path(session_id).write_text(
-        json.dumps({"session_id": session_id, "entries": entries}, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    return entry_repository.load_persisted(session_id, _REPO_FILENAME, _PERSISTED_SOURCES)
 
 
 def get_repository(session_id: str) -> list[dict]:
@@ -190,9 +159,9 @@ def get_repository(session_id: str) -> list[dict]:
     Also re-saves the merge so the file on disk always reflects the latest
     KPI Profile / planner decisions, not just what existed when they were
     first added."""
-    entries = _predefined_entries() + _planner_entries(session_id) + _load_persisted(session_id)
-    _save(session_id, entries)
-    return entries
+    return entry_repository.merge_and_save(
+        session_id, _REPO_FILENAME, _predefined_entries(), _planner_entries(session_id), _load_persisted(session_id),
+    )
 
 
 def get_approved_entries(session_id: str) -> list[dict]:
@@ -221,8 +190,7 @@ def add_custom_entry(
     }
     persisted = _load_persisted(session_id)
     persisted.append(entry)
-    entries = _predefined_entries() + _planner_entries(session_id) + persisted
-    _save(session_id, entries)
+    entry_repository.merge_and_save(session_id, _REPO_FILENAME, _predefined_entries(), _planner_entries(session_id), persisted)
     return entry
 
 
@@ -254,21 +222,12 @@ def add_ai_suggested_entries(session_id: str, suggestions: list[dict]) -> list[d
         new_entries.append(entry)
         existing_cols.add(entry["output_column"])
 
-    entries = _predefined_entries() + _planner_entries(session_id) + persisted
-    _save(session_id, entries)
+    entry_repository.merge_and_save(session_id, _REPO_FILENAME, _predefined_entries(), _planner_entries(session_id), persisted)
     return new_entries
 
 
 def set_entry_status(session_id: str, entry_id: str, status: str) -> dict | None:
-    persisted = _load_persisted(session_id)
-    found = None
-    for e in persisted:
-        if e["id"] == entry_id:
-            e["status"] = status
-            found = e
-            break
-    if found is None:
-        return None
-    entries = _predefined_entries() + _planner_entries(session_id) + persisted
-    _save(session_id, entries)
-    return found
+    return entry_repository.set_entry_status(
+        session_id, _REPO_FILENAME, _PERSISTED_SOURCES,
+        _predefined_entries(), _planner_entries(session_id), entry_id, status,
+    )

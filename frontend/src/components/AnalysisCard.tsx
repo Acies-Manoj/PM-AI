@@ -1,6 +1,6 @@
 import type { AnalysisRepositoryEntry } from "../api/audit";
-import { categorizeAnalysis } from "../utils/analysisCategory";
-import { IconBarChart, IconShieldCheck } from "./icons";
+import { sourceTag } from "../utils/analysisSourceTag";
+import { IconBarChart, IconChevronRight, IconShieldCheck } from "./icons";
 import "./AnalysisCard.css";
 
 interface AnalysisCardProps {
@@ -14,7 +14,7 @@ interface AnalysisCardProps {
 }
 
 export default function AnalysisCard({ entry, running, runFailure, onRun, onExpand }: AnalysisCardProps) {
-  const category = categorizeAnalysis(entry.name, entry.description);
+  const tag = sourceTag(entry.source);
   const failed = entry.run_status === "error" || (entry.run_status === "not_run" && !!runFailure && !running);
 
   return (
@@ -28,10 +28,10 @@ export default function AnalysisCard({ entry, running, runFailure, onRun, onExpa
       }}
     >
       <div className="analysis-card__top">
-        <span className={`analysis-card__icon analysis-card__icon--${category.color}`}>
+        <span className={`analysis-card__icon analysis-card__icon--${tag.color}`}>
           <IconBarChart />
         </span>
-        <span className={`analysis-card__pill analysis-card__pill--${category.color}`}>{category.label}</span>
+        <span className={`analysis-card__pill analysis-card__pill--${tag.color}`}>{tag.label}</span>
       </div>
 
       <h3 className="analysis-card__name">{entry.name}</h3>
@@ -65,6 +65,10 @@ export default function AnalysisCard({ entry, running, runFailure, onRun, onExpa
           <IconShieldCheck /> Ready
         </p>
       )}
+
+      <span className="analysis-card__arrow" aria-hidden="true">
+        <IconChevronRight />
+      </span>
     </div>
   );
 }

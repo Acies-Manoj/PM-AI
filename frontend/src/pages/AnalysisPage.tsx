@@ -11,7 +11,7 @@ import Modal from "../components/Modal";
 import AnalysisSuggestionCard from "../components/AnalysisSuggestionCard";
 import AddAnalysisForm from "../components/AddAnalysisForm";
 import OverallAnalysisCard from "../components/OverallAnalysisCard";
-import { categorizeAnalysis } from "../utils/analysisCategory";
+import { sourceTag } from "../utils/analysisSourceTag";
 import { IconDoc, IconGrid, IconChevronLeft, IconChevronRight, IconBarChart, IconLayers, IconSparkle, IconPlus } from "../components/icons";
 import {
   acceptAnalysisEntry,
@@ -57,6 +57,14 @@ const STATUS_ORDER: Record<AnalysisRepositoryEntry["run_status"], number> = { no
 // Predefined analyses lead, mirroring the Feature page's PREDEFINED-first grouping --
 // not alphabetical, since "ai_suggested" would otherwise sort before "predefined".
 const SOURCE_ORDER: Record<AnalysisSource, number> = { predefined: 0, planner: 1, custom: 2, ai_suggested: 3, drilldown: 4 };
+// Same grouping the Feature page uses for its "N features added in total" summary
+// (FeaturesPage.tsx's SOURCE_GROUP_LABELS) -- kept in sync for a consistent pattern.
+const SOURCE_GROUP_LABELS: { source: AnalysisSource; label: string }[] = [
+  { source: "predefined", label: "Predefined (Customer KPI Profile)" },
+  { source: "planner", label: "Planner-Approved" },
+  { source: "ai_suggested", label: "AI Suggested" },
+  { source: "custom", label: "User Added" },
+];
 
 export default function AnalysisPage({ files, auditReports }: AnalysisPageProps) {
   const navigate = useNavigate();
@@ -84,6 +92,10 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const [addingAnalysis, setAddingAnalysis] = useState<LoadingState>({});
   const [showSuggestionsModal, setShowSuggestionsModal] = useState<LoadingState>({});
   const [triggeringDrilldownId, setTriggeringDrilldownId] = useState<string | null>(null);
+  // Which drilldown suggestions the PM has selected for each entry --
+  // frontend-only bookkeeping (see AnalysisDetailModal's Selected Drill-downs
+  // tab); a missing key means "not seeded yet" (see seedDrilldownSelection).
+  const [selectedDrilldowns, setSelectedDrilldowns] = useState<Record<string, Set<string>>>({});
 
   const [overallReports, setOverallReports] = useState<OverallReportsState>({});
   const [overallLoading, setOverallLoading] = useState<LoadingState>({});
@@ -249,6 +261,22 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       .finally(() => setTriggeringDrilldownId(null));
   };
 
+  // Frontend-only: which drilldown suggestions are "selected" for an entry.
+  // Seeded once per entry (already-triggered ones start selected) and toggled
+  // from the modal -- never sent to the backend.
+  const seedDrilldownSelection = (entryId: string, drilldownIds: string[]) => {
+    setSelectedDrilldowns((prev) => (prev[entryId] ? prev : { ...prev, [entryId]: new Set(drilldownIds) }));
+  };
+
+  const toggleDrilldownSelection = (entryId: string, drilldownId: string) => {
+    setSelectedDrilldowns((prev) => {
+      const current = new Set(prev[entryId] ?? []);
+      if (current.has(drilldownId)) current.delete(drilldownId);
+      else current.add(drilldownId);
+      return { ...prev, [entryId]: current };
+    });
+  };
+
   const runOverallAnalysis = (id: UploadSlotId) => {
     const sessionId = auditReports[id]!.session_id;
     setOverallLoading((prev) => ({ ...prev, [id]: true }));
@@ -403,8 +431,12 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           const topLevelEntries = visibleEntries.filter((e) => !e.parent_id);
           const drilldownEntries = visibleEntries.filter((e) => e.parent_id);
 
-          const categorized = topLevelEntries.map((entry) => ({ entry, category: categorizeAnalysis(entry.name, entry.description) }));
-          const availableCategories = Array.from(new Set(categorized.map((c) => c.category.label))).sort();
+          const categorized = topLevelEntries.map((entry) => ({ entry, category: sourceTag(entry.source) }));
+          const presentSources = new Set(topLevelEntries.map((e) => e.source));
+          const availableCategories = (Object.keys(SOURCE_ORDER) as AnalysisSource[])
+            .sort((a, b) => SOURCE_ORDER[a] - SOURCE_ORDER[b])
+            .filter((s) => presentSources.has(s))
+            .map((s) => sourceTag(s).label);
 
           const searchText = (search[id] ?? "").trim().toLowerCase();
           const sortKey = sort[id] ?? "source";
@@ -457,15 +489,36 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                 {drilldownEntries.length > 0 && <StatTile icon={<IconBarChart />} color="amber" value={drilldownEntries.length} label="Drilldowns" />}
               </div>
 
-              <OverallAnalysisCard
-                report={overallReports[id]}
-                loading={!!overallLoading[id]}
-                error={overallError[id]}
-                waitingForAnalyses={visibleEntries.some(
-                  (e) => runningIds[e.id] || (e.run_status === "not_run" && !runFailures[e.id])
-                )}
-                onRetry={() => runOverallAnalysis(id)}
-              />
+              {topLevelEntries.length > 0 && (
+                <div className="analysis-page__summary">
+                  <p className="analysis-page__summary-title">
+                    ✓ {topLevelEntries.length} analys{topLevelEntries.length === 1 ? "is" : "es"} added in total
+                  </p>
+                  {SOURCE_GROUP_LABELS.map(({ source, label }) => ({
+                    label,
+                    items: topLevelEntries.filter((e) => e.source === source),
+                  }))
+                    .filter((group) => group.items.length > 0)
+                    .map((group) => (
+                      <div className="analysis-page__summary-group" key={group.label}>
+                        <span className="analysis-page__summary-group-label">{group.label}</span>
+                        <ul className="analysis-page__summary-list">
+                          {group.items.map((entry) => (
+                            <li key={entry.id}>
+                              <button
+                                type="button"
+                                className="analysis-page__summary-item"
+                                onClick={() => setOpenEntry({ slotId: id, entryId: entry.id })}
+                              >
+                                <span className="analysis-page__summary-name">{entry.name}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                </div>
+              )}
 
               {topLevelEntries.length === 0 ? (
                 <p className="analysis-page__none">
@@ -552,6 +605,16 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                   )}
                 </>
               )}
+
+              <OverallAnalysisCard
+                report={overallReports[id]}
+                loading={!!overallLoading[id]}
+                error={overallError[id]}
+                waitingForAnalyses={visibleEntries.some(
+                  (e) => runningIds[e.id] || (e.run_status === "not_run" && !runFailures[e.id])
+                )}
+                onRetry={() => runOverallAnalysis(id)}
+              />
 
               <div className="analysis-page__cta-row">
                 <div className="analysis-page__cta">
@@ -667,6 +730,9 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
             <AnalysisDetailModal
               entry={openEntryData}
               parentName={parentName}
+              selectedIds={selectedDrilldowns[openEntryData.id]}
+              onToggleSelect={(drilldownId) => toggleDrilldownSelection(openEntryData.id, drilldownId)}
+              onSeedSelection={(ids) => seedDrilldownSelection(openEntryData.id, ids)}
               triggeringDrilldownId={triggeringDrilldownId}
               onClose={() => setOpenEntry(null)}
               onTriggerDrilldown={(drilldownId) => handleTriggerDrilldown(openEntry.slotId, openEntry.entryId, drilldownId)}

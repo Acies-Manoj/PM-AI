@@ -177,6 +177,74 @@
 }
 
 
+/* -- "N analyses added in total" grouped summary -- same pattern as the
+   Feature page's SOURCE_GROUP_LABELS summary (FeaturesPage.css). ------- */
+
+.analysis-page__summary {
+  margin-top: 4px;
+  margin-bottom: 20px;
+  border: 1px solid var(--carrier-blue-tint-2);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+
+.analysis-page__summary-title {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--carrier-blue);
+}
+
+.analysis-page__summary-group {
+  margin-bottom: 12px;
+}
+
+.analysis-page__summary-group:last-child {
+  margin-bottom: 0;
+}
+
+.analysis-page__summary-group-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.analysis-page__summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.analysis-page__summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 4px 10px 4px 12px;
+  cursor: pointer;
+}
+
+.analysis-page__summary-item:hover {
+  border-color: var(--carrier-blue);
+  background: var(--carrier-blue-tint);
+}
+
+.analysis-page__summary-name {
+  font-weight: 700;
+  line-height: 1;
+}
+
 /* -- AI suggestions modal content ------------------------------------- */
 
 .analysis-page__ai-panel-hint {
@@ -203,9 +271,9 @@
 
 .analysis-page__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   align-items: stretch;
-  gap: 14px;
+  gap: 12px;
   margin-bottom: 14px;
 }
 

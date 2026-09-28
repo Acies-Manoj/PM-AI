@@ -100,7 +100,7 @@ export default function AnalysisToolbar({
           <div className="analysis-toolbar__popover" role="dialog" aria-label="Filter analyses">
             {categories.length > 0 && (
               <>
-                <span className="analysis-toolbar__popover-label">Category</span>
+                <span className="analysis-toolbar__popover-label">Source</span>
                 <ul className="analysis-toolbar__check-list">
                   {categories.map((label) => (
                     <li key={label}>

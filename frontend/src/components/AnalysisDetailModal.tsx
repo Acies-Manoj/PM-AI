@@ -4,7 +4,7 @@ import { AuditApiError } from "../api/audit";
 import Modal from "./Modal";
 import AnalysisChart from "./AnalysisChart";
 import AnalysisFilterBar from "./AnalysisFilterBar";
-import { IconChevronLeft, IconChevronRight, IconLayers } from "./icons";
+import { IconChevronLeft, IconChevronRight, IconLayers, IconSparkle } from "./icons";
 import { CHART_LABELS } from "../utils/analysisLabels";
 import "./AnalysisCard.css";
 import "./AnalysisDetailModal.css";
@@ -15,6 +15,13 @@ interface AnalysisDetailModalProps {
   /** Name of the analysis this one was drilled down from -- undefined for a
    * top-level (non-drilldown) entry. */
   parentName?: string;
+  /** The drilldown suggestion ids the PM has selected for this entry --
+   * frontend-only bookkeeping, undefined until seeded (see onSeedSelection). */
+  selectedIds: Set<string> | undefined;
+  onToggleSelect: (drilldownId: string) => void;
+  /** Called once, the first time this entry is opened with no selection
+   * recorded yet, so already-explored drilldowns start out selected. */
+  onSeedSelection: (drilldownIds: string[]) => void;
   triggeringDrilldownId: string | null;
   onClose: () => void;
   onTriggerDrilldown: (drilldownId: string) => void;
@@ -23,11 +30,14 @@ interface AnalysisDetailModalProps {
   onApplyFilters: (filters: AnalysisFilterSelections) => Promise<AnalysisRepositoryEntry>;
 }
 
-type ModalTab = "data" | "drilldown";
+type ModalTab = "analysis" | "selected";
 
 export default function AnalysisDetailModal({
   entry,
   parentName,
+  selectedIds,
+  onToggleSelect,
+  onSeedSelection,
   triggeringDrilldownId,
   onClose,
   onTriggerDrilldown,
@@ -39,7 +49,7 @@ export default function AnalysisDetailModal({
   const [view, setView] = useState<AnalysisRepositoryEntry | null>(null);
   const [filtering, setFiltering] = useState(false);
   const [filterError, setFilterError] = useState<string | null>(null);
-  const [modalTab, setModalTab] = useState<ModalTab>("data");
+  const [modalTab, setModalTab] = useState<ModalTab>("analysis");
   const [dataSubTab, setDataSubTab] = useState<"table" | "chart">("chart");
   // Only the latest filter request may update the view -- an older, slower
   // response must not overwrite a newer selection.
@@ -50,12 +60,20 @@ export default function AnalysisDetailModal({
     setView(null);
     setFilterError(null);
     setFiltering(false);
-    setModalTab("data");
+    setModalTab("analysis");
   }, [entry]);
+
+  useEffect(() => {
+    if (selectedIds === undefined) {
+      onSeedSelection(entry.drilldown_suggestions.filter((d) => d.triggered).map((d) => d.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.id, selectedIds]);
 
   const shown = view ?? entry;
   const canFilter = entry.run_status === "done" && entry.filters.length > 0;
-  const drilldownCount = entry.drilldown_suggestions.length;
+  const suggestionCount = entry.drilldown_suggestions.length;
+  const selectedCount = selectedIds?.size ?? 0;
 
   const changeFilters = (filters: AnalysisFilterSelections) => {
     const request = ++latestRequest.current;
@@ -91,29 +109,36 @@ export default function AnalysisDetailModal({
       <p className="analysis-card__description">{entry.description}</p>
 
       {entry.run_status === "done" && (
-        <p className="analysis-detail__method">
-          {entry.computation_mode === "template" ? (
-            <>
-              <span className="analysis-detail__method-badge analysis-detail__method-badge--template">Template</span>
-              {entry.template_summary ?? "Computed by a deterministic template."}
-            </>
-          ) : (
-            <>
-              <span className="analysis-detail__method-badge analysis-detail__method-badge--code">Generated code</span>
-              Computed by pandas code the Analysis Agent wrote and ran in a sandbox.
-            </>
+        <div className="analysis-detail__meta-row">
+          <span className={`analysis-detail__method-badge analysis-detail__method-badge--${entry.computation_mode === "template" ? "template" : "code"}`}>
+            {entry.computation_mode === "template" ? "Template" : "Generated Code"}
+          </span>
+          {entry.chart_recommendation && (
+            <span className="analysis-detail__chart-badge">{CHART_LABELS[entry.chart_recommendation.chart_type]} chart</span>
           )}
+        </div>
+      )}
+
+      {entry.run_status === "done" && (entry.template_summary || entry.chart_recommendation?.reason || entry.computation_mode === "code") && (
+        <p className="analysis-detail__meta-note">
+          {entry.computation_mode === "template"
+            ? entry.template_summary ?? "Computed by a deterministic template."
+            : "Computed by pandas code the Analysis Agent wrote and ran in a sandbox."}
+          {entry.chart_recommendation?.reason ? ` · ${entry.chart_recommendation.reason}` : ""}
         </p>
       )}
 
-      {entry.run_status === "done" && entry.chart_recommendation && (
-        <p className="analysis-detail__chart-choice">
-          <strong>{CHART_LABELS[entry.chart_recommendation.chart_type]} chart</strong>, chosen from the computation logic before
-          computing{entry.chart_recommendation.reason ? ` -- ${entry.chart_recommendation.reason}` : "."}
-        </p>
+      {entry.interpretation && (
+        <div className="analysis-detail__insight">
+          <span className="analysis-detail__insight-icon">
+            <IconSparkle />
+          </span>
+          <div className="analysis-detail__insight-body">
+            <span className="analysis-detail__insight-label">Key Insight</span>
+            <p className="analysis-detail__insight-text">{entry.interpretation}</p>
+          </div>
+        </div>
       )}
-
-      {entry.interpretation && <p className="analysis-card__interpretation">{entry.interpretation}</p>}
 
       {entry.run_status === "done" && (
         <>
@@ -121,25 +146,25 @@ export default function AnalysisDetailModal({
             <button
               type="button"
               role="tab"
-              aria-selected={modalTab === "data"}
-              className={`analysis-detail__modal-tab${modalTab === "data" ? " analysis-detail__modal-tab--active" : ""}`}
-              onClick={() => setModalTab("data")}
+              aria-selected={modalTab === "analysis"}
+              className={`analysis-detail__modal-tab${modalTab === "analysis" ? " analysis-detail__modal-tab--active" : ""}`}
+              onClick={() => setModalTab("analysis")}
             >
-              Table &amp; Chart
+              Analysis
             </button>
             <button
               type="button"
               role="tab"
-              aria-selected={modalTab === "drilldown"}
-              className={`analysis-detail__modal-tab${modalTab === "drilldown" ? " analysis-detail__modal-tab--active" : ""}`}
-              onClick={() => setModalTab("drilldown")}
+              aria-selected={modalTab === "selected"}
+              className={`analysis-detail__modal-tab${modalTab === "selected" ? " analysis-detail__modal-tab--active" : ""}`}
+              onClick={() => setModalTab("selected")}
             >
-              <IconLayers /> Drill Down
-              {drilldownCount > 0 && <span className="analysis-detail__modal-tab-count">{drilldownCount}</span>}
+              <IconLayers /> Selected Drill-downs
+              {selectedCount > 0 && <span className="analysis-detail__modal-tab-count">{selectedCount}</span>}
             </button>
           </div>
 
-          {modalTab === "data" ? (
+          {modalTab === "analysis" ? (
             <>
               {canFilter && (
                 <AnalysisFilterBar key={entry.id} filters={entry.filters} busy={filtering} onChange={changeFilters} />
@@ -188,30 +213,99 @@ export default function AnalysisDetailModal({
                   <pre className="feature-card__code"><code>{shown.generated_code}</code></pre>
                 </div>
               )}
+
+              <div className="analysis-detail__suggested-drilldowns">
+                <h4 className="analysis-detail__suggested-drilldowns-title">Suggested Drill-downs</h4>
+                {suggestionCount === 0 ? (
+                  <p className="analysis-detail__empty-drilldown">No follow-up analyses suggested for this one yet.</p>
+                ) : (
+                  <ol className="analysis-detail__drilldown-list">
+                    {entry.drilldown_suggestions.map((d, i) => {
+                      const checked = selectedIds?.has(d.id) ?? false;
+                      return (
+                        <li key={d.id}>
+                          <div className={`analysis-detail__drilldown-item${checked ? " analysis-detail__drilldown-item--selected" : ""}`}>
+                            <button
+                              type="button"
+                              className="analysis-detail__drilldown-select"
+                              onClick={() => onToggleSelect(d.id)}
+                              aria-label={checked ? `Deselect ${d.name}` : `Select ${d.name}`}
+                            >
+                              <span className="analysis-detail__drilldown-index">{i + 1}</span>
+                              <span
+                                className={`analysis-detail__drilldown-checkbox${checked ? " analysis-detail__drilldown-checkbox--checked" : ""}`}
+                                aria-hidden="true"
+                              />
+                            </button>
+                            <div className="analysis-detail__drilldown-text">
+                              <span className="analysis-detail__drilldown-name">
+                                {d.name}
+                                {d.triggered && <span className="analysis-detail__drilldown-explored-tag">Explored</span>}
+                              </span>
+                              <p className="analysis-detail__drilldown-desc">{d.description}</p>
+                            </div>
+                            <button
+                              type="button"
+                              className="analysis-detail__drilldown-action-btn"
+                              disabled={triggeringDrilldownId === d.id}
+                              onClick={() => {
+                                if (!checked) onToggleSelect(d.id);
+                                if (d.triggered && d.child_entry_id) onOpenChild(d.child_entry_id);
+                                else onTriggerDrilldown(d.id);
+                              }}
+                            >
+                              {triggeringDrilldownId === d.id ? "Exploring…" : "Explore more"}
+                              <IconChevronRight />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+              </div>
             </>
           ) : (
             <div className="analysis-detail__drilldown-tab">
-              {entry.drilldown_suggestions.length === 0 ? (
-                <p className="analysis-detail__empty-drilldown">No follow-up analyses suggested for this one yet.</p>
+              {selectedCount === 0 ? (
+                <div className="analysis-detail__empty-drilldown-block">
+                  <p className="analysis-detail__empty-drilldown">No drill-downs selected yet.</p>
+                  <p className="analysis-detail__empty-drilldown-hint">
+                    Select a suggested drill-down from the Analysis tab to explore this analysis further.
+                  </p>
+                  <button type="button" className="analysis-detail__add-drilldown-btn" onClick={() => setModalTab("analysis")}>
+                    + Add Drill-down
+                  </button>
+                </div>
               ) : (
                 <ol className="analysis-detail__drilldown-list">
-                  {entry.drilldown_suggestions.map((d, i) => (
-                    <li key={d.id}>
-                      <button
-                        type="button"
-                        className="analysis-detail__drilldown-item"
-                        disabled={triggeringDrilldownId === d.id}
-                        onClick={() => (d.triggered && d.child_entry_id ? onOpenChild(d.child_entry_id) : onTriggerDrilldown(d.id))}
-                      >
-                        <span className="analysis-detail__drilldown-index">{i + 1}</span>
-                        <span className="analysis-detail__drilldown-name">{d.name}</span>
-                        <span className="analysis-detail__drilldown-action">
-                          {triggeringDrilldownId === d.id ? "Exploring…" : d.triggered ? "View" : "Explore"}
-                        </span>
-                        <IconChevronRight />
-                      </button>
-                    </li>
-                  ))}
+                  {entry.drilldown_suggestions
+                    .filter((d) => selectedIds?.has(d.id))
+                    .map((d) => (
+                      <li key={d.id}>
+                        <div className="analysis-detail__selected-item">
+                          <span className="analysis-detail__drilldown-checkbox analysis-detail__drilldown-checkbox--checked" aria-hidden="true" />
+                          <span className="analysis-detail__drilldown-name">{d.name}</span>
+                          <button
+                            type="button"
+                            className="analysis-detail__drilldown-action-btn"
+                            disabled={triggeringDrilldownId === d.id}
+                            onClick={() => (d.triggered && d.child_entry_id ? onOpenChild(d.child_entry_id) : onTriggerDrilldown(d.id))}
+                          >
+                            {triggeringDrilldownId === d.id ? "Exploring…" : d.triggered ? "View" : "Explore"}
+                            <IconChevronRight />
+                          </button>
+                          <button
+                            type="button"
+                            className="analysis-detail__remove-btn"
+                            aria-label={`Remove ${d.name} from selected drill-downs`}
+                            onClick={() => onToggleSelect(d.id)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </li>
+                    ))}
                 </ol>
               )}
             </div>

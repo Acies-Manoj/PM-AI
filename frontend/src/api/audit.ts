@@ -1,4 +1,13 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { API_BASE_URL, apiFetch } from "./client";
+import type { FeatureSource } from "./features";
+
+// Feature/analysis/report types and functions are defined in their own
+// files and re-exported here so pages can import everything from one
+// place -- see features.ts / analysis.ts / report.ts / client.ts.
+export * from "./client";
+export * from "./features";
+export * from "./analysis";
+export * from "./report";
 
 export type Severity = "info" | "warning" | "critical";
 export type IssueStatus = "pending" | "resolved";
@@ -53,6 +62,9 @@ export interface AuditReport {
   revertible_issue_id: string | null;
 }
 
+// Served by the audit router's /{session_id}/features endpoints (see
+// routers/audit.py) -- computed values, as opposed to feature *definitions*
+// (FeatureRepositoryEntry etc., see features.ts).
 export interface FeatureResult {
   id: string;
   name: string;
@@ -91,203 +103,6 @@ export interface DataPreview {
   rows: Record<string, unknown>[];
 }
 
-export interface FeatureDefinitionsSummary {
-  filename: string;
-  feature_count: number;
-  feature_names: string[];
-}
-
-// The four sources that can contribute a candidate feature to a session's
-// repository -- see backend/app/services/feature_repository.py.
-export type FeatureSource = "predefined" | "planner" | "custom" | "ai_suggested";
-export type FeatureEntryStatus = "approved" | "pending" | "rejected";
-
-export interface FeatureRepositoryEntry {
-  id: string;
-  source: FeatureSource;
-  status: FeatureEntryStatus;
-  name: string;
-  description: string;
-  output_column: string;
-  // Plain-English description of the calculation -- the one input the
-  // Feature Agent's Think step needs, regardless of which source proposed it.
-  calculation_intent: string;
-  input_columns: string[];
-  // A precise plan already attached to this entry (Planner-generated and
-  // PM-approved, or a fully structured predefined spec) -- null means the
-  // Feature Agent hasn't thought about this one yet.
-  formula: string | null;
-}
-
-export interface FeatureRepositoryResponse {
-  session_id: string;
-  entries: FeatureRepositoryEntry[];
-}
-
-export interface SuggestFeatureEntriesResponse {
-  session_id: string;
-  entries: FeatureRepositoryEntry[];
-}
-
-// The five sources that can contribute a candidate analysis to a session's
-// repository -- see backend/app/services/analysis_repository.py.
-export type AnalysisSource = "predefined" | "planner" | "custom" | "ai_suggested" | "drilldown";
-export type AnalysisEntryStatus = "approved" | "pending" | "rejected";
-export type AnalysisRunStatus = "not_run" | "done" | "error";
-
-export interface AnalysisDrilldownSuggestion {
-  id: string;
-  name: string;
-  description: string;
-  calculation_intent: string;
-  triggered: boolean;
-  child_entry_id: string | null;
-}
-
-export interface AnalysisChartSpec {
-  data: unknown[];
-  layout: Record<string, unknown>;
-}
-
-export type AnalysisChartType = "bar" | "grouped_bar" | "line" | "pie" | "scatter" | "heatmap" | "table";
-export type AnalysisFilterKind = "categorical" | "numeric_range" | "date_range";
-export type AnalysisComputationMode = "template" | "code";
-
-export interface AnalysisChartAlternative {
-  chart_type: AnalysisChartType;
-  reason: string;
-}
-
-export interface AnalysisChartRecommendation {
-  chart_type: AnalysisChartType;
-  reason: string;
-  alternatives: AnalysisChartAlternative[];
-}
-
-// One interactive filter declared for an analysis, plus what the current
-// data offers for it: `values` for categorical, min/max for numeric_range,
-// start/end (YYYY-MM-DD) for date_range.
-export interface AnalysisFilter {
-  column: string;
-  kind: AnalysisFilterKind;
-  reason: string;
-  values: string[] | null;
-  min: number | null;
-  max: number | null;
-  start: string | null;
-  end: string | null;
-}
-
-export interface AnalysisFilterSelection {
-  values?: string[];
-  min?: number;
-  max?: number;
-  start?: string;
-  end?: string;
-}
-
-export type AnalysisFilterSelections = Record<string, AnalysisFilterSelection>;
-
-// A fully specified, not-yet-saved analysis returned by the Analysis
-// Designer for the PM to review in the Add Analysis form.
-export interface AnalysisDraft {
-  name: string;
-  description: string;
-  formula: string;
-  formula_steps: string[];
-  group_by: string[];
-  metrics: string[];
-  computation_mode: AnalysisComputationMode;
-  template: Record<string, unknown> | null;
-  template_name: string | null;
-  template_summary: string | null;
-  template_reason: string;
-  chart: AnalysisChartRecommendation;
-  filters: AnalysisFilter[];
-  preview_columns: string[];
-  preview_rows: Record<string, unknown>[];
-  preview_chart_spec: AnalysisChartSpec | null;
-  notes: string[];
-}
-
-export interface AnalysisRepositoryEntry {
-  id: string;
-  source: AnalysisSource;
-  status: AnalysisEntryStatus;
-  name: string;
-  description: string;
-  calculation_intent: string;
-  input_columns: string[];
-  // A precise plan already attached to this entry (Planner-generated and
-  // PM-approved, drafted in the Add Analysis form, or a predefined spec with
-  // its own formula) -- null means the Analysis Agent hasn't thought about
-  // this one yet.
-  formula: string | null;
-  // Set only for source === "drilldown": the entry id this one was spawned
-  // from.
-  parent_id: string | null;
-  // Deterministic template this entry is computed with -- null means code
-  // generation.
-  template: Record<string, unknown> | null;
-  template_summary: string | null;
-  chart_recommendation: AnalysisChartRecommendation | null;
-  filters: AnalysisFilter[];
-
-  run_status: AnalysisRunStatus;
-  plan_text: string | null;
-  generated_code: string | null;
-  result_table: Record<string, unknown>[] | null;
-  result_columns: string[] | null;
-  chart_type: string | null;
-  chart_spec: AnalysisChartSpec | null;
-  interpretation: string | null;
-  error: string | null;
-  drilldown_suggestions: AnalysisDrilldownSuggestion[];
-  computation_mode: AnalysisComputationMode | null;
-  notes: string[];
-  // Set only on a filtered view returned by filterAnalysisEntry.
-  applied_filters: Record<string, AnalysisFilterSelection> | null;
-}
-
-export interface AnalysisRepositoryResponse {
-  session_id: string;
-  entries: AnalysisRepositoryEntry[];
-}
-
-export interface SuggestAnalysisEntriesResponse {
-  session_id: string;
-  entries: AnalysisRepositoryEntry[];
-}
-
-export interface AnalysisDefinitionsSummary {
-  filename: string;
-  analysis_count: number;
-  analysis_names: string[];
-}
-
-export interface OverallHighlight {
-  label: string;
-  value: string;
-}
-
-export interface OverallAnalysisReport {
-  session_id: string;
-  row_count: number;
-  highlights: OverallHighlight[];
-  narrative: string;
-}
-
-export class AuditApiError extends Error {}
-
-async function parseErrorDetail(response: Response): Promise<string> {
-  try {
-    const body = await response.json();
-    return body.detail ?? response.statusText;
-  } catch {
-    return response.statusText;
-  }
-}
-
 export interface UploadOnlyResponse {
   session_id: string;
   filename: string;
@@ -301,28 +116,12 @@ export async function uploadOnly(source: string, file: File): Promise<UploadOnly
   const formData = new FormData();
   formData.append("file", file);
   formData.append("source", source);
-
-  const response = await fetch(`${API_BASE_URL}/api/audit/upload`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
+  return apiFetch(`/api/audit/upload`, { method: "POST", body: formData });
 }
 
 /** Run the audit agent on an already-uploaded session. */
 export async function runAudit(sessionId: string): Promise<AuditReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/run`, {
-    method: "POST",
-  });
-
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
+  return apiFetch(`/api/audit/${sessionId}/run`, { method: "POST" });
 }
 
 export async function resolveIssue(
@@ -331,27 +130,15 @@ export async function resolveIssue(
   decisionId: string,
   selectedItems?: string[]
 ): Promise<AuditReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/resolve`, {
+  return apiFetch(`/api/audit/${sessionId}/resolve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ issue_id: issueId, decision_id: decisionId, selected_items: selectedItems ?? null }),
   });
-
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
 }
 
 export async function revertIssue(sessionId: string, issueId: string): Promise<AuditReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/issues/${issueId}/revert`, {
-    method: "POST",
-  });
-
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
+  return apiFetch(`/api/audit/${sessionId}/issues/${issueId}/revert`, { method: "POST" });
 }
 
 export function downloadCleansedFileUrl(sessionId: string): string {
@@ -360,118 +147,6 @@ export function downloadCleansedFileUrl(sessionId: string): string {
 
 export function downloadFlaggedOutliersUrl(sessionId: string): string {
   return `${API_BASE_URL}/api/audit/${sessionId}/outliers/download`;
-}
-
-export async function applyFeatures(sessionId: string): Promise<FeatureReport> {
-  // Computes every APPROVED entry in this session's feature repository --
-  // no body needed, the repository already holds everything server-side.
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/features`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function fetchFeatureReport(sessionId: string): Promise<FeatureReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/features`);
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function fetchFeatureRepository(sessionId: string): Promise<FeatureRepositoryResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}`);
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-// A user-requested feature drafted for review before it's added: the
-// formula the Feature Agent wrote, dry-run on the real data.
-export interface FeatureDraft {
-  draft_token: string | null;
-  name: string;
-  output_column: string;
-  formula: string;
-  formula_steps: string[];
-  columns_used: string[];
-  output_dtype: string | null;
-  status: "ok" | "failed";
-  error: string | null;
-  validation_note: string | null;
-  preview_columns: string[];
-  preview_rows: Record<string, unknown>[];
-  summary: {
-    non_null_count: number;
-    null_count: number;
-    stats: Record<string, number>;
-    distribution: Record<string, number>;
-  } | null;
-  notes: string[];
-}
-
-export async function draftCustomFeature(
-  sessionId: string,
-  body: { name: string; description: string; input_columns?: string[]; formula?: string }
-): Promise<FeatureDraft> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/draft`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export interface AddCustomFeatureBody {
-  name: string;
-  description?: string;
-  calculation_intent: string;
-  input_columns?: string[];
-  // From a reviewed FeatureDraft. The server reuses that dry run's code only
-  // if `formula` is exactly what was dry-run.
-  formula?: string;
-  draft_token?: string | null;
-}
-
-export async function addCustomFeature(sessionId: string, body: AddCustomFeatureBody): Promise<FeatureRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/custom`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function suggestFeatureEntries(sessionId: string): Promise<SuggestFeatureEntriesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/suggest`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function acceptFeatureEntry(sessionId: string, entryId: string): Promise<FeatureRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function rejectFeatureEntry(sessionId: string, entryId: string): Promise<FeatureRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
 }
 
 export interface IssueRowsResponse {
@@ -483,198 +158,11 @@ export interface IssueRowsResponse {
 }
 
 export async function fetchIssueRows(sessionId: string, issueId: string): Promise<IssueRowsResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/issues/${issueId}/rows`);
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
+  return apiFetch(`/api/audit/${sessionId}/issues/${issueId}/rows`);
 }
 
 export async function fetchPreview(sessionId: string, rows = 20): Promise<DataPreview> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/preview?rows=${rows}`);
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function uploadFeatureDefinitions(file: File): Promise<FeatureDefinitionsSummary> {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const response = await fetch(`${API_BASE_URL}/api/features/definitions`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function uploadAnalysisDefinitions(file: File): Promise<AnalysisDefinitionsSummary> {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const response = await fetch(`${API_BASE_URL}/api/analysis/definitions`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function fetchAnalysisRepository(sessionId: string): Promise<AnalysisRepositoryResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}`);
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function draftAnalysis(
-  sessionId: string,
-  body: { name: string; description: string; formula?: string }
-): Promise<AnalysisDraft> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/draft`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export interface AddCustomAnalysisBody {
-  name: string;
-  description?: string;
-  calculation_intent: string;
-  input_columns?: string[];
-  // From a reviewed AnalysisDraft -- re-validated by the backend on save.
-  formula?: string;
-  template?: Record<string, unknown> | null;
-  chart_type?: AnalysisChartType;
-  chart_reason?: string;
-  chart_alternatives?: AnalysisChartAlternative[];
-  filters?: { column: string; reason: string }[];
-}
-
-export async function addCustomAnalysis(sessionId: string, body: AddCustomAnalysisBody): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/custom`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function suggestAnalysisEntries(sessionId: string): Promise<SuggestAnalysisEntriesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/suggest`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function acceptAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function rejectAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function runAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/run`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-/** A filtered view of an already-run analysis. Never replaces the stored
- * (unfiltered) result, and never calls an LLM on the backend. */
-export async function filterAnalysisEntry(
-  sessionId: string,
-  entryId: string,
-  filters: AnalysisFilterSelections
-): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/filter`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filters }),
-  });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function triggerDrilldown(sessionId: string, entryId: string, drilldownId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/${drilldownId}/trigger`,
-    { method: "POST" }
-  );
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function fetchOverallAnalysis(sessionId: string): Promise<OverallAnalysisReport> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/overall`);
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-/** Builds the .pptx download link for whichever done analysis entries the
- * PM chose to include -- an empty list downloads nothing selected, so
- * callers should keep the Download control disabled in that case.
- * `language` optionally translates the report's own fixed phrases (see
- * report_generator.TRANSLATABLE_PHRASES) -- never the underlying analysis
- * names/interpretations/data, which always stay in their original language. */
-export function downloadReportUrl(sessionId: string, entryIds: string[], language = "en"): string {
-  const params = new URLSearchParams();
-  for (const id of entryIds) params.append("entry_id", id);
-  if (language !== "en") params.set("language", language);
-  const query = params.toString();
-  return `${API_BASE_URL}/api/report/${sessionId}/download${query ? `?${query}` : ""}`;
-}
-
-export interface LanguageOption {
-  code: string;
-  name: string;
-}
-
-export interface SupportedLanguagesResponse {
-  languages: LanguageOption[];
-}
-
-export async function fetchSupportedReportLanguages(): Promise<SupportedLanguagesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/report/languages`);
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
+  return apiFetch(`/api/audit/${sessionId}/preview?rows=${rows}`);
 }
 
 // -- Outlier detection -------------------------------------------------------
@@ -752,11 +240,7 @@ export interface OutliersResponse {
 }
 
 export async function fetchOutliers(sessionId: string): Promise<OutliersResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/outliers`);
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
+  return apiFetch(`/api/audit/${sessionId}/outliers`);
 }
 
 // A PM's inline correction to one trip's Segment Days or Mean Temp, from the
@@ -766,7 +250,7 @@ export async function updateTripValue(
   sessionId: string,
   params: { serial: string; tripId: string | number; field: "segment_days" | "mean_temp"; value: number }
 ): Promise<OutliersResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/trip-value`, {
+  return apiFetch(`/api/audit/${sessionId}/trip-value`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -776,8 +260,4 @@ export async function updateTripValue(
       value: params.value,
     }),
   });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
 }

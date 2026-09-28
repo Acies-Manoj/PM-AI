@@ -22,7 +22,7 @@ from app.services.features import feature_agent, feature_cache
 TOP_N_DISTRIBUTION = 12
 
 
-def _numeric_stats(series: pd.Series) -> dict[str, float]:
+def numeric_stats(series: pd.Series) -> dict[str, float]:
     clean = pd.to_numeric(series, errors="coerce").dropna()
     if clean.empty:
         return {}
@@ -34,12 +34,12 @@ def _numeric_stats(series: pd.Series) -> dict[str, float]:
     }
 
 
-def _distribution(series: pd.Series, top_n: int = TOP_N_DISTRIBUTION) -> dict[str, int]:
+def distribution(series: pd.Series, top_n: int = TOP_N_DISTRIBUTION) -> dict[str, int]:
     counts = series.dropna().astype(str).value_counts().head(top_n)
     return {str(k): int(v) for k, v in counts.items()}
 
 
-def _is_numeric_like(series: pd.Series) -> bool:
+def is_numeric_like(series: pd.Series) -> bool:
     return pd.to_numeric(series, errors="coerce").notna().sum() >= max(1, int(series.notna().sum() * 0.8))
 
 
@@ -91,7 +91,7 @@ def apply_features(session_id: str, df: pd.DataFrame, entries: list[dict]) -> tu
         output_col = entry["output_column"]
         working[output_col] = computation.values
         non_null = int(computation.values.notna().sum())
-        numeric = _is_numeric_like(computation.values)
+        numeric = is_numeric_like(computation.values)
 
         results.append(FeatureResult(
             id=entry["id"],
@@ -100,8 +100,8 @@ def apply_features(session_id: str, df: pd.DataFrame, entries: list[dict]) -> tu
             output_column=output_col,
             non_null_count=non_null,
             null_count=len(computation.values) - non_null,
-            distribution={} if numeric else _distribution(computation.values),
-            stats=_numeric_stats(computation.values) if numeric else {},
+            distribution={} if numeric else distribution(computation.values),
+            stats=numeric_stats(computation.values) if numeric else {},
             generated_code=computation.generated_code,
             source=entry["source"],
             plan=computation.plan_text,

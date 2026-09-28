@@ -23,8 +23,9 @@ import uuid
 
 import pandas as pd
 
+from app.services.common import llm_client
 from app.services.features import feature_agent, feature_cache
-from app.services.features.feature_engineering import _distribution, _is_numeric_like, _numeric_stats
+from app.services.features.feature_engineering import distribution, is_numeric_like, numeric_stats
 
 PREVIEW_ROWS = 10
 # Drafts a session keeps before the oldest is dropped -- a PM abandoning and
@@ -53,12 +54,12 @@ def _preview(df: pd.DataFrame, columns: list[str], output_column: str, values: p
 
 def _summary(values: pd.Series) -> dict:
     non_null = int(values.notna().sum())
-    numeric = _is_numeric_like(values)
+    numeric = is_numeric_like(values)
     return {
         "non_null_count": non_null,
         "null_count": len(values) - non_null,
-        "stats": _numeric_stats(values) if numeric else {},
-        "distribution": {} if numeric else _distribution(values),
+        "stats": numeric_stats(values) if numeric else {},
+        "distribution": {} if numeric else distribution(values),
     }
 
 
@@ -74,7 +75,7 @@ def draft_feature(
         "output_column": output_column, "input_columns": input_columns,
     }
     notes: list[str] = []
-    columns_block = feature_agent._columns_block(df)
+    columns_block = llm_client.column_preview_block(df)
 
     if formula and formula.strip():
         steps = _steps_from_formula(formula.strip())
@@ -83,7 +84,7 @@ def draft_feature(
         plan = feature_agent.think(entry, columns_block)
         steps = plan.get("steps") or _steps_from_formula(plan.get("plan", ""))
         plan_meta = plan
-    formula_text = feature_agent._plan_text({"steps": steps})
+    formula_text = llm_client.render_plan_steps({"steps": steps})
 
     # Columns the formula works from: the plan's own list, else any real
     # column the (edited) formula text names. Shown in the preview and to

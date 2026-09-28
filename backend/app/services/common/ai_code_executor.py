@@ -64,11 +64,12 @@ def _validate_ast(tree: ast.AST) -> None:
             raise ValueError(f"Generated code accesses a disallowed attribute: '{node.attr}'.")
 
 
-def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
-    """Executes `code` against a copy of `df` and returns whatever it
-    assigns to a variable named `result`. Raises ValueError on anything
-    unsafe or malformed -- callers treat that as "this calculation
-    couldn't be computed" and show a skip note, never the raw traceback."""
+def _exec_sandboxed(code: str, df: pd.DataFrame, *, filename: str) -> object:
+    """Parses, AST-validates, compiles, and executes `code` against a copy
+    of `df`, returning whatever it assigns to a variable named `result` --
+    the parse/validate/compile/exec mechanics shared by run_generated_code
+    (per-row Series) and run_generated_table_code (aggregated DataFrame),
+    which differ only in what shape they expect `result` to be."""
     try:
         tree = ast.parse(code, mode="exec")
     except SyntaxError as exc:
@@ -76,7 +77,7 @@ def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
 
     _validate_ast(tree)
 
-    compiled = compile(tree, filename="<ai_generated_feature>", mode="exec")
+    compiled = compile(tree, filename=filename, mode="exec")
     sandbox_globals = {"__builtins__": _SAFE_BUILTINS, "pd": pd, "np": np}
     sandbox_locals: dict = {"df": df.copy()}
 
@@ -85,7 +86,15 @@ def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
     except Exception as exc:
         raise ValueError(f"Generated code raised an error while running: {exc}") from exc
 
-    result = sandbox_locals.get("result")
+    return sandbox_locals.get("result")
+
+
+def run_generated_code(code: str, df: pd.DataFrame) -> pd.Series:
+    """Executes `code` against a copy of `df` and returns whatever it
+    assigns to a variable named `result`. Raises ValueError on anything
+    unsafe or malformed -- callers treat that as "this calculation
+    couldn't be computed" and show a skip note, never the raw traceback."""
+    result = _exec_sandboxed(code, df, filename="<ai_generated_feature>")
     if not isinstance(result, pd.Series):
         raise ValueError("Generated code did not assign a pandas Series to `result`.")
     if len(result) != len(df):
@@ -100,23 +109,7 @@ def run_generated_table_code(code: str, df: pd.DataFrame, max_rows: int = 500) -
     per-row Series, since a chart's underlying table always has fewer rows
     than the source data. Returns the table as a list of row dicts, capped
     at `max_rows` so a runaway group-by can't ship an unbounded payload."""
-    try:
-        tree = ast.parse(code, mode="exec")
-    except SyntaxError as exc:
-        raise ValueError(f"Generated code has a syntax error: {exc}") from exc
-
-    _validate_ast(tree)
-
-    compiled = compile(tree, filename="<ai_generated_analysis>", mode="exec")
-    sandbox_globals = {"__builtins__": _SAFE_BUILTINS, "pd": pd, "np": np}
-    sandbox_locals: dict = {"df": df.copy()}
-
-    try:
-        exec(compiled, sandbox_globals, sandbox_locals)  # noqa: S102 -- sandboxed above
-    except Exception as exc:
-        raise ValueError(f"Generated code raised an error while running: {exc}") from exc
-
-    result = sandbox_locals.get("result")
+    result = _exec_sandboxed(code, df, filename="<ai_generated_analysis>")
     if not isinstance(result, pd.DataFrame):
         raise ValueError("Generated code did not assign a pandas DataFrame to `result`.")
     if result.empty:

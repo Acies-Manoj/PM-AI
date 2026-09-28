@@ -1,0 +1,213 @@
+.analysis-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.analysis-toolbar__search {
+  flex: 1 1 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: 9px 14px;
+  color: var(--color-text-muted);
+}
+
+.analysis-toolbar__search svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.analysis-toolbar__search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.analysis-toolbar__item {
+  position: relative;
+}
+
+.analysis-toolbar__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: 9px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.analysis-toolbar__btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.analysis-toolbar__btn:hover {
+  border-color: var(--carrier-blue);
+  color: var(--carrier-blue);
+}
+
+.analysis-toolbar__btn--active {
+  border-color: var(--carrier-blue);
+  color: var(--carrier-blue);
+  background: var(--carrier-blue-tint);
+}
+
+.analysis-toolbar__btn--primary {
+  background: var(--carrier-blue);
+  border-color: var(--carrier-blue);
+  color: #fff;
+}
+
+.analysis-toolbar__btn--primary:hover {
+  background: var(--carrier-light-blue);
+  border-color: var(--carrier-light-blue);
+  color: #fff;
+}
+
+.analysis-toolbar__count {
+  background: var(--carrier-blue);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 1px 6px;
+}
+
+.analysis-toolbar__btn--active .analysis-toolbar__count {
+  background: var(--carrier-blue);
+}
+
+.analysis-toolbar__popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.12));
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.analysis-toolbar__popover--narrow {
+  min-width: 180px;
+  padding: 6px;
+}
+
+.analysis-toolbar__popover--right {
+  left: auto;
+  right: 0;
+}
+
+.analysis-toolbar__popover-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 6px 0 2px;
+}
+
+.analysis-toolbar__check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.analysis-toolbar__check-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--color-text);
+  padding: 5px 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.analysis-toolbar__check-list label:hover {
+  background: var(--carrier-blue-tint);
+}
+
+.analysis-toolbar__reset {
+  margin-top: 8px;
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--carrier-blue);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.analysis-toolbar__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.analysis-toolbar__menu-item svg {
+  width: 13px;
+  height: 13px;
+}
+
+.analysis-toolbar__menu-item:hover {
+  background: var(--carrier-blue-tint);
+  color: var(--carrier-blue);
+}
+
+.analysis-toolbar__menu-item--active {
+  color: var(--carrier-blue);
+  font-weight: 800;
+}
+
+.analysis-toolbar__menu-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 640px) {
+  .analysis-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .analysis-toolbar__item--add {
+    align-self: flex-end;
+  }
+}

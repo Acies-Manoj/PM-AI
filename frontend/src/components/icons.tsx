@@ -181,3 +181,15 @@ export const IconBarChart = () => (
     <path d="M3.5 20.5h17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
   </svg>
 );
+
+export const IconFilter = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4 5h16l-6 7.5v5.7l-4 2V12.5L4 5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+  </svg>
+);
+
+export const IconPlus = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);

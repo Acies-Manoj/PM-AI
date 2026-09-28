@@ -302,6 +302,24 @@ def detect_temperature_outliers(df: pd.DataFrame) -> dict:
     }
 
 
+def build_outlier_export(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(duration_outliers_df, temperature_outliers_df) -- the flagged rows a PM takes away to
+    correct in SensiWatch before re-uploading. Both are built from the same flat shapes the
+    Segment/Temperature Outlier tabs already render, so this always matches what's on screen."""
+    segment = detect_segment_outliers(df)
+    duration_df = pd.DataFrame(segment["outlier_rows"])
+
+    temperature = detect_temperature_outliers(df)
+    flagged_trips: list[dict] = []
+    for product in temperature["by_product"]:
+        for trip in product["trips"]:
+            if trip["status"] != "in_spec":
+                flagged_trips.append({"product": product["product"], **trip})
+    temperature_df = pd.DataFrame(flagged_trips)
+
+    return duration_df, temperature_df
+
+
 def update_trip_value(df: pd.DataFrame, serial: str, trip_id: str, field: str, value: float) -> pd.DataFrame:
     """Writes a PM's inline edit for one trip back into the session's own
     working dataframe, keyed by (serial, trip_id) -- mutates the dataframe's

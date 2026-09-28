@@ -54,13 +54,15 @@ def get(session_id: str, entry: dict) -> dict | None:
 def set(
     session_id: str, entry: dict, plan_text: str | None, generated_code: str | None,
     chart_recommendation: dict | None = None, template: dict | None = None,
+    filters: list[dict] | None = None,
 ) -> None:
     """Caches this entry's computation decision: either `template` (a
     validated analysis_templates spec, with `plan_text` = its steps) or the
     winning `generated_code`. `chart_recommendation` is the chart picked
-    from the logic before computing -- kept so a replay draws the same
-    chart without asking the LLM again. `entry` must be the entry as stored
-    in the repository, since its logic is the cache key (`basis`)."""
+    from the logic before computing, and `filters` the filter-column defs
+    discovered alongside it -- both kept so a replay reuses them without
+    asking the LLM again. `entry` must be the entry as stored in the
+    repository, since its logic is the cache key (`basis`)."""
     cache = _load(session_id)
     cache[entry["id"]] = {
         "basis": entry.get("formula") or entry["calculation_intent"],
@@ -68,6 +70,7 @@ def set(
         "generated_code": generated_code,
         "chart_recommendation": chart_recommendation,
         "template": template,
+        "filters": filters,
     }
     _save(session_id, cache)
 

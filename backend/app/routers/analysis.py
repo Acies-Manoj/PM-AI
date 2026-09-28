@@ -84,7 +84,10 @@ def _merge_entry(session: AuditSession, definition: dict) -> AnalysisRepositoryE
     result = session.analysis_results.get(definition["id"])
     merged = dict(definition)
     merged["template_summary"] = analysis_templates.summarize(definition.get("template"))
-    merged["filters"] = analysis_filters.options(session.df, definition.get("filters") or [])
+    # A custom entry already has its own saved filters; every other source
+    # only has them once a run has discovered them (see analysis_engine).
+    filter_defs = definition.get("filters") or (result.filters if result else None) or []
+    merged["filters"] = analysis_filters.options(session.df, filter_defs)
     if result:
         merged.update({
             "run_status": result.run_status,
@@ -220,6 +223,7 @@ def _to_result(entry: dict, computation: AnalysisComputation) -> AnalysisResult:
         notes=computation.notes,
         chart_recommendation=computation.chart_recommendation,
         template=computation.template,
+        filters=computation.filters,
     )
 
 

@@ -221,6 +221,28 @@ def download_cleansed_file(session_id: str):
     )
 
 
+@router.get("/{session_id}/outliers/download")
+def download_flagged_outliers(session_id: str):
+    """Streams the CURRENTLY flagged duration + temperature outlier rows as a two-sheet
+    .xlsx -- what the PM takes away to correct in SensiWatch before re-uploading."""
+    from app.services.audit.outlier_detectors import build_outlier_export
+
+    session = _get_session_or_404(session_id)
+    duration_df, temperature_df = build_outlier_export(session.df)
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        duration_df.to_excel(writer, index=False, sheet_name="Duration Outliers")
+        temperature_df.to_excel(writer, index=False, sheet_name="Temperature Outliers")
+    buffer.seek(0)
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="flagged_outliers.xlsx"'},
+    )
+
+
 @router.get("/{session_id}/preview")
 def preview_data(session_id: str, rows: int = DEFAULT_PREVIEW_ROWS):
     """Sample of the session's current dataframe for the HITL review view on

@@ -405,6 +405,11 @@ class AnalysisComputation:
     # The analysis_templates spec that computed the table, when one did --
     # set for every source, not just designed entries (see analysis_engine).
     template: dict | None = None
+    # Validated filter-column defs ({"column","kind","reason"}) discovered
+    # alongside the chart, for EVERY source now -- not just a hand-drafted
+    # custom entry (see analysis_engine._design_and_run). None when not yet
+    # decided (chart_type was already fixed before this ran).
+    filters: list[dict] | None = None
 
 
 def finish_computation(

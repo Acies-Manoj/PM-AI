@@ -168,3 +168,105 @@
 .analysis-detail__chart-choice strong {
   color: var(--color-text);
 }
+
+/* Outer modal tabs -- a bolder segmented control, distinct from the
+   underline-style Table/Chart sub-tabs nested inside "Table & Chart". */
+.analysis-detail__modal-tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--carrier-blue-tint);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  margin: 4px 0 4px;
+  align-self: flex-start;
+}
+
+.analysis-detail__modal-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  background: none;
+  cursor: pointer;
+}
+
+.analysis-detail__modal-tab svg {
+  width: 14px;
+  height: 14px;
+}
+
+.analysis-detail__modal-tab:hover {
+  color: var(--carrier-blue);
+}
+
+.analysis-detail__modal-tab--active {
+  color: var(--carrier-blue);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.analysis-detail__modal-tab-count {
+  background: var(--carrier-blue);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 6px;
+}
+
+.analysis-detail__drilldown-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.analysis-detail__explored-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.analysis-detail__explored-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--color-surface);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.analysis-detail__explored-item:hover {
+  border-color: var(--carrier-blue);
+}
+
+.analysis-detail__explored-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.analysis-detail__explored-item svg {
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.analysis-detail__empty-drilldown {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 20px 0;
+}

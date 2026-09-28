@@ -75,62 +75,66 @@ class SaveMetadataResponse(BaseModel):
     session_id: str
 
 
-def _translate_deepl(text: str, target_lang: str) -> tuple[str | None, str | None]:
-    """Returns (translated_text, error_message)."""
-    body = urllib.parse.urlencode({
-        "text": text,
-        "target_lang": target_lang,
-    }).encode()
-    headers = {
-        "Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}",
-        "Content-Type": "application/x-www-form-urlencoded",
-    }
-    req = urllib.request.Request(DEEPL_API_URL, data=body, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as resp:
-            data = json.loads(resp.read().decode())
-            return data["translations"][0]["text"], None
-    except urllib.error.HTTPError as e:
-        body_bytes = e.read()
-        try:
-            detail = json.loads(body_bytes).get("message", e.reason)
-        except Exception:
-            detail = e.reason
-        return None, f"DeepL {e.code}: {detail}"
-    except Exception as e:
-        return None, str(e)
-
-
-@router.post("/detect-translate", response_model=DetectTranslateResponse)
-def detect_and_translate(req: DetectTranslateRequest):
-    if not req.text.strip():
-        raise HTTPException(status_code=400, detail="Text cannot be empty.")
-
-    try:
-        from langdetect import detect
-        lang = detect(req.text)
-    except Exception:
-        lang = "en"
-
-    lang_lower = lang.lower()
-    lang_name = LANGUAGE_NAMES.get(lang_lower, lang.upper())
-    is_english = lang_lower.startswith("en")
-
-    translated: str | None = None
-    translation_error: str | None = None
-    translation_available = bool(DEEPL_API_KEY)
-
-    if not is_english and DEEPL_API_KEY:
-        translated, translation_error = _translate_deepl(req.text, req.target_language)
-
-    return DetectTranslateResponse(
-        detected_language=lang,
-        detected_language_name=lang_name,
-        is_english=is_english,
-        translated_text=translated,
-        translation_available=translation_available,
-        translation_error=translation_error,
-    )
+# Client-brief translation is disabled for now -- Planner reads final_text/
+# raw_text directly (see planner.py's suggest()). Commented out rather than
+# removed so it can be turned back on later without reconstructing it.
+#
+# def _translate_deepl(text: str, target_lang: str) -> tuple[str | None, str | None]:
+#     """Returns (translated_text, error_message)."""
+#     body = urllib.parse.urlencode({
+#         "text": text,
+#         "target_lang": target_lang,
+#     }).encode()
+#     headers = {
+#         "Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}",
+#         "Content-Type": "application/x-www-form-urlencoded",
+#     }
+#     req = urllib.request.Request(DEEPL_API_URL, data=body, headers=headers)
+#     try:
+#         with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as resp:
+#             data = json.loads(resp.read().decode())
+#             return data["translations"][0]["text"], None
+#     except urllib.error.HTTPError as e:
+#         body_bytes = e.read()
+#         try:
+#             detail = json.loads(body_bytes).get("message", e.reason)
+#         except Exception:
+#             detail = e.reason
+#         return None, f"DeepL {e.code}: {detail}"
+#     except Exception as e:
+#         return None, str(e)
+#
+#
+# @router.post("/detect-translate", response_model=DetectTranslateResponse)
+# def detect_and_translate(req: DetectTranslateRequest):
+#     if not req.text.strip():
+#         raise HTTPException(status_code=400, detail="Text cannot be empty.")
+#
+#     try:
+#         from langdetect import detect
+#         lang = detect(req.text)
+#     except Exception:
+#         lang = "en"
+#
+#     lang_lower = lang.lower()
+#     lang_name = LANGUAGE_NAMES.get(lang_lower, lang.upper())
+#     is_english = lang_lower.startswith("en")
+#
+#     translated: str | None = None
+#     translation_error: str | None = None
+#     translation_available = bool(DEEPL_API_KEY)
+#
+#     if not is_english and DEEPL_API_KEY:
+#         translated, translation_error = _translate_deepl(req.text, req.target_language)
+#
+#     return DetectTranslateResponse(
+#         detected_language=lang,
+#         detected_language_name=lang_name,
+#         is_english=is_english,
+#         translated_text=translated,
+#         translation_available=translation_available,
+#         translation_error=translation_error,
+#     )
 
 
 class FinalizeRequest(BaseModel):

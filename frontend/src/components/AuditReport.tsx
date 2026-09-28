@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuditIssue, AuditReport as AuditReportData, OutliersResponse } from "../api/audit";
 import { fetchOutliers } from "../api/audit";
-import AuditIssueCard, { COLUMN_SCOPED_CATEGORIES } from "./AuditIssueCard";
+import AuditIssueCard from "./AuditIssueCard";
+import AuditSummaryPanel from "./AuditSummaryPanel";
 import SegmentOutlierTab from "./SegmentOutlierTab";
 import TemperatureOutlierTab from "./TemperatureOutlierTab";
 import StatTile from "./StatTile";
@@ -15,6 +16,15 @@ interface AuditReportProps {
   resolvingIssueId: string | null;
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
+  // Hides the Segment Outlier / Temperature Outliers tabs -- for a source
+  // (SensiWatch) whose own dedicated outlier-correction step already showed
+  // this same data before Standard Checks ran, so showing it again here
+  // would just be a duplicate of what the PM already reviewed.
+  hideOutlierTabs?: boolean;
+  // Hides this report's own Summary tab -- for a source (SensiWatch) whose
+  // wizard already exposes Summary as its own top-level tab (see AuditPage),
+  // so showing it again here would just be a duplicate.
+  hideSummaryTab?: boolean;
 }
 
 export type Tab = "quality" | "segment" | "temperature" | "summary";
@@ -23,39 +33,6 @@ export type Tab = "quality" | "segment" | "temperature" | "summary";
 // Overall Checks since Variable-Level Checks has been removed.
 export function classifyIssue(_issue: AuditIssue): Tab {
   return "quality";
-}
-
-function parseLeadingCount(resolution: string): number | null {
-  const match = resolution.match(/^(?:Dropped|Removed) (\d+)/);
-  return match ? Number(match[1]) : null;
-}
-
-function summarizeChanges(resolvedIssues: AuditIssue[]) {
-  let columnsDropped = 0;
-  let rowsRemoved = 0;
-  let keptCount = 0;
-  for (const issue of resolvedIssues) {
-    const resolution = issue.resolution ?? "";
-    if (resolution.startsWith("Kept")) {
-      keptCount += 1;
-      continue;
-    }
-    const count = parseLeadingCount(resolution);
-    if (count === null) continue;
-    if (COLUMN_SCOPED_CATEGORIES.has(issue.category)) columnsDropped += count;
-    else rowsRemoved += count;
-  }
-  return { columnsDropped, rowsRemoved, keptCount };
-}
-
-function pluralize(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
-}
-
-function joinClauses(clauses: string[]): string {
-  if (clauses.length === 0) return "";
-  if (clauses.length === 1) return `${clauses[0]}.`;
-  return `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}.`;
 }
 
 function issueMatchesColumnQuery(issue: AuditIssue, query: string): boolean {
@@ -74,6 +51,8 @@ export default function AuditReport({
   resolvingIssueId,
   activeTab,
   onTabChange,
+  hideOutlierTabs = false,
+  hideSummaryTab = false,
 }: AuditReportProps) {
   const decisionIssues = report.issues.filter((i) => i.requires_decision);
   const pendingCount = decisionIssues.filter((i) => i.status === "pending").length;
@@ -82,10 +61,6 @@ export default function AuditReport({
   const warningCount = report.issues.filter((i) => i.severity === "warning").length;
 
   const qualityIssues = useMemo(() => report.issues, [report.issues]);
-  const resolvedIssues = useMemo(
-    () => decisionIssues.filter((i) => i.status === "resolved" && i.resolution),
-    [decisionIssues]
-  );
 
   const [bulkApplying, setBulkApplying] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
@@ -185,17 +160,6 @@ export default function AuditReport({
     setBulkApplying(false);
   };
 
-  const changeTotals = useMemo(() => summarizeChanges(resolvedIssues), [resolvedIssues]);
-  const originalRowCount = report.row_count + changeTotals.rowsRemoved;
-  const originalColumnCount = report.column_count + changeTotals.columnsDropped;
-  const datasetChanged = changeTotals.columnsDropped > 0 || changeTotals.rowsRemoved > 0;
-
-  const summaryClauses: string[] = [];
-  if (changeTotals.columnsDropped > 0) summaryClauses.push(`dropped ${pluralize(changeTotals.columnsDropped, "column")}`);
-  if (changeTotals.rowsRemoved > 0) summaryClauses.push(`removed ${pluralize(changeTotals.rowsRemoved, "row")}`);
-  if (changeTotals.keptCount > 0) summaryClauses.push(`kept ${pluralize(changeTotals.keptCount, "finding")} as-is`);
-  const summarySentence = joinClauses(summaryClauses);
-
   const segmentFlagged = outlierData?.segment.flagged_trips ?? null;
   const tempBreaches =
     outlierData != null
@@ -237,43 +201,49 @@ export default function AuditReport({
                 Overall Checks
                 <span className="audit-report__tab-count">{qualityIssues.length}</span>
               </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "segment"}
-                className={`audit-report__tab ${activeTab === "segment" ? "audit-report__tab--active" : ""}`}
-                disabled={bulkApplying}
-                onClick={() => onTabChange("segment")}
-              >
-                Segment Outlier
-                {segmentFlagged !== null && (
-                  <span className="audit-report__tab-count">{segmentFlagged}</span>
-                )}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "temperature"}
-                className={`audit-report__tab ${activeTab === "temperature" ? "audit-report__tab--active" : ""}`}
-                disabled={bulkApplying}
-                onClick={() => onTabChange("temperature")}
-              >
-                Temperature Outliers
-                {tempBreaches !== null && (
-                  <span className="audit-report__tab-count">{tempBreaches}</span>
-                )}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "summary"}
-                className={`audit-report__tab ${activeTab === "summary" ? "audit-report__tab--active" : ""}`}
-                disabled={bulkApplying}
-                onClick={() => onTabChange("summary")}
-              >
-                Summary
-                <span className="audit-report__tab-count">{resolvedCount}</span>
-              </button>
+              {!hideOutlierTabs && (
+                <>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === "segment"}
+                    className={`audit-report__tab ${activeTab === "segment" ? "audit-report__tab--active" : ""}`}
+                    disabled={bulkApplying}
+                    onClick={() => onTabChange("segment")}
+                  >
+                    Segment Outlier
+                    {segmentFlagged !== null && (
+                      <span className="audit-report__tab-count">{segmentFlagged}</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === "temperature"}
+                    className={`audit-report__tab ${activeTab === "temperature" ? "audit-report__tab--active" : ""}`}
+                    disabled={bulkApplying}
+                    onClick={() => onTabChange("temperature")}
+                  >
+                    Temperature Outliers
+                    {tempBreaches !== null && (
+                      <span className="audit-report__tab-count">{tempBreaches}</span>
+                    )}
+                  </button>
+                </>
+              )}
+              {!hideSummaryTab && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "summary"}
+                  className={`audit-report__tab ${activeTab === "summary" ? "audit-report__tab--active" : ""}`}
+                  disabled={bulkApplying}
+                  onClick={() => onTabChange("summary")}
+                >
+                  Summary
+                  <span className="audit-report__tab-count">{resolvedCount}</span>
+                </button>
+              )}
             </div>
 
             {(activeTab === "segment" || activeTab === "temperature") && outlierData !== null && !outlierLoading && (
@@ -351,44 +321,7 @@ export default function AuditReport({
           </div>
 
           {activeTab === "summary" ? (
-            resolvedCount > 0 ? (
-              <div
-                className={`audit-report__changes ${
-                  report.status === "reviewed" ? "audit-report__changes--complete" : ""
-                }`}
-              >
-                <div className="audit-report__changes-head">
-                  <span className="audit-report__changes-icon">{report.status === "reviewed" ? "✓" : "…"}</span>
-                  <div className="audit-report__changes-copy">
-                    <p className="audit-report__changes-title">
-                      {report.status === "reviewed"
-                        ? "Audit complete — here's what changed"
-                        : `${resolvedCount} of ${decisionIssues.length} findings resolved so far`}
-                    </p>
-                    <p className="audit-report__changes-sentence">
-                      {summarySentence || "No changes made yet — every finding so far was kept as-is."}
-                      {datasetChanged && (
-                        <>
-                          {" "}Dataset is now <strong>{report.row_count.toLocaleString()}</strong> rows ×{" "}
-                          <strong>{report.column_count}</strong> columns (from {originalRowCount.toLocaleString()} ×{" "}
-                          {originalColumnCount}).
-                        </>
-                      )}
-                    </p>
-                  </div>
-                </div>
-                <p className="audit-report__changes-list-heading">Findings resolved ({resolvedCount})</p>
-                <ul className="audit-report__changes-list">
-                  {resolvedIssues.map((issue) => (
-                    <li key={issue.id}>
-                      <span className="audit-report__changes-item-title">{issue.title}:</span> {issue.resolution}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <p className="audit-report__empty-tab">No changes yet — resolve some findings to see a summary here.</p>
-            )
+            <AuditSummaryPanel report={report} />
           ) : activeTab === "segment" ? (
             outlierLoading ? (
               <p className="outlier-tab__loading">Analyzing segment lengths…</p>

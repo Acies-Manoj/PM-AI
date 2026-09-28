@@ -177,91 +177,7 @@
 }
 
 
-/* -- AI suggestions + custom pivot panels (side by side) ------------------- */
-
-.analysis-page__panels-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
-  margin-top: 20px;
-  margin-bottom: 20px;
-  align-items: start;
-}
-
-.analysis-page__panel-head-text {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.analysis-page__panel-icon {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.analysis-page__panel-icon svg {
-  width: 17px;
-  height: 17px;
-}
-
-.analysis-page__panel-icon--purple {
-  background: var(--accent-purple);
-  color: #fff;
-}
-
-.analysis-page__panel-icon--blue {
-  background: var(--carrier-blue);
-  color: #fff;
-}
-
-.analysis-page__panel-btn-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.analysis-page__panel-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.analysis-page__panel-btn-row .analysis-page__panel-btn {
-  flex: 1;
-}
-
-.analysis-page__panel-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.analysis-page__ai-panel {
-  border: 1px solid var(--accent-purple-bg);
-  background: var(--accent-purple-bg);
-  border-radius: var(--radius-md);
-  padding: 18px 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.analysis-page__ai-panel-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-
-.analysis-page__ai-panel-title {
-  margin: 0 0 4px;
-  font-size: 14.5px;
-  font-weight: 800;
-  color: var(--accent-purple);
-}
+/* -- AI suggestions modal content ------------------------------------- */
 
 .analysis-page__ai-panel-hint {
   margin: 0;
@@ -277,66 +193,20 @@
   margin-top: 16px;
 }
 
-/* -- add custom pivot ---------------------------------------------------- */
-
-.analysis-page__custom-pivot {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 18px 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.analysis-page__custom-pivot-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-
-.analysis-page__custom-pivot-title {
-  margin: 0 0 4px;
-  font-size: 14.5px;
-  font-weight: 800;
-  color: var(--carrier-blue);
-}
-
-.analysis-page__custom-pivot-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
-}
-
-/* -- pivot grid + skipped -------------------------------------------- */
+/* -- card grid + pagination ------------------------------------------ */
 
 .analysis-page__none {
   font-size: 12.5px;
   color: var(--color-text-muted);
-}
-
-.analysis-page__section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 12px;
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--carrier-blue);
-}
-
-.analysis-page__section-title svg {
-  width: 17px;
-  height: 17px;
+  padding: 16px 0;
 }
 
 .analysis-page__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  /* start, not stretch -- a root whose drilldowns nest underneath it grows
-     taller than its siblings; stretch would force every other cell in the
-     row to match that height instead of sitting at its own natural size. */
-  align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  align-items: stretch;
   gap: 14px;
+  margin-bottom: 14px;
 }
 
 .analysis-page__skipped {
@@ -348,72 +218,73 @@
   color: var(--color-text-muted);
 }
 
-/* -- summary of all pivots added ------------------------------------- */
-
-.analysis-page__summary {
-  margin-top: 20px;
-  margin-bottom: 20px;
-  border: 1px solid var(--carrier-blue-tint-2);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
+.analysis-page__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 4px;
 }
 
-.analysis-page__summary-title {
-  margin: 0 0 14px;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--carrier-blue);
-}
-
-.analysis-page__summary-group {
-  margin-bottom: 12px;
-}
-
-.analysis-page__summary-group:last-child {
-  margin-bottom: 0;
-}
-
-.analysis-page__summary-group-label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+.analysis-page__pagination-count {
+  font-size: 12px;
   color: var(--color-text-muted);
 }
 
-.analysis-page__summary-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.analysis-page__pagination-nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
-.analysis-page__summary-item {
-  display: inline-flex;
+.analysis-page__pagination-btn {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--color-text);
-  background: var(--color-bg);
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--color-border);
-  border-radius: 999px;
-  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
   cursor: pointer;
 }
 
-.analysis-page__summary-item:hover {
-  border-color: var(--carrier-blue);
-  background: var(--carrier-blue-tint);
+.analysis-page__pagination-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
-.analysis-page__summary-name {
+.analysis-page__pagination-btn:hover:not(:disabled) {
+  border-color: var(--carrier-blue);
+  color: var(--carrier-blue);
+}
+
+.analysis-page__pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.analysis-page__pagination-page {
+  font-size: 12px;
   font-weight: 700;
-  line-height: 1;
+  color: var(--color-text-muted);
+  min-width: 44px;
+  text-align: center;
+}
+
+/* -- suggested drilldowns (moved out of the modal onto the main page) -- */
+
+.analysis-page__suggested-drilldowns {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.analysis-page__suggested-drilldown-parent {
+  font-weight: 700;
+  color: var(--accent-purple);
 }
 
 /* -- footer buttons ----------------------------- */

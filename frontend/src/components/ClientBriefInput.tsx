@@ -1,7 +1,13 @@
-import { useCallback, useRef, useState } from "react";
+import { IconClipboard } from "./icons";
 import "./ClientBriefInput.css";
 
+// Client-brief translation is disabled for now (both this UI and the
+// backend's /api/brief/detect-translate -- see routers/brief.py). Planner
+// reads final_text/raw_text directly. Commented out below rather than
+// removed so it can be turned back on later without rebuilding it.
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+void API_BASE_URL; // referenced only by the commented-out translate call below
 
 export interface BriefState {
   rawText: string;
@@ -29,6 +35,40 @@ interface Props {
   value: BriefState;
   onChange: (state: BriefState) => void;
 }
+
+export default function ClientBriefInput({ value, onChange }: Props) {
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
+    onChange({ ...value, rawText: text, finalText: text, isEnglish: true });
+  };
+
+  return (
+    <div className="cb">
+      <div className="cb__header">
+        <span className="cb__title">
+          <IconClipboard /> Client Brief
+        </span>
+        <span className="cb__hint">Optional — tailors the Planner's suggestions</span>
+      </div>
+
+      <textarea
+        className="cb__textarea"
+        placeholder="Paste your client brief here…"
+        value={value.rawText}
+        onChange={handleChange}
+        rows={3}
+        spellCheck
+      />
+    </div>
+  );
+}
+
+/* ---- Previous implementation (language detection + DeepL translation),
+   disabled for now -- restore this in place of the component above (and
+   uncomment app/routers/brief.py's /detect-translate endpoint) to turn
+   translation back on.
+
+import { useCallback, useRef, useState } from "react";
 
 export default function ClientBriefInput({ value, onChange }: Props) {
   const [isDetecting, setIsDetecting] = useState(false);
@@ -120,7 +160,6 @@ export default function ClientBriefInput({ value, onChange }: Props) {
       <div className="cb__title">Client Brief</div>
 
       <div className="cb__panels">
-        {/* ── LEFT: original input ── */}
         <div className="cb__panel cb__panel--left">
           <div className="cb__panel-header">
             <span className="cb__lang-label">
@@ -146,7 +185,6 @@ export default function ClientBriefInput({ value, onChange }: Props) {
           />
         </div>
 
-        {/* ── DIVIDER ── */}
         <div className="cb__divider" aria-hidden>
           <div className="cb__divider-line" />
           <svg className="cb__arrow" viewBox="0 0 24 24" fill="none">
@@ -155,7 +193,6 @@ export default function ClientBriefInput({ value, onChange }: Props) {
           <div className="cb__divider-line" />
         </div>
 
-        {/* ── RIGHT: translated / editable ── */}
         <div className="cb__panel cb__panel--right">
           <div className="cb__panel-header">
             <span className={`cb__lang-label ${!value.isEnglish && value.translationAvailable ? "cb__lang-label--en" : ""}`}>
@@ -193,3 +230,4 @@ export default function ClientBriefInput({ value, onChange }: Props) {
     </div>
   );
 }
+---- end of previous implementation ---- */

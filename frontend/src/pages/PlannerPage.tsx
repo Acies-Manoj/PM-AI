@@ -10,8 +10,17 @@ import "./PlannerPage.css";
 
 type PlannerTab = "features" | "analyses";
 
-function getTab(type: PlannerRecommendationType): PlannerTab {
-  return type === "analysis" ? "analyses" : "features";
+// A "feature_and_analysis" recommendation produces an entry on BOTH the
+// Features page and the Analysis page when accepted (see
+// feature_repository.py / analysis_repository.py's _planner_entries) --
+// so it must be counted and shown in BOTH tabs here too. Showing it under
+// only one tab is what let a PM accept it while looking at "Feature
+// Suggestions" and then be surprised to see one MORE entry than expected
+// show up on the Analysis page later.
+function getTabs(type: PlannerRecommendationType): PlannerTab[] {
+  if (type === "feature_and_analysis") return ["features", "analyses"];
+  if (type === "analysis") return ["analyses"];
+  return ["features"]; // "feature" and "configuration"
 }
 
 interface PlannerPageProps {
@@ -54,7 +63,7 @@ export default function PlannerPage({ sessionId }: PlannerPageProps) {
     setDecisions((prev) => {
       const next = { ...prev };
       result.recommendations.forEach((r, i) => {
-        if (getTab(r.type) === tab) next[i] = value;
+        if (getTabs(r.type).includes(tab)) next[i] = value;
       });
       return next;
     });
@@ -145,17 +154,11 @@ export default function PlannerPage({ sessionId }: PlannerPageProps) {
 
         {result && (
           <>
-            <div className="planner-page__context">
-              <div className="planner-page__context-label">What the Planner understood</div>
-              <p className="planner-page__context-text">{result.interpreted_requirement}</p>
-              <p className="planner-page__objective">Objective: {result.business_objective}</p>
-            </div>
-
             <div className="planner-page__tabs">
               <div className="planner-page__tabs-left">
                 {(["features", "analyses"] as PlannerTab[]).map((tab) => {
-                  const count = recs.filter((r) => getTab(r.type) === tab).length;
-                  const acceptedCount = recs.filter((r, i) => getTab(r.type) === tab && decisions[i] === "accepted").length;
+                  const count = recs.filter((r) => getTabs(r.type).includes(tab)).length;
+                  const acceptedCount = recs.filter((r, i) => getTabs(r.type).includes(tab) && decisions[i] === "accepted").length;
                   return (
                     <button
                       key={tab}
@@ -172,7 +175,7 @@ export default function PlannerPage({ sessionId }: PlannerPageProps) {
                   );
                 })}
               </div>
-              {recs.filter((r) => getTab(r.type) === activeTab).length > 0 && (
+              {recs.filter((r) => getTabs(r.type).includes(activeTab)).length > 0 && (
                 <div className="planner-page__bulk-btns">
                   <button
                     type="button"
@@ -195,7 +198,7 @@ export default function PlannerPage({ sessionId }: PlannerPageProps) {
             <div className="planner-page__list">
               {recs
                 .map((rec, i) => ({ rec, i }))
-                .filter(({ rec }) => getTab(rec.type) === activeTab)
+                .filter(({ rec }) => getTabs(rec.type).includes(activeTab))
                 .map(({ rec, i }) => (
                   <RecommendationCard
                     key={i}
@@ -205,7 +208,7 @@ export default function PlannerPage({ sessionId }: PlannerPageProps) {
                     onDecide={setDecision}
                   />
                 ))}
-              {recs.filter((r) => getTab(r.type) === activeTab).length === 0 && (
+              {recs.filter((r) => getTabs(r.type).includes(activeTab)).length === 0 && (
                 <div className="planner-page__empty-tab">
                   No {activeTab === "features" ? "feature" : "analysis"} suggestions yet.
                 </div>
@@ -265,19 +268,31 @@ interface RecCardProps {
 }
 
 function typeLabel(type: string): string {
-  return type === "analysis" ? "Analysis" : "Feature";
+  if (type === "analysis") return "Analysis";
+  if (type === "feature_and_analysis") return "Feature + Analysis";
+  if (type === "configuration") return "Configuration";
+  return "Feature";
+}
+
+function typeSlug(type: string): string {
+  return type.replace(/_/g, "-");
 }
 
 function statusLabel(status: string): string {
-  return status === "existing" ? "Existing" : "New";
+  if (status === "existing") return "Existing";
+  if (status === "needs_clarification") return "Needs Clarification";
+  return "New";
 }
 
 function RecommendationCard({ rec, index, decision, onDecide }: RecCardProps) {
-  const hasWarnings = rec.validation.warnings.length > 0;
-  const hasClarifications = rec.validation.clarifications_required.length > 0;
-  const columns = rec.data_requirements.required_fields;
-  const generatedFormula = rec.feature_definition?.generated_formula;
-  const generatedAnalysisFormula = rec.analysis_definition?.generated_formula;
+  // Defensive fallbacks: an older cached suggestion, a dev-server hot-reload
+  // that preserved stale state from before this schema changed, or an LLM
+  // response that omitted an array field should never blank the whole page.
+  const clarifications = rec.clarifications_required ?? [];
+  const hasClarifications = clarifications.length > 0;
+  const columns = rec.required_fields ?? [];
+  const generatedFormula = rec.generated_feature_formula;
+  const generatedAnalysisFormula = rec.generated_analysis_formula;
 
   return (
     <div
@@ -286,10 +301,10 @@ function RecommendationCard({ rec, index, decision, onDecide }: RecCardProps) {
       <div className="planner-page__card-head">
         <div className="planner-page__card-meta">
           <div className="planner-page__card-badges">
-            <span className={`planner-page__badge planner-page__badge--type-${typeLabel(rec.type).toLowerCase()}`}>
+            <span className={`planner-page__badge planner-page__badge--type-${typeSlug(rec.type)}`}>
               {typeLabel(rec.type)}
             </span>
-            <span className={`planner-page__badge planner-page__badge--status-${statusLabel(rec.status).toLowerCase()}`}>
+            <span className={`planner-page__badge planner-page__badge--status-${statusLabel(rec.status).toLowerCase().replace(/\s+/g, "-")}`}>
               {statusLabel(rec.status)}
             </span>
           </div>
@@ -310,31 +325,13 @@ function RecommendationCard({ rec, index, decision, onDecide }: RecCardProps) {
             </div>
           )}
         </div>
-        <div className="planner-page__confidence">
-          <span className="planner-page__confidence-num">{rec.confidence}%</span>
-          <div className="planner-page__confidence-bar">
-            <div
-              className="planner-page__confidence-fill"
-              style={{ width: `${rec.confidence}%` }}
-            />
-          </div>
-          <span className="planner-page__confidence-label">confidence</span>
-        </div>
       </div>
-
-      {hasWarnings && (
-        <div className="planner-page__warnings">
-          {rec.validation.warnings.map((w, i) => (
-            <p key={i}>{w}</p>
-          ))}
-        </div>
-      )}
 
       {hasClarifications && (
         <div className="planner-page__clarifications">
           <p>Needs clarification:</p>
           <ul>
-            {rec.validation.clarifications_required.map((q, i) => (
+            {clarifications.map((q, i) => (
               <li key={i}>{q}</li>
             ))}
           </ul>

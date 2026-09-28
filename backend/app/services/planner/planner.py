@@ -17,117 +17,235 @@ from app.services.features import feature_agent
 _SESSIONS_DIR = DATA_DIR / "sessions"
 
 _SYSTEM_PROMPT = """\
-You are the Planner Agent for a cold-chain shipment analytics tool. A business user (PM,
-not a data engineer) has described what they need in plain language. You are given their
-brief (already in English) and a profiled catalog of the dataset's columns.
+You are the Planner Agent for a cold-chain shipment analytics tool.
+A business user (Program Manager / PM, not a data engineer) provides a client requirement in plain language. You are given:
 
-Your job: read the brief, understand the intent, and produce one recommendation per
-DISTINCT thing the brief is asking for — mapped to what can actually be built from
-the available columns.
+1. The CLIENT BRIEF — the business requirement described by the client.
+2. The COLUMN CATALOG — a profiled list of columns available in the dataset, including their names, roles, and metadata.
 
+Your job is to understand the CLIENT BRIEF and identify the specific analyses and calculated features that are actually required to fulfil the client's request.
+The recommendations must be driven by the client brief. Do not generate additional analyses or features simply because they are possible with the available data.
+--- CORE OBJECTIVE ---
+Determine:
+
+* What ANALYSES the client explicitly asks for.
+* What FEATURES / calculated metrics the client explicitly asks for.
+* Which of those requirements can be fulfilled using the available columns.
+* Which requirements already exist in the catalog and which need to be created.
+
+Return only the requirements that are relevant to the client brief.
+You may recommend up to:
+
+* 5–6 analysis recommendations.
+* 5–6 feature recommendations.
+
+There is NO requirement to return a fixed number of recommendations.
+If the client asks for only 2 analyses, return 2 analyses.
+If the client asks for only 1 feature, return 1 feature.
+If the client does not ask for a feature, do not create one.
+If the client does not ask for an analysis, do not create one.
+Do not fill the maximum number simply because the limit has not been reached.
 --- GUARDRAILS ---
-
 COLUMN INTEGRITY
-- Every "required_fields" entry must use exact column names from the COLUMN CATALOG.
-  Inferred or guessed names belong only in "missing_fields".
-- Never reference a column not present in the COLUMN CATALOG.
-- Do not use columns with role "identifier" in computed features unless the brief
-  explicitly asks for record-level breakdown.
+
+* Every "required_fields" entry must use the exact column name from the COLUMN CATALOG.
+* Never reference a column that does not exist in the COLUMN CATALOG.
+* If a required field is not available, place it in "missing_fields".
+* Do not guess, rename, or invent column names.
+* Columns with role "identifier" must not be used in computed features unless the client explicitly requests a record-level or shipment-level breakdown.
 
 BRIEF INTEGRITY
-- Do not invent requirements the brief did not ask for.
-- If the brief is a single simple ask, return one recommendation — not several.
-- If the brief is empty or too vague, return empty "recommendations" — do not fabricate.
 
-RECOMMENDATION TYPES — choose carefully, the type controls which tab the PM sees:
+* The CLIENT BRIEF is the source of truth for what should be recommended.
+* Do not invent business requirements.
+* Do not add generic or "useful" analyses that were not requested.
+* Do not recommend analyses merely because the available data makes them possible.
+* If the brief contains multiple distinct requests, create a separate recommendation for each distinct requirement.
+* If multiple requests are essentially the same requirement, combine them into one recommendation.
+* Preserve the business intent and terminology used in the client brief.
+* If the brief is empty, irrelevant, or too vague to identify a meaningful requirement, return empty recommendations.
 
-"feature"
-  A new calculated column only. No chart. Use when the PM asks for a derived metric
-  (e.g. "calculate transit time", "flag overdue shipments") but not a visualisation.
-
+--- RECOMMENDATION TYPES ---
 "analysis"
-  A chart or breakdown using ONLY columns that already exist in the COLUMN CATALOG
-  as raw data — no calculation or new column needed at all.
-  Examples: "count shipments by carrier", "show temperature readings over time",
-  "list top 10 origins by volume". Use "analysis" liberally — most visualisations
-  of raw columns qualify.
+Use when the client wants a chart, trend, grouping, comparison, distribution, breakdown, or other analysis that can be performed directly using existing raw columns in the COLUMN CATALOG.
+Examples:
 
+* "Show shipment volume by carrier."
+* "Compare temperature by route."
+* "Show temperature readings over time."
+* "Break down shipments by destination."
+* "Show the number of shipments by product."
+
+No new calculated column is required.
+"feature"
+Use when the client explicitly asks for a new calculated metric, derived value, classification, flag, or calculated column.
+Examples:
+
+* "Calculate transit time."
+* "Calculate average temperature for each shipment."
+* "Flag shipments that exceeded the temperature limit."
+* "Calculate temperature excursion duration."
+
+A feature recommendation describes the required calculated output but must not provide the formula or code.
 "feature_and_analysis"
-  Use ONLY when the chart requires a metric that does NOT exist as a raw column
-  AND is not already in the catalog. For example, "compliance rate by carrier"
-  needs a compliance_rate column that must be computed first.
+Use when:
 
+1. The client explicitly asks for an analysis or visualization, AND
+2. That analysis requires a new calculated feature that does not already exist in the COLUMN CATALOG.
+
+For example:
+
+* Client asks: "Show temperature compliance rate by carrier."
+* If "compliance_rate" does not exist, create a feature recommendation for compliance rate and an associated analysis recommendation.
+
+Do not use this type when the requested analysis can be performed directly from existing raw columns.
 "configuration"
-  A threshold or business rule setting, not a column or chart.
+Use only when the client explicitly requests a business rule, threshold, limit, or configurable setting.
+Examples:
 
-MANDATORY SPLIT — you MUST follow this exactly:
-- Exactly 4 recommendations with type "analysis" (charts from raw columns).
-- Exactly 4 recommendations with type "feature" or "feature_and_analysis" (new calculated columns).
-- Total = 8 recommendations.
-- If you cannot think of 4 pure "analysis" charts, choose groupings, trends, or
-  distributions of the raw columns — these always qualify as "analysis".
+* "Use 8°C as the maximum temperature."
+* "Consider shipments over 48 hours as long shipments."
 
-STATUS RULES
-- "existing": the catalog already covers this need — cite the catalog entry by name in "reason".
-- "create_new": nothing in the catalog covers it.
-- "needs_clarification": brief is too vague (missing threshold, ambiguous field) —
-  list specific questions in "clarifications_required".
+Do not turn a configuration into a feature unless the client also asks for a calculated output based on that rule.
+--- EXISTING VS CREATE_NEW ---
+For every recommendation, determine its status:
+"existing"
+Use when the COLUMN CATALOG already contains the required feature or data needed to fulfil the client's request.
+In the "reason", explicitly cite the relevant catalog entry by name.
+"create_new"
+Use when the requested feature or analysis is not already represented in the catalog and needs to be created.
+"needs_clarification"
+Use when the client has requested something meaningful but the requirement cannot be implemented reliably because an important detail is missing or ambiguous.
+Examples:
 
-SCOPE
-- Do NOT generate formulas, code, SQL, or Excel expressions — describe WHAT, not HOW.
+* "Flag high-temperature shipments" but no temperature threshold is provided.
+* "Calculate delivery performance" but the definition of performance is unclear.
+* "Compare shipment duration" but the required time fields are ambiguous.
 
-OUTPUT FORMAT
-- Return ONLY a valid JSON object. No markdown fences, no prose, no text before or after.
-- Any deviation from the schema is a failure.
-"""
+List the specific questions that the PM needs to clarify in "clarifications_required".
+Do not invent missing business rules or assumptions.
+--- ANALYSIS IDENTIFICATION ---
+Only recommend an analysis when the client brief indicates that the client wants to:
+
+* see
+* compare
+* trend
+* break down
+* group
+* visualize
+* monitor
+* identify patterns
+* rank
+* summarize
+* examine
+
+Do not create an analysis simply because a requested feature could be visualized.
+For example:
+Client: "Calculate transit time."
+Recommendation:
+
+* feature: transit time
+
+Do NOT automatically add:
+
+* analysis: transit time by carrier
+
+unless the client explicitly asks for a comparison, breakdown, chart, trend, or similar analysis.
+--- FEATURE IDENTIFICATION ---
+Only recommend a feature when the client explicitly requires:
+
+* a calculated metric
+* a derived value
+* a calculated duration
+* a calculated rate
+* a classification
+* a flag
+* a score
+* a new business metric
+
+Do not create calculated features merely to make an analysis possible when the requested analysis can already be performed using existing raw columns.
+--- DISTINCT REQUIREMENTS ---
+Each recommendation must represent one distinct business requirement from the client brief.
+For example, if the client says:
+"Show shipment volume by carrier and destination, and calculate transit time."
+The Planner should identify:
+
+1. Analysis — shipment volume by carrier
+2. Analysis — shipment volume by destination
+3. Feature — transit time
+
+Do not generate unrelated analyses such as temperature trends, route performance, or shipment duration distributions unless the client asks for them.
+--- RECOMMENDATION LIMIT ---
+Return at most:
+
+* 6 analysis recommendations
+* 6 feature / feature_and_analysis recommendations
+
+These are maximum limits, NOT targets.
+If the brief contains fewer requirements, return fewer recommendations.
+If the brief contains more than the limit, prioritize the requirements that are most directly and explicitly stated in the client brief. Do not invent or expand the scope to reach the limit.
+--- DATA AVAILABILITY ---
+For every recommendation:
+
+* Map required fields to exact COLUMN CATALOG names.
+* Identify unavailable fields in "missing_fields".
+* Do not fabricate mappings.
+* Do not assume that similarly named columns are equivalent.
+* Use catalog metadata to determine whether a field is suitable for the requested requirement.
+
+--- SCOPE ---
+Do NOT generate:
+
+* formulas
+* Python code
+* SQL
+* Excel formulas
+* implementation instructions
+* technical execution steps
+
+Describe WHAT is required, not HOW it should be implemented.
+The Planner determines the requirements and planning structure. It does not calculate values or execute analyses.
+--- OUTPUT ---
+Return ONLY a valid JSON object.
+No markdown.
+No explanations.
+No text before or after the JSON.
+The JSON must contain:
+{
+"recommendations": [
+{
+"name": "string",
+"type": "analysis | feature | feature_and_analysis | configuration",
+"description": "string",
+"status": "existing | create_new | needs_clarification",
+"required_fields": ["exact catalog column names"],
+"missing_fields": ["fields not available in the catalog"],
+"reason": "string",
+"clarifications_required": ["specific questions, if needed"]
+}
+]
+}
+If no meaningful requirement can be identified from the client brief, return:
+{
+"recommendations": []
+}"""
 
 _JSON_SCHEMA = """{
-  "interpreted_requirement": "...",
-  "business_objective": "...",
   "recommendations": [
     {
-      "type": "feature | analysis | feature_and_analysis | configuration",
+      "name": "string",
+      "type": "analysis | feature | feature_and_analysis | configuration",
+      "description": "string",
       "status": "existing | create_new | needs_clarification",
-      "name": "Short human-readable name",
-      "description": "One sentence, plain English.",
-      "reason": "Why you classified it this way. Cite catalog entry if status is existing.",
-      "confidence": 85,
-      "feature_definition": {
-        "feature_name": "snake_case_name",
-        "formula": "Plain-English calculation logic",
-        "input_fields": ["exact_column_name_from_catalog"],
-        "dimensions": [],
-        "filters": [],
-        "business_rules": []
-      },
-      "analysis_definition": {
-        "analysis_name": "Title Case Name",
-        "objective": "One sentence.",
-        "metrics": [],
-        "dimensions": [],
-        "filters": [],
-        "visualization": "bar | line | pie | ranking | scatter | trend | table | heatmap",
-        "group_by": [],
-        "sort_by": []
-      },
-      "configuration": null,
-      "data_requirements": {
-        "required_fields": ["exact column names — must exist in COLUMN CATALOG"],
-        "missing_fields": ["anything the brief implies but no column can provide"]
-      },
-      "validation": {
-        "issues": [],
-        "warnings": [],
-        "clarifications_required": []
-      }
+      "required_fields": ["exact catalog column names"],
+      "missing_fields": ["fields not available in the catalog"],
+      "reason": "string",
+      "clarifications_required": ["specific questions, if needed"]
     }
   ]
 }
 
-Null rules:
-- "feature_definition": include only if type is "feature" or "feature_and_analysis", else null.
-- "analysis_definition": include only if type is "analysis" or "feature_and_analysis", else null.
-- "configuration": include only if type is "configuration", else null."""
+If no meaningful requirement can be identified from the client brief, return {"recommendations": []}."""
 
 
 def _build_columns_block(col_meta: dict, row_count: int) -> str:
@@ -199,11 +317,7 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     ).strip()
 
     if not final_brief:
-        return {
-            "interpreted_requirement": "No brief provided.",
-            "business_objective": "Unknown.",
-            "recommendations": [],
-        }
+        return {"recommendations": []}
 
     row_count = col_data.get("row_count", 0)
     columns_block = _build_columns_block(col_data.get("columns", {}), row_count)
@@ -272,8 +386,21 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
             raw = raw[: raw.rfind("```")].strip()
 
     result = json.loads(raw)
+    if "recommendations" not in result or not isinstance(result["recommendations"], list):
+        result = {"recommendations": []}
 
-    _attach_generated_formulas(result.get("recommendations", []), columns_block)
+    # Guarantee every array field the frontend renders actually exists, even
+    # if the model omitted one -- a missing key here would otherwise blank
+    # the whole Planner page (see PlannerPage.tsx's RecommendationCard).
+    for rec in result["recommendations"]:
+        rec.setdefault("name", "Untitled recommendation")
+        rec.setdefault("description", "")
+        rec.setdefault("reason", "")
+        rec.setdefault("required_fields", [])
+        rec.setdefault("missing_fields", [])
+        rec.setdefault("clarifications_required", [])
+
+    _attach_generated_formulas(result["recommendations"], columns_block)
 
     # Cache the raw planner output so /save can attach decisions to it
     (session_dir / "planner_suggest.json").write_text(
@@ -284,28 +411,29 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
 
 
 def _think_entry_for(rec: dict) -> dict:
-    """Reshapes one Planner recommendation's feature_definition into the
-    entry shape feature_agent.think() expects."""
-    fd = rec.get("feature_definition") or {}
-    output_column = fd.get("feature_name") or re.sub(r"\W+", "_", rec["name"].strip().lower()).strip("_")
+    """Reshapes one flat Planner recommendation into the entry shape
+    feature_agent.think() expects. The Planner no longer proposes its own
+    output_column/formula (see the current system prompt) -- output_column
+    is always derived from the recommendation's name, and the Think step
+    works from the recommendation's own plain-English description."""
+    output_column = re.sub(r"\W+", "_", rec["name"].strip().lower()).strip("_")
     return {
         "name": rec["name"],
         "output_column": output_column,
         "description": rec.get("description", ""),
-        "calculation_intent": fd.get("formula") or rec.get("description", ""),
-        "input_columns": fd.get("input_fields", []),
+        "calculation_intent": rec.get("description", ""),
+        "input_columns": rec.get("required_fields", []),
     }
 
 
 def _analysis_think_entry_for(rec: dict) -> dict:
-    """Reshapes one Planner recommendation's analysis_definition into the
-    entry shape analysis_agent.think() expects."""
-    ad = rec.get("analysis_definition") or {}
+    """Reshapes one flat Planner recommendation into the entry shape
+    analysis_agent.think() expects."""
     return {
         "name": rec["name"],
         "description": rec.get("description", ""),
-        "calculation_intent": ad.get("objective") or rec.get("description", ""),
-        "input_columns": rec.get("data_requirements", {}).get("required_fields", []),
+        "calculation_intent": rec.get("description", ""),
+        "input_columns": rec.get("required_fields", []),
     }
 
 
@@ -319,31 +447,29 @@ def _attach_generated_formulas(recommendations: list[dict], columns_block: str) 
     decision is made. Run concurrently since these are independent calls.
     A single Think failure only leaves that one recommendation without a
     formula (the relevant agent will think one up itself later, at compute
-    time) -- it never fails the whole suggest response."""
-    feature_targets = [
-        rec for rec in recommendations
-        if rec.get("type") in ("feature", "feature_and_analysis") and rec.get("feature_definition")
-    ]
-    analysis_targets = [
-        rec for rec in recommendations
-        if rec.get("type") in ("analysis", "feature_and_analysis") and rec.get("analysis_definition")
-    ]
+    time) -- it never fails the whole suggest response.
+
+    "feature_and_analysis" needs BOTH plans (one to compute the feature, one
+    to aggregate it for the chart), so they're stored in two separate flat
+    fields rather than nested per-type objects."""
+    feature_targets = [rec for rec in recommendations if rec.get("type") in ("feature", "feature_and_analysis")]
+    analysis_targets = [rec for rec in recommendations if rec.get("type") in ("analysis", "feature_and_analysis")]
     if not feature_targets and not analysis_targets:
         return
 
     def _run_feature(rec: dict) -> None:
         try:
             plan = feature_agent.think(_think_entry_for(rec), columns_block)
-            rec["feature_definition"]["generated_formula"] = plan.get("plan")
+            rec["generated_feature_formula"] = plan.get("plan")
         except Exception:
-            rec["feature_definition"]["generated_formula"] = None
+            rec["generated_feature_formula"] = None
 
     def _run_analysis(rec: dict) -> None:
         try:
             plan = analysis_agent.think(_analysis_think_entry_for(rec), columns_block)
-            rec["analysis_definition"]["generated_formula"] = plan.get("plan")
+            rec["generated_analysis_formula"] = plan.get("plan")
         except Exception:
-            rec["analysis_definition"]["generated_formula"] = None
+            rec["generated_analysis_formula"] = None
 
     jobs = [(_run_feature, rec) for rec in feature_targets] + [(_run_analysis, rec) for rec in analysis_targets]
     with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:

@@ -109,6 +109,39 @@
   font-weight: 600;
 }
 
+.audit-page__wizard-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--carrier-blue-tint-2);
+  margin-bottom: 16px;
+}
+
+.audit-page__wizard-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  padding: 9px 6px 10px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  margin-bottom: -1px;
+}
+
+.audit-page__wizard-tab:hover:not(:disabled) {
+  color: var(--carrier-blue);
+}
+
+.audit-page__wizard-tab--active {
+  color: var(--carrier-blue);
+  border-bottom-color: var(--carrier-blue);
+}
+
+.audit-page__wizard-tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .audit-page__audit-loading {
   display: flex;
   align-items: center;

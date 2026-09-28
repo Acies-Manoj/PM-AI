@@ -69,8 +69,6 @@ def save_decisions(req: SaveRequest):
     output = {
         "session_id": req.session_id,
         "saved_at": datetime.now(timezone.utc).isoformat(),
-        "interpreted_requirement": planner_data.get("interpreted_requirement", ""),
-        "business_objective": planner_data.get("business_objective", ""),
         "recommendations": recommendations,
     }
 

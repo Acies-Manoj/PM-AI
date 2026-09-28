@@ -4,13 +4,15 @@ import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
 import StatTile from "../components/StatTile";
-import AnalysisEntryTree from "../components/AnalysisEntryTree";
+import AnalysisCard from "../components/AnalysisCard";
+import AnalysisToolbar, { type AnalysisSortKey, type AnalysisStatusFilter } from "../components/AnalysisToolbar";
 import AnalysisDetailModal from "../components/AnalysisDetailModal";
 import Modal from "../components/Modal";
 import AnalysisSuggestionCard from "../components/AnalysisSuggestionCard";
 import AddAnalysisForm from "../components/AddAnalysisForm";
 import OverallAnalysisCard from "../components/OverallAnalysisCard";
-import { IconDoc, IconGrid, IconSparkle, IconChevronLeft, IconChevronRight, IconBarChart, IconLayers } from "../components/icons";
+import { categorizeAnalysis } from "../utils/analysisCategory";
+import { IconDoc, IconGrid, IconChevronLeft, IconChevronRight, IconBarChart, IconLayers, IconSparkle } from "../components/icons";
 import {
   acceptAnalysisEntry,
   addCustomAnalysis,
@@ -27,13 +29,14 @@ import {
   type AddCustomAnalysisBody,
   type AnalysisFilterSelections,
   type AnalysisRepositoryEntry,
+  type AnalysisSource,
   type FeatureReport,
   type OverallAnalysisReport,
 } from "../api/audit";
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
 import type { AuditReportsState, FilesState } from "../App";
-import { buildAnalysisTree } from "../utils/analysisTree";
+import "../components/AnalysisDetailModal.css";
 import "./AnalysisPage.css";
 
 interface AnalysisPageProps {
@@ -50,13 +53,11 @@ type BusyIdState = Partial<Record<UploadSlotId, string>>;
 
 // Each analysis run is several LLM calls, so only this many run at once.
 const MAX_CONCURRENT_RUNS = 2;
-
-const SOURCE_GROUP_LABELS: { source: AnalysisRepositoryEntry["source"]; label: string }[] = [
-  { source: "predefined", label: "Predefined (Analysis Profile)" },
-  { source: "planner", label: "Planner-Approved" },
-  { source: "ai_suggested", label: "AI Suggested" },
-  { source: "custom", label: "User Added" },
-];
+const PAGE_SIZE = 12;
+const STATUS_ORDER: Record<AnalysisRepositoryEntry["run_status"], number> = { not_run: 0, error: 1, done: 2 };
+// Predefined analyses lead, mirroring the Feature page's PREDEFINED-first grouping --
+// not alphabetical, since "ai_suggested" would otherwise sort before "predefined".
+const SOURCE_ORDER: Record<AnalysisSource, number> = { predefined: 0, planner: 1, custom: 2, ai_suggested: 3, drilldown: 4 };
 
 export default function AnalysisPage({ files, auditReports }: AnalysisPageProps) {
   const navigate = useNavigate();
@@ -90,6 +91,13 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const [overallError, setOverallError] = useState<ErrorsState>({});
 
   const [openEntry, setOpenEntry] = useState<{ slotId: UploadSlotId; entryId: string } | null>(null);
+
+  // Toolbar state -- search/sort/filter/pagination, per audited slot.
+  const [search, setSearch] = useState<Partial<Record<UploadSlotId, string>>>({});
+  const [sort, setSort] = useState<Partial<Record<UploadSlotId, AnalysisSortKey>>>({});
+  const [categoryFilter, setCategoryFilter] = useState<Partial<Record<UploadSlotId, string[]>>>({});
+  const [statusFilter, setStatusFilter] = useState<Partial<Record<UploadSlotId, AnalysisStatusFilter[]>>>({});
+  const [page, setPage] = useState<Partial<Record<UploadSlotId, number>>>({});
 
   const [defsError, setDefsError] = useState<string | null>(null);
   const [defsLoading, setDefsLoading] = useState(false);
@@ -293,6 +301,24 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repositories, runningIds, runFailures, slotsReady, overallLoading]);
 
+  const toggleCategory = (id: UploadSlotId, label: string) => {
+    setPage((prev) => ({ ...prev, [id]: 1 }));
+    setCategoryFilter((prev) => {
+      const current = prev[id] ?? [];
+      const next = current.includes(label) ? current.filter((c) => c !== label) : [...current, label];
+      return { ...prev, [id]: next };
+    });
+  };
+
+  const toggleStatus = (id: UploadSlotId, status: AnalysisStatusFilter) => {
+    setPage((prev) => ({ ...prev, [id]: 1 }));
+    setStatusFilter((prev) => {
+      const current = prev[id] ?? [];
+      const next = current.includes(status) ? current.filter((s) => s !== status) : [...current, status];
+      return { ...prev, [id]: next };
+    });
+  };
+
   if (AUDITED_SLOTS.every((id) => !files[id])) {
     return (
       <div className="analysis-page">
@@ -375,116 +401,49 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           const featureColumns = featureReports[id]?.columns ?? [];
           const pendingSuggestions = repo.filter((e) => e.source === "ai_suggested" && e.status === "pending");
           const visibleEntries = repo.filter((e) => e.status === "approved");
-          const tree = buildAnalysisTree(visibleEntries);
           const topLevelEntries = visibleEntries.filter((e) => !e.parent_id);
           const drilldownEntries = visibleEntries.filter((e) => e.parent_id);
-
-          const panelsSection = (
-            <div className="analysis-page__panels-grid">
-              <div className="analysis-page__ai-panel">
-                <div className="analysis-page__ai-panel-head">
-                  <div className="analysis-page__panel-head-text">
-                    <span className="analysis-page__panel-icon analysis-page__panel-icon--purple">
-                      <IconSparkle />
-                    </span>
-                    <div>
-                      <h3 className="analysis-page__ai-panel-title">AI Analysis Suggestions</h3>
-                      <p className="analysis-page__ai-panel-hint">
-                        The agent looks at this data's columns (including engineered ones) and proposes
-                        analyses it can compute -- you choose which ones to add.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="analysis-page__btn analysis-page__btn--primary analysis-page__panel-btn"
-                  disabled={suggestLoading[id]}
-                  onClick={() => {
-                    if (pendingSuggestions.length === 0) runSuggest(id);
-                    setShowSuggestionsModal((prev) => ({ ...prev, [id]: true }));
-                  }}
-                >
-                  <IconSparkle />{" "}
-                  {suggestLoading[id]
-                    ? "Thinking…"
-                    : pendingSuggestions.length > 0
-                      ? `View Suggestions (${pendingSuggestions.length})`
-                      : "Suggest Analyses"}
-                </button>
-
-                {suggestError[id] && <p className="analysis-page__error">{suggestError[id]}</p>}
-
-                {showSuggestionsModal[id] && (
-                  <Modal
-                    title="AI Analysis Suggestions"
-                    onClose={() => setShowSuggestionsModal((prev) => ({ ...prev, [id]: false }))}
-                    headerExtra={
-                      <button
-                        type="button"
-                        className="analysis-page__btn analysis-page__btn--secondary"
-                        disabled={suggestLoading[id]}
-                        onClick={() => runSuggest(id)}
-                      >
-                        {suggestLoading[id] ? "Thinking…" : "Suggest More"}
-                      </button>
-                    }
-                  >
-                    {pendingSuggestions.length === 0 ? (
-                      <p className="analysis-page__ai-panel-hint">No suggestions yet.</p>
-                    ) : (
-                      <div className="analysis-page__ai-grid">
-                        {pendingSuggestions.map((entry) => (
-                          <AnalysisSuggestionCard
-                            key={entry.id}
-                            suggestion={entry}
-                            added={false}
-                            busy={applyingEntryId[id] === entry.id}
-                            onAdd={() => acceptSuggestion(id, entry)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </Modal>
-                )}
-              </div>
-
-              <div className="analysis-page__custom-pivot">
-                <div className="analysis-page__custom-pivot-head">
-                  <div className="analysis-page__panel-head-text">
-                    <span className="analysis-page__panel-icon analysis-page__panel-icon--blue">
-                      <IconGrid />
-                    </span>
-                    <div>
-                      <h3 className="analysis-page__custom-pivot-title">Add a Custom Analysis</h3>
-                      <p className="analysis-page__custom-pivot-hint">
-                        Describe what you want to see straight from this data's columns -- no need to edit
-                        and re-upload the Analysis Profile file.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="analysis-page__btn analysis-page__btn--secondary analysis-page__panel-btn"
-                  onClick={() => setShowAddForm((prev) => ({ ...prev, [id]: true }))}
-                >
-                  + Add Custom Analysis
-                </button>
-                {showAddForm[id] && (
-                  <Modal title="Add a Custom Analysis" onClose={() => setShowAddForm((prev) => ({ ...prev, [id]: false }))}>
-                    <AddAnalysisForm
-                      columns={featureColumns}
-                      busy={!!addingAnalysis[id]}
-                      onDraft={(request) => draftAnalysis(auditReports[id]!.session_id, request)}
-                      onAdd={(analysis) => addAnalysis(id, analysis)}
-                      onCancel={() => setShowAddForm((prev) => ({ ...prev, [id]: false }))}
-                    />
-                  </Modal>
-                )}
-              </div>
-            </div>
+          // Not-yet-triggered drilldown suggestions live on the main page (not the
+          // modal) so a PM can see and explore them without opening each analysis.
+          const suggestedDrilldowns = visibleEntries.flatMap((e) =>
+            e.drilldown_suggestions
+              .filter((d) => !d.triggered)
+              .map((suggestion) => ({ parentId: e.id, parentName: e.name, suggestion }))
           );
+
+          const categorized = topLevelEntries.map((entry) => ({ entry, category: categorizeAnalysis(entry.name, entry.description) }));
+          const availableCategories = Array.from(new Set(categorized.map((c) => c.category.label))).sort();
+
+          const searchText = (search[id] ?? "").trim().toLowerCase();
+          const sortKey = sort[id] ?? "source";
+          const selectedCategories = categoryFilter[id] ?? [];
+          const selectedStatuses = statusFilter[id] ?? [];
+
+          let filtered = categorized;
+          if (searchText) {
+            filtered = filtered.filter(
+              ({ entry }) => entry.name.toLowerCase().includes(searchText) || entry.description.toLowerCase().includes(searchText)
+            );
+          }
+          if (selectedCategories.length > 0) {
+            filtered = filtered.filter(({ category }) => selectedCategories.includes(category.label));
+          }
+          if (selectedStatuses.length > 0) {
+            filtered = filtered.filter(({ entry }) => selectedStatuses.includes(entry.run_status));
+          }
+          const sorted = [...filtered].sort((a, b) => {
+            if (sortKey === "name") return a.entry.name.localeCompare(b.entry.name);
+            if (sortKey === "source") {
+              return SOURCE_ORDER[a.entry.source] - SOURCE_ORDER[b.entry.source] || a.entry.name.localeCompare(b.entry.name);
+            }
+            return STATUS_ORDER[a.entry.run_status] - STATUS_ORDER[b.entry.run_status] || a.entry.name.localeCompare(b.entry.name);
+          });
+
+          const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+          const currentPage = Math.min(page[id] ?? 1, totalPages);
+          const pageStart = (currentPage - 1) * PAGE_SIZE;
+          const pageItems = sorted.slice(pageStart, pageStart + PAGE_SIZE);
+          const activeFilterCount = selectedCategories.length + selectedStatuses.length;
 
           return (
             <section className="analysis-page__card" key={id}>
@@ -503,65 +462,11 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                 <StatTile icon={<IconDoc />} color="blue" value={(featureReports[id]?.row_count ?? 0).toLocaleString()} label="Rows" />
                 <StatTile icon={<IconGrid />} color="teal" value={featureReports[id]?.column_count ?? 0} label="Columns" />
                 <StatTile icon={<IconLayers />} color="purple" value={topLevelEntries.length} label="Analyses" />
-                {drilldownEntries.length > 0 && <StatTile icon={<IconSparkle />} color="amber" value={drilldownEntries.length} label="Drilldowns" />}
+                {drilldownEntries.length > 0 && <StatTile icon={<IconBarChart />} color="amber" value={drilldownEntries.length} label="Drilldowns" />}
+                {suggestedDrilldowns.length > 0 && (
+                  <StatTile icon={<IconSparkle />} color="teal" value={suggestedDrilldowns.length} label="Suggested Drilldowns" />
+                )}
               </div>
-
-              {topLevelEntries.length > 0 && (
-                <div className="analysis-page__summary">
-                  <p className="analysis-page__summary-title">
-                    {topLevelEntries.length} {topLevelEntries.length === 1 ? "analysis" : "analyses"} in this session's repository
-                  </p>
-                  {SOURCE_GROUP_LABELS.map(({ source, label }) => ({
-                    label,
-                    items: topLevelEntries.filter((e) => e.source === source),
-                  }))
-                    .filter((group) => group.items.length > 0)
-                    .map((group) => (
-                      <div className="analysis-page__summary-group" key={group.label}>
-                        <span className="analysis-page__summary-group-label">{group.label}</span>
-                        <ul className="analysis-page__summary-list">
-                          {group.items.map((e) => (
-                            <li key={e.id}>
-                              <button
-                                type="button"
-                                className="analysis-page__summary-item"
-                                onClick={() => setOpenEntry({ slotId: id, entryId: e.id })}
-                              >
-                                <span className="analysis-page__summary-name">{e.name}</span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                </div>
-              )}
-
-              {tree.length === 0 ? (
-                <p className="analysis-page__none">
-                  No analyses in this session's repository yet -- upload an Analysis Profile, wait for
-                  planner-approved analyses, or add a custom/AI-suggested one below.
-                </p>
-              ) : (
-                <>
-                  <h3 className="analysis-page__section-title">
-                    <IconLayers /> Analyses
-                  </h3>
-                  <div className="analysis-page__grid">
-                    {tree.map((node) => (
-                      <AnalysisEntryTree
-                        key={node.entry.id}
-                        node={node}
-                        depth={0}
-                        runningIds={runningIds}
-                        runFailures={runFailures}
-                        onRun={(entry) => runEntry(id, entry)}
-                        onExpand={(entryId) => setOpenEntry({ slotId: id, entryId })}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
 
               <OverallAnalysisCard
                 report={overallReports[id]}
@@ -573,7 +478,165 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                 onRetry={() => runOverallAnalysis(id)}
               />
 
-              {panelsSection}
+              {topLevelEntries.length === 0 ? (
+                <p className="analysis-page__none">
+                  No analyses in this session's repository yet -- upload an Analysis Profile, wait for
+                  planner-approved analyses, or add a custom/AI-suggested one below.
+                </p>
+              ) : (
+                <>
+                  <AnalysisToolbar
+                    search={search[id] ?? ""}
+                    onSearchChange={(value) => {
+                      setPage((prev) => ({ ...prev, [id]: 1 }));
+                      setSearch((prev) => ({ ...prev, [id]: value }));
+                    }}
+                    sort={sortKey}
+                    onSortChange={(value) => setSort((prev) => ({ ...prev, [id]: value }))}
+                    categories={availableCategories}
+                    selectedCategories={selectedCategories}
+                    onToggleCategory={(label) => toggleCategory(id, label)}
+                    selectedStatuses={selectedStatuses}
+                    onToggleStatus={(status) => toggleStatus(id, status)}
+                    activeFilterCount={activeFilterCount}
+                    onClearFilters={() => {
+                      setCategoryFilter((prev) => ({ ...prev, [id]: [] }));
+                      setStatusFilter((prev) => ({ ...prev, [id]: [] }));
+                    }}
+                    onAddCustom={() => setShowAddForm((prev) => ({ ...prev, [id]: true }))}
+                    onSuggestAI={() => {
+                      if (pendingSuggestions.length === 0) runSuggest(id);
+                      setShowSuggestionsModal((prev) => ({ ...prev, [id]: true }));
+                    }}
+                    suggestBusy={!!suggestLoading[id]}
+                    pendingSuggestionCount={pendingSuggestions.length}
+                  />
+                  {suggestError[id] && <p className="analysis-page__error">{suggestError[id]}</p>}
+
+                  {pageItems.length === 0 ? (
+                    <p className="analysis-page__none">No analyses match your search or filters.</p>
+                  ) : (
+                    <div className="analysis-page__grid">
+                      {pageItems.map(({ entry }) => (
+                        <AnalysisCard
+                          key={entry.id}
+                          entry={entry}
+                          running={!!runningIds[entry.id]}
+                          runFailure={runFailures[entry.id]}
+                          onRun={() => runEntry(id, entry)}
+                          onExpand={() => setOpenEntry({ slotId: id, entryId: entry.id })}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {sorted.length > 0 && (
+                    <div className="analysis-page__pagination">
+                      <span className="analysis-page__pagination-count">
+                        {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, sorted.length)} of {sorted.length}{" "}
+                        {sorted.length === 1 ? "analysis" : "analyses"}
+                      </span>
+                      <div className="analysis-page__pagination-nav">
+                        <button
+                          type="button"
+                          className="analysis-page__pagination-btn"
+                          disabled={currentPage <= 1}
+                          onClick={() => setPage((prev) => ({ ...prev, [id]: currentPage - 1 }))}
+                          aria-label="Previous page"
+                        >
+                          <IconChevronLeft />
+                        </button>
+                        <span className="analysis-page__pagination-page">
+                          {currentPage} / {totalPages}
+                        </span>
+                        <button
+                          type="button"
+                          className="analysis-page__pagination-btn"
+                          disabled={currentPage >= totalPages}
+                          onClick={() => setPage((prev) => ({ ...prev, [id]: currentPage + 1 }))}
+                          aria-label="Next page"
+                        >
+                          <IconChevronRight />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {suggestedDrilldowns.length > 0 && (
+                    <div className="analysis-page__suggested-drilldowns">
+                      <h3 className="analysis-drilldowns__title">
+                        <IconSparkle /> Suggested Drilldowns
+                      </h3>
+                      <div className="analysis-drilldowns__list">
+                        {suggestedDrilldowns.map(({ parentId, parentName, suggestion }) => (
+                          <div className="analysis-drilldowns__item" key={suggestion.id}>
+                            <div className="analysis-drilldowns__item-text">
+                              <span className="analysis-drilldowns__item-name">{suggestion.name}</span>
+                              <p className="analysis-drilldowns__item-description">
+                                <span className="analysis-page__suggested-drilldown-parent">From {parentName}:</span>{" "}
+                                {suggestion.description}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="analysis-drilldowns__btn"
+                              disabled={triggeringDrilldownId === suggestion.id}
+                              onClick={() => handleTriggerDrilldown(id, parentId, suggestion.id)}
+                            >
+                              {triggeringDrilldownId === suggestion.id ? "Exploring…" : "Explore this"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {showSuggestionsModal[id] && (
+                <Modal
+                  title="AI Analysis Suggestions"
+                  onClose={() => setShowSuggestionsModal((prev) => ({ ...prev, [id]: false }))}
+                  headerExtra={
+                    <button
+                      type="button"
+                      className="analysis-page__btn analysis-page__btn--secondary"
+                      disabled={suggestLoading[id]}
+                      onClick={() => runSuggest(id)}
+                    >
+                      {suggestLoading[id] ? "Thinking…" : "Suggest More"}
+                    </button>
+                  }
+                >
+                  {pendingSuggestions.length === 0 ? (
+                    <p className="analysis-page__ai-panel-hint">No suggestions yet.</p>
+                  ) : (
+                    <div className="analysis-page__ai-grid">
+                      {pendingSuggestions.map((entry) => (
+                        <AnalysisSuggestionCard
+                          key={entry.id}
+                          suggestion={entry}
+                          added={false}
+                          busy={applyingEntryId[id] === entry.id}
+                          onAdd={() => acceptSuggestion(id, entry)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </Modal>
+              )}
+
+              {showAddForm[id] && (
+                <Modal title="Add a Custom Analysis" onClose={() => setShowAddForm((prev) => ({ ...prev, [id]: false }))}>
+                  <AddAnalysisForm
+                    columns={featureColumns}
+                    busy={!!addingAnalysis[id]}
+                    onDraft={(request) => draftAnalysis(auditReports[id]!.session_id, request)}
+                    onAdd={(analysis) => addAnalysis(id, analysis)}
+                    onCancel={() => setShowAddForm((prev) => ({ ...prev, [id]: false }))}
+                  />
+                </Modal>
+              )}
             </section>
           );
         })}
@@ -596,13 +659,13 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           const parentName = openEntryData.parent_id
             ? openRepo.find((e) => e.id === openEntryData.parent_id)?.name
             : undefined;
+          const childEntries = openRepo.filter((e) => e.parent_id === openEntryData.id);
           return (
             <AnalysisDetailModal
               entry={openEntryData}
               parentName={parentName}
-              triggeringDrilldownId={triggeringDrilldownId}
+              childEntries={childEntries}
               onClose={() => setOpenEntry(null)}
-              onTriggerDrilldown={(drilldownId) => handleTriggerDrilldown(openEntry.slotId, openEntry.entryId, drilldownId)}
               onOpenChild={(childEntryId) => setOpenEntry({ slotId: openEntry.slotId, entryId: childEntryId })}
               onApplyFilters={(filters: AnalysisFilterSelections) =>
                 filterAnalysisEntry(auditReports[openEntry.slotId]!.session_id, openEntry.entryId, filters)

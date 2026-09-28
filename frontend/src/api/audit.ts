@@ -358,6 +358,10 @@ export function downloadCleansedFileUrl(sessionId: string): string {
   return `${API_BASE_URL}/api/audit/${sessionId}/download`;
 }
 
+export function downloadFlaggedOutliersUrl(sessionId: string): string {
+  return `${API_BASE_URL}/api/audit/${sessionId}/outliers/download`;
+}
+
 export async function applyFeatures(sessionId: string): Promise<FeatureReport> {
   // Computes every APPROVED entry in this session's feature repository --
   // no body needed, the repository already holds everything server-side.

@@ -442,6 +442,12 @@ class AnalysisResult(BaseModel):
     # The analysis_templates spec this run was computed with (any source), or
     # None when it used generated code.
     template: dict[str, Any] | None = None
+    # Validated filter-column defs ({"column","kind","reason"}) discovered
+    # alongside the chart -- for every source now, not just a hand-drafted
+    # custom entry. Plain dicts, not AnalysisFilter: the values/min/max the
+    # UI needs are always computed fresh from the current data at read time
+    # (see routers/analysis.py's _merge_entry), never stored here.
+    filters: list[dict[str, Any]] | None = None
 
 
 class OverallHighlight(BaseModel):

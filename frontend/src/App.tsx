@@ -7,7 +7,7 @@ import AuditPage from "./pages/AuditPage";
 import FeaturesPage from "./pages/FeaturesPage";
 import AnalysisPage from "./pages/AnalysisPage";
 import ReportPage from "./pages/ReportPage";
-import { AuditApiError, resolveIssue, revertIssue, runAudit } from "./api/audit";
+import { AuditApiError, resolveIssue, revertIssue, runAudit, uploadOnly } from "./api/audit";
 import type { AuditReport as AuditReportData } from "./api/audit";
 import { isAudited } from "./constants/uploadSlots";
 import type { UploadSlotId } from "./types/upload";
@@ -41,6 +41,8 @@ function App() {
   const [auditLoading, setAuditLoading] = useState<AuditLoadingState>({});
   const [auditErrors, setAuditErrors] = useState<AuditErrorsState>({});
   const [resolvingIssueId, setResolvingIssueId] = useState<ResolvingState>({});
+  const [reuploadingSensiwatch, setReuploadingSensiwatch] = useState(false);
+  const [reuploadError, setReuploadError] = useState<string | null>(null);
 
   const handleUploadComplete = (sessionIds: UploadedSessionIdsState) => {
     setUploadedSessionIds(sessionIds);
@@ -114,6 +116,26 @@ function App() {
     }
   };
 
+  // A corrected file re-uploaded from the SensiWatch outlier-correction step
+  // (see AuditPage / OutlierCorrectionStep) -- treated as a fresh upload for
+  // that slot, same session-reset shape as handleSelect uses for a normal
+  // first upload, so the audit pipeline re-runs cleanly from scratch on it.
+  const handleReuploadSensiwatch = async (file: File) => {
+    setReuploadingSensiwatch(true);
+    setReuploadError(null);
+    try {
+      const result = await uploadOnly("sensiwatch", file);
+      setFiles((prev) => ({ ...prev, sensiwatch: file }));
+      setUploadedSessionIds((prev) => ({ ...prev, sensiwatch: result.session_id }));
+      setAuditReports((prev) => ({ ...prev, sensiwatch: undefined }));
+      setAuditErrors((prev) => ({ ...prev, sensiwatch: undefined }));
+    } catch (err) {
+      setReuploadError(err instanceof AuditApiError ? err.message : "Could not upload the corrected file.");
+    } finally {
+      setReuploadingSensiwatch(false);
+    }
+  };
+
   const handleRevertIssue = async (id: UploadSlotId, issueId: string) => {
     const report = auditReports[id];
     if (!report) return;
@@ -166,6 +188,9 @@ function App() {
               onRunAudit={handleRunAudit}
               onResolveIssue={handleResolveIssue}
               onRevertIssue={handleRevertIssue}
+              onReuploadSensiwatch={handleReuploadSensiwatch}
+              reuploadingSensiwatch={reuploadingSensiwatch}
+              reuploadError={reuploadError}
             />
           }
         />

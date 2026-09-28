@@ -209,9 +209,12 @@
 
 .planner-page__badge--type-feature { background: #f0ecff; color: #6b2fb3; }
 .planner-page__badge--type-analysis { background: #e8f7ee; color: #2a7a3b; }
+.planner-page__badge--type-feature-and-analysis { background: linear-gradient(90deg, #f0ecff 50%, #e8f7ee 50%); color: #4a3b8a; }
+.planner-page__badge--type-configuration { background: #fbf0dc; color: #8a5a10; }
 
 .planner-page__badge--status-new { background: var(--color-bg); color: var(--color-text-muted); border: 1px solid var(--color-border); }
 .planner-page__badge--status-existing { background: #e8f0ff; color: #1a6fb3; }
+.planner-page__badge--status-needs-clarification { background: #fbe9e7; color: #a13c2a; }
 
 .planner-page__card-name {
   font-size: 15px;

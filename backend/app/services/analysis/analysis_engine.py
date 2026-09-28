@@ -88,6 +88,7 @@ def _replay_cached(session_id: str, entry: dict, df: pd.DataFrame, cached: dict,
         if cached.get("template"):
             computation = _run_template(entry, df, cached["template"], options["chart_type"], True, cached.get("plan_text"))
             computation.chart_recommendation = options["chart_recommendation"]
+            computation.filters = cached.get("filters")
             return computation
 
         # A cache written before charts were cached: pick the chart from the
@@ -100,8 +101,9 @@ def _replay_cached(session_id: str, entry: dict, df: pd.DataFrame, cached: dict,
         computation = analysis_agent.finish_computation(
             entry, plan, cached["generated_code"], table, analysis_agent.describe_columns(df), **options,
         )
+        computation.filters = cached.get("filters")
         if options["chart_recommendation"] and not cached_chart:
-            analysis_cache.set(session_id, entry, cached["plan_text"], cached["generated_code"], options["chart_recommendation"])
+            analysis_cache.set(session_id, entry, cached["plan_text"], cached["generated_code"], options["chart_recommendation"], filters=cached.get("filters"))
         return computation
     except Exception as exc:
         logger.info("cached computation for %s no longer fits the data: %s", entry["id"], exc)
@@ -112,6 +114,7 @@ def _replay_cached(session_id: str, entry: dict, df: pd.DataFrame, cached: dict,
 def _run_generated(
     session_id: str, entry: dict, df: pd.DataFrame, chart_type: str | None,
     chart_recommendation: dict | None = None, logic: str | None = None,
+    filters: list[dict] | None = None,
 ) -> AnalysisComputation:
     """Code generation for `entry`. `logic` set = implement that already-
     decided logic (instead of the entry's own); the cache is still keyed on
@@ -120,8 +123,13 @@ def _run_generated(
     computation = analysis_agent.compute_analysis(compute_entry, df, chart_type=chart_type)
     if computation.chart_recommendation is None:
         computation.chart_recommendation = chart_recommendation
+    if computation.filters is None:
+        computation.filters = filters
     if computation.generated_code:
-        analysis_cache.set(session_id, entry, computation.plan_text, computation.generated_code, computation.chart_recommendation)
+        analysis_cache.set(
+            session_id, entry, computation.plan_text, computation.generated_code,
+            computation.chart_recommendation, filters=computation.filters,
+        )
     return computation
 
 
@@ -137,14 +145,24 @@ def _design_and_run(session_id: str, entry: dict, df: pd.DataFrame, chart_type: 
         logger.info("planning failed for %s, falling back to the agent loop: %s", entry["id"], exc)
         return _run_generated(session_id, entry, df, chart_type)
 
-    options = {"chart_type": chart_type, "chart_recommendation": None}
+    options = {"chart_type": chart_type, "chart_recommendation": None, "filters": None}
     with ThreadPoolExecutor(max_workers=2) as pool:
-        chart_job = pool.submit(analysis_agent.ensure_chart, entry, plan, options)
+        # suggest_chart_and_filters (the same call the "Add Custom Analysis"
+        # form already uses) picks the chart AND up to 4 filter columns in
+        # one LLM call -- so every source gets real filters now, not just a
+        # hand-drafted custom entry.
+        chart_job = pool.submit(
+            analysis_designer.suggest_chart_and_filters,
+            entry["name"], entry.get("description") or entry["calculation_intent"], plan, columns_block, df,
+        )
         match_job = pool.submit(
             analysis_designer.match_template,
             entry["name"], entry.get("description") or entry["calculation_intent"], plan, columns_block, df,
         )
-        chart_job.result()
+        chart_result = chart_job.result()
+        options["chart_type"] = chart_result["chart"]["chart_type"]
+        options["chart_recommendation"] = chart_result["chart"]
+        options["filters"] = chart_result["filters"]
         try:
             match = match_job.result()
         except Exception as exc:
@@ -166,13 +184,15 @@ def _design_and_run(session_id: str, entry: dict, df: pd.DataFrame, chart_type: 
             logger.info("matched template failed on the full run for %s: %s", entry["id"], exc)
         else:
             computation.chart_recommendation = recommendation
+            computation.filters = options["filters"]
             computation.notes[:0] = notes
-            analysis_cache.set(session_id, entry, steps, None, recommendation, template=match["template"])
+            analysis_cache.set(session_id, entry, steps, None, recommendation, template=match["template"], filters=options["filters"])
             return computation
 
     # No template fits: generated code for the SAME logic and chart.
     return _run_generated(
         session_id, entry, df, options["chart_type"], options["chart_recommendation"], logic=plan["plan"],
+        filters=options["filters"],
     )
 
 

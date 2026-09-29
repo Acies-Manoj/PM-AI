@@ -130,7 +130,7 @@ export const IconZap = () => (
   </svg>
 );
 
-// -- content-aware icons for feature/pivot cards, and page-level themes --
+// -- content-aware icons for feature/analysis cards, and page-level themes --
 // (added so distinct card types don't all fall back to the same IconGrid.)
 
 export const IconClock = () => (

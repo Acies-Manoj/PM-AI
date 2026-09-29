@@ -1,6 +1,6 @@
-"""In-memory audit session store. Single-process demo scope -- same pattern
-as the prior IngestionStore: no persistence, no multi-user isolation, just a
-thread-safe dict keyed by session id."""
+"""In-memory audit session store. Single-process demo scope -- no
+persistence, no multi-user isolation, just a thread-safe dict keyed by
+session id."""
 import threading
 import uuid
 from dataclasses import dataclass, field

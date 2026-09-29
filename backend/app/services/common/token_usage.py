@@ -1,7 +1,7 @@
 """Tracks input/output token usage for every LLM call in the pipeline.
 
 Each of the 8 LLM calls (Planner, Feature Agent think/write/validate,
-Feature Suggester, Audit Agent, Pivot Suggester, Overall Analysis) calls
+Feature Suggester, Audit Agent, Analysis Suggester, Overall Analysis) calls
 `record()` right after getting its OpenRouter response, tagged with a
 `call_name` identifying which of the 8 calls it was. Usage is kept in memory
 for the life of the process and also appended to a JSONL file so it survives

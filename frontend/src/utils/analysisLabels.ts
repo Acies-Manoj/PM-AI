@@ -3,6 +3,7 @@ import type { AnalysisChartType, AnalysisFilterKind } from "../api/audit";
 export const CHART_LABELS: Record<AnalysisChartType, string> = {
   bar: "Bar",
   grouped_bar: "Grouped bar",
+  combo: "Combo (bar + line)",
   line: "Line",
   pie: "Pie",
   scatter: "Scatter",

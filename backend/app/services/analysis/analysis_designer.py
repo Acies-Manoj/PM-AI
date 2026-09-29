@@ -53,6 +53,11 @@ before computing a rate, which would make every rate 100%), match what the reque
 asks for. Use column names exactly as they appear in the catalog; omit optional \
 parameters you don't need.
 
+Example: request is "% in spec by carrier" but the logic's steps say to filter to \
+rows where Status = "In Spec" BEFORE computing the rate -- that would make every \
+carrier show 100%. Match the REQUEST instead: a rate_by_group template with no \
+pre-filter, computing the true % in spec per carrier from all rows.
+
 Respond with ONLY a JSON object, no markdown:
 {{"template_id": "<template id, or none>", "params": {{<the complete template spec including "template_id", or {{}} when none>}}, "reason": "one short sentence"}}"""
 
@@ -68,6 +73,11 @@ Filters: up to 4 columns from the catalog that are useful to slice this analysis
 by -- key business dimensions (carrier, lane, origin, product, customer, status) and \
 the main date column. Never propose the metric being measured, IDs, or free-text \
 columns.
+
+Example: analysis is "% in spec by Carrier". Good filters: Product, Origin, Month \
+(other dimensions to slice the same rate by). Bad filters to reject: "% in spec" \
+itself (the metric being measured, not a slicer), "Shipment ID" (a free-text/ID \
+column with one value per row, useless as a filter).
 
 Respond with ONLY a JSON object, no markdown:
 {"chart_type": "<type>", "reason": "one short sentence",

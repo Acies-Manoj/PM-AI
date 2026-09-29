@@ -24,6 +24,7 @@ import {
   runAnalysisEntry,
   suggestAnalysisEntries,
   triggerDrilldown,
+  suggestMoreDrilldowns,
   uploadAnalysisDefinitions,
   AuditApiError,
   type AddCustomAnalysisBody,
@@ -92,6 +93,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const [addingAnalysis, setAddingAnalysis] = useState<LoadingState>({});
   const [showSuggestionsModal, setShowSuggestionsModal] = useState<LoadingState>({});
   const [triggeringDrilldownId, setTriggeringDrilldownId] = useState<string | null>(null);
+  const [suggestingMoreFor, setSuggestingMoreFor] = useState<string | null>(null);
   // Which drilldown suggestions the PM has selected for each entry --
   // frontend-only bookkeeping (see AnalysisDetailModal's Selected Drill-downs
   // tab); a missing key means "not seeded yet" (see seedDrilldownSelection).
@@ -259,6 +261,20 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
         }))
       )
       .finally(() => setTriggeringDrilldownId(null));
+  };
+
+  const handleSuggestMoreDrilldowns = (id: UploadSlotId, entryId: string) => {
+    const sessionId = auditReports[id]!.session_id;
+    setSuggestingMoreFor(entryId);
+    suggestMoreDrilldowns(sessionId, entryId)
+      .then(() => refreshRepository(id, sessionId))
+      .catch((err) =>
+        setRepoError((prev) => ({
+          ...prev,
+          [id]: err instanceof AuditApiError ? err.message : "Could not get more drill-down suggestions.",
+        }))
+      )
+      .finally(() => setSuggestingMoreFor(null));
   };
 
   // Frontend-only: which drilldown suggestions are "selected" for an entry.
@@ -545,13 +561,6 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                       setCategoryFilter((prev) => ({ ...prev, [id]: [] }));
                       setStatusFilter((prev) => ({ ...prev, [id]: [] }));
                     }}
-                    onAddCustom={() => setShowAddForm((prev) => ({ ...prev, [id]: true }))}
-                    onSuggestAI={() => {
-                      if (pendingSuggestions.length === 0) runSuggest(id);
-                      setShowSuggestionsModal((prev) => ({ ...prev, [id]: true }));
-                    }}
-                    suggestBusy={!!suggestLoading[id]}
-                    pendingSuggestionCount={pendingSuggestions.length}
                   />
                   {suggestError[id] && <p className="analysis-page__error">{suggestError[id]}</p>}
 
@@ -734,6 +743,10 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
               onToggleSelect={(drilldownId) => toggleDrilldownSelection(openEntryData.id, drilldownId)}
               onSeedSelection={(ids) => seedDrilldownSelection(openEntryData.id, ids)}
               triggeringDrilldownId={triggeringDrilldownId}
+              running={!!runningIds[openEntryData.id]}
+              onRetry={() => runEntry(openEntry.slotId, openEntryData)}
+              suggestingMore={suggestingMoreFor === openEntryData.id}
+              onSuggestMore={() => handleSuggestMoreDrilldowns(openEntry.slotId, openEntry.entryId)}
               onClose={() => setOpenEntry(null)}
               onTriggerDrilldown={(drilldownId) => handleTriggerDrilldown(openEntry.slotId, openEntry.entryId, drilldownId)}
               onOpenChild={(childEntryId) => setOpenEntry({ slotId: openEntry.slotId, entryId: childEntryId })}

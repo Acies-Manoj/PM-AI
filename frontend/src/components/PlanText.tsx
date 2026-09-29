@@ -7,8 +7,16 @@ import "./PlanText.css";
 export function splitPlanSteps(plan: string): string[] {
   const trimmed = plan.trim();
   if (!/^1\.\s/.test(trimmed)) return [];
+  // Splits only at a real step boundary -- a newline immediately followed
+  // by "N. " (see _plan_text()'s "\n".join(f"{i+1}. {s}" ...) format).
+  // A lookahead with no newline requirement (the previous version's
+  // `/(?=\d+\.\s)/`) also matches a plain number ending a sentence mid-step,
+  // e.g. "...dividing by 3600. Assign the result..." -- "3600. " satisfies
+  // \d+\.\s from EVERY digit inside it (matching "3600. ", "600. ", "00. ",
+  // "0. " all separately), shredding that one step into spurious one-digit
+  // "steps" instead of treating it as prose inside the real step.
   const steps = trimmed
-    .split(/(?=\d+\.\s)/)
+    .split(/\r?\n(?=\d+\.\s)/)
     .map((s) => s.replace(/^\d+\.\s*/, "").trim())
     .filter(Boolean);
   return steps.length > 1 ? steps : [];

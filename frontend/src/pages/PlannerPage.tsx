@@ -23,6 +23,33 @@ function getTabs(type: PlannerRecommendationType): PlannerTab[] {
   return ["features"]; // "feature" and "configuration"
 }
 
+// Mirrors feature_repository.py's `_planner_entries` derivation
+// (re.sub(r"\W+", "_", name.strip().lower()).strip("_")) -- the Planner
+// never proposes an output-column name of its own for a feature, one is
+// always derived from the recommendation's name, so this is the only way
+// to tell whether a missing column IS one of the features being suggested
+// alongside it, before either has actually been accepted/computed.
+function deriveOutputColumn(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+// {derived output column -> recommendation name} for every feature-producing
+// recommendation in this batch, so a sibling analysis's missing_fields can
+// be resolved to "this needs feature X" instead of a bare column name.
+function buildFeatureColumnMap(recs: PlannerRecommendation[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const r of recs) {
+    if (r.type === "feature" || r.type === "feature_and_analysis") {
+      map.set(deriveOutputColumn(r.name), r.name);
+    }
+  }
+  return map;
+}
+
 interface PlannerPageProps {
   sessionId: string | null;
 }
@@ -124,6 +151,7 @@ export default function PlannerPage({ sessionId }: PlannerPageProps) {
   }
 
   const recs = result?.recommendations ?? [];
+  const featureColumnMap = buildFeatureColumnMap(recs);
 
   return (
     <div className="planner-page">
@@ -206,6 +234,7 @@ export default function PlannerPage({ sessionId }: PlannerPageProps) {
                     index={i}
                     decision={decisions[i] ?? "pending"}
                     onDecide={setDecision}
+                    featureColumnMap={featureColumnMap}
                   />
                 ))}
               {recs.filter((r) => getTabs(r.type).includes(activeTab)).length === 0 && (
@@ -265,6 +294,45 @@ interface RecCardProps {
   index: number;
   decision: PmDecisionValue;
   onDecide: (index: number, value: PmDecisionValue) => void;
+  featureColumnMap: Map<string, string>;
+}
+
+interface RequirementNote {
+  text: string;
+  kind: "ok" | "blocked" | "missing";
+}
+
+// Whether this recommendation needs any column it doesn't already have --
+// missing_fields is required_fields minus whatever's already in the
+// uploaded data (see planner.py's DATA AVAILABILITY guardrail). Resolving a
+// missing field to a sibling feature recommendation (by its derived
+// output_column) tells the PM WHY it's missing: not absent data, but a
+// column that only exists once that feature is accepted and computed.
+function requirementNote(rec: PlannerRecommendation, ownName: string, featureColumnMap: Map<string, string>): RequirementNote {
+  const missing = rec.missing_fields ?? [];
+  if (missing.length === 0) {
+    return { text: "No required column", kind: "ok" };
+  }
+  const neededFeatures = new Set<string>();
+  const unresolved: string[] = [];
+  for (const field of missing) {
+    const featureName = featureColumnMap.get(deriveOutputColumn(field));
+    if (featureName && featureName !== ownName) {
+      neededFeatures.add(featureName);
+    } else {
+      unresolved.push(field);
+    }
+  }
+  if (neededFeatures.size > 0 && unresolved.length === 0) {
+    return { text: `Can only be done once the feature "${[...neededFeatures].join('", "')}" is computed.`, kind: "blocked" };
+  }
+  if (neededFeatures.size > 0) {
+    return {
+      text: `Can only be done once the feature "${[...neededFeatures].join('", "')}" is computed. Still missing: ${unresolved.join(", ")}.`,
+      kind: "blocked",
+    };
+  }
+  return { text: `Missing required column${unresolved.length > 1 ? "s" : ""}: ${unresolved.join(", ")}`, kind: "missing" };
 }
 
 function typeLabel(type: string): string {
@@ -284,7 +352,7 @@ function statusLabel(status: string): string {
   return "New";
 }
 
-function RecommendationCard({ rec, index, decision, onDecide }: RecCardProps) {
+function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap }: RecCardProps) {
   // Defensive fallbacks: an older cached suggestion, a dev-server hot-reload
   // that preserved stale state from before this schema changed, or an LLM
   // response that omitted an array field should never blank the whole page.
@@ -293,6 +361,7 @@ function RecommendationCard({ rec, index, decision, onDecide }: RecCardProps) {
   const columns = rec.required_fields ?? [];
   const generatedFormula = rec.generated_feature_formula;
   const generatedAnalysisFormula = rec.generated_analysis_formula;
+  const requirement = requirementNote(rec, rec.name, featureColumnMap);
 
   return (
     <div
@@ -310,8 +379,29 @@ function RecommendationCard({ rec, index, decision, onDecide }: RecCardProps) {
           </div>
           <h3 className="planner-page__card-name">{rec.name}</h3>
           <p className="planner-page__card-desc">{rec.description}</p>
+          {rec.feature_formula_expression && (
+            <div className="planner-page__spec">
+              <span className="planner-page__spec-label">ƒ Feature formula</span>
+              <code className="planner-page__spec-code">{rec.feature_formula_expression}</code>
+              {rec.feature_output_dtype && (
+                <span className="planner-page__spec-meta">Output type: {rec.feature_output_dtype}</span>
+              )}
+            </div>
+          )}
           {generatedFormula && (
             <PlanText plan={generatedFormula} label="Feature computation plan" className="planner-page__formula" />
+          )}
+          {(rec.analysis_logic || (rec.analysis_group_by?.length ?? 0) > 0 || (rec.analysis_metrics?.length ?? 0) > 0) && (
+            <div className="planner-page__spec">
+              <span className="planner-page__spec-label">Analysis spec / logic</span>
+              {rec.analysis_logic && <code className="planner-page__spec-code">{rec.analysis_logic}</code>}
+              <span className="planner-page__spec-meta">
+                Group by: {(rec.analysis_group_by?.length ?? 0) > 0 ? rec.analysis_group_by!.join(", ") : "none (overall)"}
+              </span>
+              {(rec.analysis_metrics?.length ?? 0) > 0 && (
+                <span className="planner-page__spec-meta">Metrics: {rec.analysis_metrics!.join("; ")}</span>
+              )}
+            </div>
           )}
           {generatedAnalysisFormula && (
             <PlanText plan={generatedAnalysisFormula} label="Analysis plan" className="planner-page__formula" />
@@ -324,6 +414,9 @@ function RecommendationCard({ rec, index, decision, onDecide }: RecCardProps) {
               ))}
             </div>
           )}
+          <div className={`planner-page__requirement planner-page__requirement--${requirement.kind}`}>
+            {requirement.text}
+          </div>
         </div>
       </div>
 

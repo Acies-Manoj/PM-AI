@@ -1,8 +1,10 @@
 """
 Builds a downloadable .pptx report from analyses already computed on the
 Analysis page: one slide per included, run_status == "done"
-AnalysisRepositoryEntry (see analysis_agent.py / schemas.py), plus a summary
-slide from the session's last-computed OverallAnalysisReport. Every chart is
+AnalysisRepositoryEntry (see analysis_agent.py / schemas.py), plus a closing
+summary slide of bullet points synthesized fresh from those entries'
+interpretations (see final_summary_agent.py) -- matching the reference
+deck's own bullet-point closing slide, not a prose paragraph. Every chart is
 a real, native PowerPoint chart object -- never a picture. No LLM decides
 slide content here: each slide's heading/chart/caption is rule-driven from
 the entry's own already-computed chart_type, chart_spec, and interpretation
@@ -24,6 +26,7 @@ empty. `chart_type` picks the slide shape:
 """
 import io
 import re
+from xml.sax.saxutils import escape
 
 import numpy as np
 import pandas as pd
@@ -33,9 +36,10 @@ from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_LEGEND_POSITION
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
+from pptx.oxml import parse_xml
+from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
-from app.schemas import OverallAnalysisReport
 from app.services.report import report_style as style
 from app.services.report import translation_service
 
@@ -65,24 +69,8 @@ _ACTIVITY_DATE_HINTS = re.compile(r"arriv|depart|segment|trip create", re.IGNORE
 # Manager AI" branding.
 SUMMARY_HEADING = "Summary"
 NO_OVERALL_CAPTION = "No overall analysis had been generated for this session yet."
-# Highlight-label keyword prefixes (see overall_analysis.py's
-# build_highlights) -- translated once, then substituted back onto the
-# FRONT of the label ahead of whatever data-derived text follows (a
-# feature/analysis name), via translate_highlight_label below, so a data
-# value is never itself sent to the translator.
-HIGHLIGHT_LABEL_PREFIXES = ["Total Rows Analyzed", "Most common", "Highest", "Lowest", "Avg"]
 
-TRANSLATABLE_PHRASES = [SUMMARY_HEADING, NO_OVERALL_CAPTION, style.PROPRIETARY_TEXT, *HIGHLIGHT_LABEL_PREFIXES]
-
-
-def translate_highlight_label(label: str, phrases: dict[str, str]) -> str:
-    """Swaps in the translated version of whichever HIGHLIGHT_LABEL_PREFIXES
-    keyword `label` starts with, leaving the rest of the label (a
-    feature/analysis name -- data, not a phrase) untouched."""
-    for prefix in HIGHLIGHT_LABEL_PREFIXES:
-        if label.startswith(prefix):
-            return phrases.get(prefix, prefix) + label[len(prefix):]
-    return label
+TRANSLATABLE_PHRASES = [SUMMARY_HEADING, NO_OVERALL_CAPTION, style.PROPRIETARY_TEXT]
 
 
 def _date_range_label(df: pd.DataFrame) -> str | None:
@@ -148,6 +136,107 @@ def set_axis_title(axis, text: str):
     axis.axis_title.text_frame.text = text
     axis.axis_title.text_frame.paragraphs[0].font.size = Pt(style.CHART_AXIS_TITLE_FONT_PT)
     axis.axis_title.text_frame.paragraphs[0].font.name = style.FONT_BODY
+
+
+# -- combo chart (bar + line, secondary axis) --------------------------------
+# python-pptx has no public API for a chart with two plot types on two value
+# axes, so this drops to the chart's own OOXML. Prototyped and validated
+# standalone (schema validator + a round-trip re-read confirming python-pptx
+# itself recognizes two distinct plots) before being wired in here.
+
+_CHART_NS = (
+    'xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" '
+    'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+)
+
+
+def _combo_axis_title_xml(text: str) -> str:
+    return (
+        "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/>"
+        f'<a:p><a:r><a:rPr lang="en-US" sz="{style.CHART_AXIS_TITLE_FONT_PT * 100}">'
+        f'<a:solidFill><a:srgbClr val="{style.MUTED_TEXT_HEX}"/></a:solidFill>'
+        f'<a:latin typeface="{style.FONT_BODY}"/></a:rPr><a:t>{escape(text)}</a:t></a:r></a:p>'
+        "</c:rich></c:tx><c:overlay val=\"0\"/></c:title>"
+    )
+
+
+def _combo_tick_txpr_xml() -> str:
+    return (
+        f'<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="{style.CHART_FONT_PT * 100}">'
+        f'<a:solidFill><a:srgbClr val="{style.MUTED_TEXT_HEX}"/></a:solidFill>'
+        f'<a:latin typeface="{style.FONT_BODY}"/></a:defRPr></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr>'
+    )
+
+
+def split_into_combo(chart, line_axis_title: str) -> bool:
+    """Converts a freshly-built 2-series COLUMN_CLUSTERED chart into a real
+    dual-axis combo: the 2nd series becomes a line plot on its own secondary
+    value axis (visible, right side), paired with a new hidden secondary
+    category axis (an axis pair needs two axes even when one is never shown).
+    Returns False (leaving the chart as a plain 2-series bar) if there
+    weren't 2 series to split."""
+    plot_area = chart._chartSpace.chart.plotArea
+    bar_chart_el = plot_area.find(qn("c:barChart"))
+    sers = bar_chart_el.findall(qn("c:ser"))
+    if len(sers) < 2:
+        return False
+    line_ser = sers[1]
+    bar_chart_el.remove(line_ser)
+    line_ser.append(parse_xml(f'<c:smooth {_CHART_NS} val="0"/>'))
+
+    existing_ax_ids = [
+        int(e.find(qn("c:axId")).get("val"))
+        for e in plot_area.findall(qn("c:catAx")) + plot_area.findall(qn("c:valAx"))
+    ]
+    sec_cat_ax_id = max(existing_ax_ids) + 1
+    sec_val_ax_id = max(existing_ax_ids) + 2
+
+    line_chart_el = parse_xml(f'<c:lineChart {_CHART_NS}><c:grouping val="standard"/><c:varyColors val="0"/></c:lineChart>')
+    line_chart_el.append(line_ser)
+    line_chart_el.append(parse_xml(f'<c:marker {_CHART_NS} val="1"/>'))
+    line_chart_el.append(parse_xml(f'<c:smooth {_CHART_NS} val="0"/>'))
+    line_chart_el.append(parse_xml(f'<c:axId {_CHART_NS} val="{sec_cat_ax_id}"/>'))
+    line_chart_el.append(parse_xml(f'<c:axId {_CHART_NS} val="{sec_val_ax_id}"/>'))
+    bar_chart_el.addnext(line_chart_el)
+
+    sec_val_ax = parse_xml(
+        f'<c:valAx {_CHART_NS}>'
+        f'<c:axId val="{sec_val_ax_id}"/>'
+        '<c:scaling><c:orientation val="minMax"/></c:scaling>'
+        '<c:delete val="0"/>'
+        '<c:axPos val="r"/>'
+        + _combo_axis_title_xml(line_axis_title) +
+        '<c:numFmt formatCode="#,##0.##" sourceLinked="0"/>'
+        '<c:majorTickMark val="out"/>'
+        '<c:minorTickMark val="none"/>'
+        '<c:tickLblPos val="nextTo"/>'
+        + _combo_tick_txpr_xml() +
+        f'<c:crossAx val="{sec_cat_ax_id}"/>'
+        '<c:crosses val="max"/>'
+        "</c:valAx>"
+    )
+    sec_cat_ax = parse_xml(
+        f'<c:catAx {_CHART_NS}>'
+        f'<c:axId val="{sec_cat_ax_id}"/>'
+        '<c:scaling><c:orientation val="minMax"/></c:scaling>'
+        '<c:delete val="1"/>'
+        '<c:axPos val="b"/>'
+        '<c:majorTickMark val="out"/>'
+        '<c:minorTickMark val="none"/>'
+        '<c:tickLblPos val="nextTo"/>'
+        f'<c:crossAx val="{sec_val_ax_id}"/>'
+        '<c:crosses val="autoZero"/>'
+        '<c:auto val="1"/>'
+        '<c:lblAlgn val="ctr"/>'
+        '<c:lblOffset val="100"/>'
+        '<c:noMultiLvlLbl val="0"/>'
+        "</c:catAx>"
+    )
+    existing_val_ax = plot_area.findall(qn("c:valAx"))[-1]
+    existing_val_ax.addnext(sec_cat_ax)
+    existing_val_ax.addnext(sec_val_ax)
+    return True
 
 
 def style_native_chart(chart, number_format: str, single_series: bool):
@@ -357,6 +446,77 @@ class ReportBuilder:
         set_axis_title(chart.category_axis, category_axis_title)
         self._footer(slide)
 
+    def add_combo_slide(
+        self, heading: str, description: str, categories: list[str],
+        bar_name: str, bar_values: list[float], line_name: str, line_values: list[float],
+        bar_axis_title: str, line_axis_title: str, category_axis_title: str,
+    ):
+        """One native combo chart -- `bar_name` on the primary (left) axis as
+        columns, `line_name` on a secondary (right) axis as a line -- for two
+        metrics of different scale (e.g. a 0-100% rate and a raw count) that
+        would be unreadable sharing one axis. Falls back to the plain
+        single-series look if the OOXML split can't find 2 series to split
+        (shouldn't happen given 2 series are always added below, but never
+        leave an unstyled chart on the slide)."""
+        slide = self._new_slide()
+        self._header(slide, heading)
+        self._caption(slide, description, top=Inches(0.6))
+
+        data = CategoryChartData()
+        data.categories = categories
+        data.add_series(bar_name, bar_values)
+        data.add_series(line_name, line_values)
+
+        gf = slide.shapes.add_chart(
+            XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.5), style.CHART_TOP,
+            style.SLIDE_W - Inches(1.0), style.SLIDE_H - style.CHART_TOP - Inches(0.6), data,
+        )
+        chart = gf.chart
+        if not split_into_combo(chart, line_axis_title):
+            style_native_chart(chart, number_format="#,##0.##", single_series=False)
+            set_axis_title(chart.value_axis, bar_axis_title)
+            set_axis_title(chart.category_axis, category_axis_title)
+            self._footer(slide)
+            return
+
+        style.set_chart_default_font(chart, style.CHART_DATA_LABEL_FONT_PT, style.FONT_BODY)
+        chart.has_title = False
+        chart.has_legend = True
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.include_in_layout = False
+        chart.legend.font.size = Pt(style.CHART_FONT_PT)
+        chart.legend.font.name = style.FONT_BODY
+
+        bar_plot, line_plot = chart.plots[0], chart.plots[1]
+        for plot, color, label_position in (
+            (bar_plot, BAR_PALETTE[0], XL_LABEL_POSITION.OUTSIDE_END),
+            (line_plot, BAR_PALETTE[1], XL_LABEL_POSITION.ABOVE),
+        ):
+            plot.has_data_labels = True
+            plot.data_labels.number_format = "#,##0.##"
+            plot.data_labels.number_format_is_linked = False
+            plot.data_labels.font.size = Pt(style.CHART_DATA_LABEL_FONT_PT)
+            plot.data_labels.font.name = style.FONT_BODY
+            plot.data_labels.position = label_position
+            series = plot.series[0]
+            if plot is line_plot:
+                series.format.line.color.rgb = color
+                series.format.line.width = Pt(2.25)
+                series.marker.format.fill.solid()
+                series.marker.format.fill.fore_color.rgb = color
+            else:
+                series.format.fill.solid()
+                series.format.fill.fore_color.rgb = color
+
+        style_axes_grid(chart.category_axis, chart.value_axis)
+        chart.category_axis.tick_labels.font.size = Pt(style.CHART_FONT_PT)
+        chart.category_axis.tick_labels.font.name = style.FONT_BODY
+        chart.value_axis.tick_labels.font.size = Pt(style.CHART_FONT_PT)
+        chart.value_axis.tick_labels.font.name = style.FONT_BODY
+        set_axis_title(chart.value_axis, bar_axis_title)
+        set_axis_title(chart.category_axis, category_axis_title)
+        self._footer(slide)
+
     def add_pie_slide(self, heading: str, description: str, labels: list[str], values: list[float]):
         slide = self._new_slide()
         self._header(slide, heading)
@@ -429,33 +589,30 @@ class ReportBuilder:
 
         self._footer(slide)
 
-    def add_summary_slide(self, heading: str, overall: OverallAnalysisReport | None):
+    def add_summary_slide(self, heading: str, bullets: list[str]):
+        """Closing summary slide -- bullet points, not a prose paragraph,
+        matching the reference deck's own closing slide (see
+        final_summary_agent.py, which writes these bullets from the
+        included analyses' own interpretations). `bullets` empty means no
+        analysis was included to summarize."""
         slide = self._new_slide()
         self._header(slide, self._t(heading))
 
-        if overall is None:
+        if not bullets:
             self._caption(slide, self._t(NO_OVERALL_CAPTION), top=Inches(0.6))
             self._footer(slide)
             return
 
-        box = slide.shapes.add_textbox(Inches(0.5), Inches(0.75), style.SLIDE_W - Inches(1.0), Inches(1.5))
-        tf = box.text_frame
+        list_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.75), style.SLIDE_W - Inches(1.0), style.SLIDE_H - Inches(1.25))
+        tf = list_box.text_frame
         tf.word_wrap = True
-        tf.text = overall.narrative
-        tf.paragraphs[0].font.size = Pt(12)
-        tf.paragraphs[0].font.color.rgb = DARK_TEXT
-        tf.paragraphs[0].font.name = style.FONT_BODY
-
-        list_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.4), style.SLIDE_W - Inches(1.0), style.SLIDE_H - Inches(2.9))
-        tf2 = list_box.text_frame
-        tf2.word_wrap = True
-        for i, h in enumerate(overall.highlights):
-            p = tf2.paragraphs[0] if i == 0 else tf2.add_paragraph()
-            p.text = f"•  {translate_highlight_label(h.label, self.phrases)}: {h.value}"
-            p.font.size = Pt(12)
+        for i, bullet in enumerate(bullets):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.text = f"•  {bullet}"
+            p.font.size = Pt(13)
             p.font.color.rgb = DARK_TEXT
             p.font.name = style.FONT_BODY
-            p.space_after = Pt(8)
+            p.space_after = Pt(10)
         self._footer(slide)
 
     def save_bytes(self) -> bytes:
@@ -513,12 +670,39 @@ def _bar_series(
     return categories, series
 
 
-def _add_entry_slide(builder: ReportBuilder, entry: dict) -> bool:
+def translate_entry_texts(entries: list[dict], language: str) -> dict[str, str]:
+    """Batch-translates every entry's name (its slide heading) and
+    interpretation (its slide/preview caption) in one call -- natural-
+    language text the Analysis Agent or the PM itself wrote, never a raw
+    data value (a number, column name, or category value from the source
+    spreadsheet), which always stays exactly as it appears in the uploaded
+    file. Shared by build_report (the .pptx export) and the Report page's
+    /translations preview endpoint, so the on-screen preview always matches
+    what the download will actually say."""
+    if language == "en":
+        return {}
+    texts: list[str] = []
+    for entry in entries:
+        name = entry.get("name")
+        if name:
+            texts.append(name)
+        interpretation = entry.get("interpretation")
+        if interpretation:
+            texts.append(interpretation)
+    if not texts:
+        return {}
+    return translation_service.translate_many(texts, language)
+
+
+def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[str, str] | None = None) -> bool:
     """Adds one slide for one done AnalysisRepositoryEntry-shaped dict.
     Returns False if the entry has nothing renderable (never raises -- one
     bad entry shouldn't break the whole export)."""
-    heading = entry.get("name") or "Analysis"
-    description = entry.get("interpretation") or entry.get("description") or ""
+    content_phrases = content_phrases or {}
+    raw_heading = entry.get("name") or "Analysis"
+    heading = content_phrases.get(raw_heading, raw_heading)
+    raw_description = entry.get("interpretation") or entry.get("description") or ""
+    description = content_phrases.get(raw_description, raw_description) if raw_description else raw_description
     chart_type = entry.get("chart_type")
     chart_spec = entry.get("chart_spec") or {}
     traces = chart_spec.get("data") or []
@@ -537,6 +721,17 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict) -> bool:
                 values = [row.get(numeric[0]) for row in rows]
         if labels and values:
             builder.add_pie_slide(heading, description, list(labels)[:MAX_CHART_ROWS], list(values)[:MAX_CHART_ROWS])
+            return True
+
+    elif chart_type == "combo":
+        categories, series = _bar_series(traces, result_table, result_columns, entry.get("name"))
+        if categories and len(series) >= 2:
+            (bar_name, bar_values), (line_name, line_values) = series[0], series[1]
+            category_axis_title = result_columns[0] if result_columns else ""
+            builder.add_combo_slide(
+                heading, description, categories, bar_name, bar_values, line_name, line_values,
+                bar_axis_title=bar_name, line_axis_title=line_name, category_axis_title=category_axis_title,
+            )
             return True
 
     elif chart_type in ("bar", "grouped_bar", "line", "scatter"):
@@ -561,25 +756,27 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict) -> bool:
 
 
 def build_report(
-    source_label: str, df: pd.DataFrame | None, entries: list[dict], overall: OverallAnalysisReport | None,
+    source_label: str, df: pd.DataFrame | None, entries: list[dict], summary_bullets: list[str],
     language: str = "en",
 ) -> bytes:
     """Builds the deck from `entries` (already filtered by the router to
-    run_status == "done" analyses the PM chose to include) plus whatever
-    overall analysis was last computed on the Analysis page -- never
-    recomputes either itself. `language` optionally translates the report's
-    own fixed English phrases (see TRANSLATABLE_PHRASES) via
-    translation_service -- never the underlying data (analysis names,
-    interpretations, column names, category values), which always stays
-    exactly as it appears in the source spreadsheet / as the Analysis Agent
-    wrote it."""
+    run_status == "done" analyses the PM chose to include) plus
+    `summary_bullets` (see final_summary_agent.generate_summary) for the
+    closing slide -- never recomputes either itself. `language` optionally
+    translates the report's own fixed English phrases (see
+    TRANSLATABLE_PHRASES) plus each entry's name (its slide heading) and
+    interpretation (its caption) via translation_service (see
+    translate_entry_texts) -- never a raw data value (a number, column
+    name, or category value from the source spreadsheet), which always
+    stays exactly as it appears in the uploaded file."""
     phrases = translation_service.translate_many(TRANSLATABLE_PHRASES, language) if language != "en" else {}
+    content_phrases = translate_entry_texts(entries, language)
     builder = ReportBuilder(phrases=phrases)
     subtitle = _date_range_label(df) if df is not None else None
     builder.add_title_slide(source_label, subtitle)
 
     for entry in entries:
-        _add_entry_slide(builder, entry)
+        _add_entry_slide(builder, entry, content_phrases)
 
-    builder.add_summary_slide("Summary", overall)
+    builder.add_summary_slide("Summary", summary_bullets)
     return builder.save_bytes()

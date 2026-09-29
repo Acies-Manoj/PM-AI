@@ -8,6 +8,13 @@ interface FileUploadCardProps {
   file: File | null;
   error?: string;
   highlighted?: boolean;
+  /** Skips the built-in title/badge/description header -- for callers that
+   * build their own (e.g. OutlierCorrectionStep, which puts action buttons
+   * in that same header row). */
+  hideHeader?: boolean;
+  /** Shrinks the dropzone/card -- for callers where this isn't the primary
+   * upload control on the page (e.g. OutlierCorrectionStep's re-upload). */
+  compact?: boolean;
   onSelect: (file: File) => void;
   onRemove: () => void;
 }
@@ -18,7 +25,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function FileUploadCard({ config, file, error, highlighted, onSelect, onRemove }: FileUploadCardProps) {
+export default function FileUploadCard({ config, file, error, highlighted, hideHeader, compact, onSelect, onRemove }: FileUploadCardProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -34,18 +41,22 @@ export default function FileUploadCard({ config, file, error, highlighted, onSel
   const status: "empty" | "selected" | "error" = error ? "error" : file ? "selected" : "empty";
 
   return (
-    <div className={`upload-card upload-card--${status} ${highlighted ? "upload-card--highlighted" : ""}`}>
-      <div className="upload-card__header">
-        <h3 className="upload-card__title">
-          {config.title}
-          {config.required ? (
-            <span className="upload-card__badge upload-card__badge--required">Required</span>
-          ) : (
-            <span className="upload-card__badge upload-card__badge--optional">Optional</span>
-          )}
-        </h3>
-        <p className="upload-card__description">{config.description}</p>
-      </div>
+    <div
+      className={`upload-card upload-card--${status} ${highlighted ? "upload-card--highlighted" : ""} ${compact ? "upload-card--compact" : ""}`}
+    >
+      {!hideHeader && (
+        <div className="upload-card__header">
+          <h3 className="upload-card__title">
+            {config.title}
+            {config.required ? (
+              <span className="upload-card__badge upload-card__badge--required">Required</span>
+            ) : (
+              <span className="upload-card__badge upload-card__badge--optional">Optional</span>
+            )}
+          </h3>
+          <p className="upload-card__description">{config.description}</p>
+        </div>
+      )}
 
       <div className="upload-card__body">
         {!file ? (

@@ -20,23 +20,13 @@ type ErrorsState = Partial<Record<UploadSlotId, string>>;
 // Bundled example files (see backend/data/samples/, served statically at
 // /samples/* by main.py) for the "Add all samples" button below -- lets
 // trying the app end to end skip hunting down real source files each time.
-// Not every slot has a sample; coldstream/thresholds/reportTemplate are
-// left for the user to provide since there's nothing representative bundled.
+// Not every slot has a sample; coldstream is left for the user to provide
+// since there's nothing representative bundled.
 const SAMPLE_FILES: { id: UploadSlotId; filename: string; mimeType: string }[] = [
   {
     id: "sensiwatch",
     filename: "sensiwatch_sample.xlsm",
     mimeType: "application/vnd.ms-excel.sheet.macroEnabled.12",
-  },
-  {
-    id: "rawTemperature",
-    filename: "temperature_matrix_sample.xlsx",
-    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  },
-  {
-    id: "rawLight",
-    filename: "light_matrix_sample.xlsx",
-    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   },
   { id: "customerKpis", filename: "customer_kpi_profile_sample.json", mimeType: "application/json" },
   { id: "analysisProfile", filename: "analysis_profile_sample.json", mimeType: "application/json" },

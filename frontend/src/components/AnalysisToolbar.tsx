@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { IconChevronDown, IconFilter, IconPlus, IconSearch, IconSparkle } from "./icons";
+import { IconChevronDown, IconFilter, IconSearch } from "./icons";
 import "./AnalysisToolbar.css";
 
 export type AnalysisSortKey = "name" | "status" | "source";
@@ -29,10 +29,6 @@ interface AnalysisToolbarProps {
   onToggleStatus: (status: AnalysisStatusFilter) => void;
   activeFilterCount: number;
   onClearFilters: () => void;
-  onAddCustom: () => void;
-  onSuggestAI: () => void;
-  suggestBusy: boolean;
-  pendingSuggestionCount: number;
 }
 
 export default function AnalysisToolbar({
@@ -47,12 +43,8 @@ export default function AnalysisToolbar({
   onToggleStatus,
   activeFilterCount,
   onClearFilters,
-  onAddCustom,
-  onSuggestAI,
-  suggestBusy,
-  pendingSuggestionCount,
 }: AnalysisToolbarProps) {
-  const [openMenu, setOpenMenu] = useState<"filter" | "sort" | "add" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"filter" | "sort" | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,7 +63,7 @@ export default function AnalysisToolbar({
     };
   }, [openMenu]);
 
-  const toggle = (menu: "filter" | "sort" | "add") => setOpenMenu((prev) => (prev === menu ? null : menu));
+  const toggle = (menu: "filter" | "sort") => setOpenMenu((prev) => (prev === menu ? null : menu));
 
   return (
     <div className="analysis-toolbar" ref={rootRef}>
@@ -168,47 +160,6 @@ export default function AnalysisToolbar({
                 {SORT_LABELS[key]}
               </button>
             ))}
-          </div>
-        )}
-      </div>
-
-      <div className="analysis-toolbar__item analysis-toolbar__item--add">
-        <button
-          type="button"
-          className="analysis-toolbar__btn analysis-toolbar__btn--primary"
-          aria-expanded={openMenu === "add"}
-          onClick={() => toggle("add")}
-        >
-          <IconPlus /> Add
-        </button>
-        {openMenu === "add" && (
-          <div className="analysis-toolbar__popover analysis-toolbar__popover--narrow analysis-toolbar__popover--right" role="menu" aria-label="Add an analysis">
-            <button
-              type="button"
-              className="analysis-toolbar__menu-item"
-              onClick={() => {
-                setOpenMenu(null);
-                onAddCustom();
-              }}
-            >
-              Add Custom Analysis
-            </button>
-            <button
-              type="button"
-              className="analysis-toolbar__menu-item"
-              disabled={suggestBusy}
-              onClick={() => {
-                setOpenMenu(null);
-                onSuggestAI();
-              }}
-            >
-              <IconSparkle />{" "}
-              {suggestBusy
-                ? "Thinking…"
-                : pendingSuggestionCount > 0
-                  ? `View AI Suggestions (${pendingSuggestionCount})`
-                  : "Suggest with AI"}
-            </button>
           </div>
         )}
       </div>

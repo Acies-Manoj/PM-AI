@@ -140,6 +140,11 @@ export interface AnalysisDrilldownSuggestion {
   name: string;
   description: string;
   calculation_intent: string;
+  // Set when this drilldown reuses the parent analysis's own chart type
+  // (e.g. "combo") for visual consistency down a drill chain -- carried
+  // through to the child entry's own chart pick server-side, not read
+  // directly by the frontend.
+  chart_type_hint: string | null;
   triggered: boolean;
   child_entry_id: string | null;
 }
@@ -149,7 +154,7 @@ export interface AnalysisChartSpec {
   layout: Record<string, unknown>;
 }
 
-export type AnalysisChartType = "bar" | "grouped_bar" | "line" | "pie" | "scatter" | "heatmap" | "table";
+export type AnalysisChartType = "bar" | "grouped_bar" | "combo" | "line" | "pie" | "scatter" | "heatmap" | "table";
 export type AnalysisFilterKind = "categorical" | "numeric_range" | "date_range";
 export type AnalysisComputationMode = "template" | "code";
 
@@ -638,6 +643,17 @@ export async function triggerDrilldown(sessionId: string, entryId: string, drill
   return response.json();
 }
 
+export async function suggestMoreDrilldowns(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/suggest-more`,
+    { method: "POST" }
+  );
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
 export async function fetchOverallAnalysis(sessionId: string): Promise<OverallAnalysisReport> {
   const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/overall`);
   if (!response.ok) {
@@ -647,17 +663,78 @@ export async function fetchOverallAnalysis(sessionId: string): Promise<OverallAn
 }
 
 /** Builds the .pptx download link for whichever done analysis entries the
- * PM chose to include -- an empty list downloads nothing selected, so
- * callers should keep the Download control disabled in that case.
- * `language` optionally translates the report's own fixed phrases (see
- * report_generator.TRANSLATABLE_PHRASES) -- never the underlying analysis
- * names/interpretations/data, which always stay in their original language. */
-export function downloadReportUrl(sessionId: string, entryIds: string[], language = "en"): string {
+ * PM chose to include, in the PM's own chosen slide order (see
+ * ReportPage.tsx's drag reorder) -- an empty list downloads nothing
+ * selected, so callers should keep the Download control disabled in that
+ * case. `slides[].chartType` optionally overrides that slide's chart type
+ * (always sent, one per slide, positionally paired with `entry_id` -- pass
+ * the entry's own `chart_type` when there's no override). `language`
+ * optionally translates the report's own fixed phrases (see
+ * report_generator.TRANSLATABLE_PHRASES) plus each entry's name and
+ * interpretation (see fetchReportTranslations, which mirrors this same
+ * translation onto the on-screen preview) -- never a raw data value (a
+ * number, column name, or category value), which always stays exactly as
+ * it appears in the uploaded file. */
+export function downloadReportUrl(
+  sessionId: string,
+  slides: { entryId: string; chartType: string }[],
+  language = "en"
+): string {
   const params = new URLSearchParams();
-  for (const id of entryIds) params.append("entry_id", id);
+  for (const slide of slides) {
+    params.append("entry_id", slide.entryId);
+    params.append("chart_type", slide.chartType);
+  }
   if (language !== "en") params.set("language", language);
   const query = params.toString();
   return `${API_BASE_URL}/api/report/${sessionId}/download${query ? `?${query}` : ""}`;
+}
+
+// The Report page's own closing-slide bullet points -- synthesized from the
+// interpretations of whichever entries are included, distinct from
+// OverallAnalysisReport (the Analysis page's KPI-highlights Summary).
+// Bullets, not one prose narrative, to match the reference deck's own
+// bullet-point closing slide (see final_summary_agent.py).
+export interface ReportSummaryResponse {
+  session_id: string;
+  bullets: string[];
+}
+
+export async function fetchReportSummary(sessionId: string, entryIds: string[]): Promise<ReportSummaryResponse> {
+  const params = new URLSearchParams();
+  for (const id of entryIds) params.append("entry_id", id);
+  const response = await fetch(`${API_BASE_URL}/api/report/${sessionId}/summary?${params.toString()}`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+// Mirrors report_generator.translate_entry_texts -- the on-screen preview's
+// translated name/interpretation for one analysis entry, matching exactly
+// what that entry's slide will say once downloaded.
+export interface EntryTranslation {
+  name: string;
+  interpretation: string | null;
+}
+
+export interface ReportTranslationsResponse {
+  translations: Record<string, EntryTranslation>;
+}
+
+export async function fetchReportTranslations(
+  sessionId: string,
+  language: string,
+  entryIds: string[]
+): Promise<ReportTranslationsResponse> {
+  const params = new URLSearchParams();
+  params.set("language", language);
+  for (const id of entryIds) params.append("entry_id", id);
+  const response = await fetch(`${API_BASE_URL}/api/report/${sessionId}/translations?${params.toString()}`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
 }
 
 export interface LanguageOption {
@@ -685,7 +762,7 @@ export interface LaneResult {
   n_trips: number;
   n_valid: number;
   n_outliers: number;
-  status_type: "own_lane" | "peer_shrunk" | "insufficient";
+  status_type: "own_lane" | "insufficient";
   status_label: string;
   lower_fence: number | null;
   upper_fence: number | null;

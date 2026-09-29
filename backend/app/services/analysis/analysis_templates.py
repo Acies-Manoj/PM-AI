@@ -241,7 +241,7 @@ CATALOG: dict[str, TemplateInfo] = {
         "Group & aggregate",
         "One dimension with one to four metrics, e.g. shipment count and average temperature by carrier.",
         '{"template_id": "group_aggregate", "group_by": "Carrier", "metrics": [{"agg": "count"}, {"agg": "mean", "column": "Avg Temp"}], "sort": "desc", "top_n": null}',
-        "bar", ("bar", "grouped_bar", "pie", "line", "table"),
+        "bar", ("bar", "grouped_bar", "combo", "pie", "line", "table"),
     ),
     "top_n_ranking": TemplateInfo(
         "Top / bottom N ranking",
@@ -271,13 +271,13 @@ CATALOG: dict[str, TemplateInfo] = {
         "Rate by group",
         "Percentage of rows meeting a condition per group, e.g. temperature-excursion rate by carrier.",
         '{"template_id": "rate_by_group", "group_by": "Carrier", "condition": {"column": "Max Temp", "op": "gt", "value": 8}, "rate_label": "Excursion rate (%)", "min_rows": 1}',
-        "bar", ("bar", "table"),
+        "bar", ("bar", "combo", "table"),
     ),
     "rate_over_time": TemplateInfo(
         "Rate over time",
         "Percentage of rows meeting a condition per period, e.g. monthly on-time delivery rate.",
         '{"template_id": "rate_over_time", "date_column": "Ship Date", "frequency": "month", "condition": {"column": "Status", "op": "eq", "value": "On Time"}, "rate_label": "On-time rate (%)"}',
-        "line", ("line", "bar", "table"),
+        "line", ("line", "bar", "combo", "table"),
     ),
     "distribution": TemplateInfo(
         "Distribution (histogram)",
@@ -602,7 +602,10 @@ def _run_group_aggregate(spec: GroupAggregate, df: pd.DataFrame) -> TemplateOutp
     out = _sort_and_limit(out, first, spec.sort, spec.top_n or 50, spec.group_by)
     labels = [m.output_label() for m in spec.metrics]
     default = "grouped_bar" if len(labels) > 1 else "bar"
-    return TemplateOutput(out, ChartRoles(x=spec.group_by, y=labels), default, CATALOG[spec.template_id].allowed_charts)
+    allowed = CATALOG[spec.template_id].allowed_charts
+    if len(labels) < 2:
+        allowed = tuple(c for c in allowed if c != "combo")
+    return TemplateOutput(out, ChartRoles(x=spec.group_by, y=labels), default, allowed)
 
 
 def _run_top_n(spec: TopNRanking, df: pd.DataFrame) -> TemplateOutput:
@@ -715,7 +718,11 @@ def _run_rate_by_group(spec: RateByGroup, df: pd.DataFrame) -> TemplateOutput:
     if out.empty:
         raise TemplateError(f"No group has at least {spec.min_rows} rows.")
     out = _sort_and_limit(out, spec.rate_label, "desc", spec.top_n or 50, spec.group_by)
-    return TemplateOutput(out, ChartRoles(x=spec.group_by, y=[spec.rate_label]), "bar", CATALOG[spec.template_id].allowed_charts)
+    # "Rows" (each group's total count) is already computed by _rate_frame --
+    # exposed as combo_y so a "combo" chart has real volume data for its
+    # line, alongside the rate's bars. Kept out of `y` itself so the default
+    # "bar" chart still draws only the rate, unchanged.
+    return TemplateOutput(out, ChartRoles(x=spec.group_by, y=[spec.rate_label], combo_y="Rows"), "bar", CATALOG[spec.template_id].allowed_charts)
 
 
 def _run_rate_over_time(spec: RateOverTime, df: pd.DataFrame) -> TemplateOutput:
@@ -723,7 +730,7 @@ def _run_rate_over_time(spec: RateOverTime, df: pd.DataFrame) -> TemplateOutput:
     start, label = _period_labels(dates, spec.frequency)
     out = _rate_frame(df, {"__start": start, "Period": label}, spec.condition, spec.rate_label)
     out = out.sort_values("__start").drop(columns="__start")
-    return TemplateOutput(out, ChartRoles(x="Period", y=[spec.rate_label]), "line", CATALOG[spec.template_id].allowed_charts)
+    return TemplateOutput(out, ChartRoles(x="Period", y=[spec.rate_label], combo_y="Rows"), "line", CATALOG[spec.template_id].allowed_charts)
 
 
 def _fmt_edge(v: float) -> str:

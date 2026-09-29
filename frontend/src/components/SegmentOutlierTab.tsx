@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
-import type { OutliersResponse, SegmentOutliersResult } from "../api/audit";
+import { useEffect, useMemo, useState } from "react";
+import type { LaneResult, OutliersResponse, SegmentOutliersResult } from "../api/audit";
 import { updateTripValue } from "../api/audit";
-import { IconSearch } from "./icons";
+import { IconChevronRight, IconSearch } from "./icons";
 import EditableNumberCell from "./EditableNumberCell";
 import "./OutlierTabs.css";
 
@@ -11,18 +11,60 @@ interface Props {
   onUpdated: (updated: OutliersResponse) => void;
 }
 
+const STATUS_LABELS: Record<LaneResult["status_type"], string> = {
+  own_lane: "Own-Lane Fence",
+  insufficient: "Insufficient History",
+};
+
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+// Same fuzzy match backend/app/services/audit/outlier_detectors.py's
+// _find_col uses -- finds this lane's own Serial/Trip ID/Segment Length
+// columns among the ORIGINAL (non-normalized) column names, so the lane
+// detail modal's table can offer the same inline edit the flat table used to.
+function findColumn(columns: string[], ...needles: string[]): string | null {
+  const lowered = columns.map((c) => c.toLowerCase());
+  for (let i = 0; i < lowered.length; i++) {
+    if (needles.every((n) => lowered[i].includes(n))) return columns[i];
+  }
+  return null;
+}
+
+function toNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isNaN(n) ? null : n;
+}
+
 export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props) {
   const [query, setQuery] = useState("");
+  const [openLane, setOpenLane] = useState<LaneResult | null>(null);
 
-  const filteredRows = useMemo(() => {
+  // Keep the open lane's rows in sync with freshly recomputed data after an
+  // edit -- `openLane` is a snapshot captured at click time, so without this
+  // a correction made inside the modal wouldn't be reflected in it.
+  useEffect(() => {
+    if (!openLane) return;
+    const fresh = data.lanes.find((l) => l.origin === openLane.origin && l.destination === openLane.destination);
+    setOpenLane(fresh ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const filteredLanes = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return data.outlier_rows;
-    return data.outlier_rows.filter((r) =>
-      [r.serial, r.trip_id, r.origin, r.destination, r.status].some(
-        (v) => v != null && String(v).toLowerCase().includes(q)
-      )
+    if (!q) return data.lanes;
+    return data.lanes.filter(
+      (l) => l.origin.toLowerCase().includes(q) || l.destination.toLowerCase().includes(q)
     );
-  }, [data.outlier_rows, query]);
+  }, [data.lanes, query]);
+
+  const serialCol = useMemo(() => findColumn(data.columns, "serial"), [data.columns]);
+  const tripCol = useMemo(() => findColumn(data.columns, "trip", "id"), [data.columns]);
+  const durationCol = useMemo(() => findColumn(data.columns, "segment", "day"), [data.columns]);
 
   if (!data.column_found) {
     return (
@@ -36,10 +78,10 @@ export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props)
     <div className="outlier-tab">
       <div className="outlier-tab__toolbar-row">
         <p className="outlier-tab__hint">
-          Trips whose own transit duration (Segment Length) falls outside their lane's Tukey fence -- the outliers
-          themselves, not the fence numbers. Click a Segment Days value to correct it.
+          Trips whose own transit duration (Segment Length) falls outside their lane's 5th-95th percentile fence --
+          computed only from that exact route's own trips. Click a lane below to see its flagged trips.
         </p>
-        {data.flagged_trips > 0 && (
+        {data.lanes.length > 0 && (
           <div className="outlier-tab__search">
             <span className="outlier-tab__search-icon">
               <IconSearch />
@@ -47,7 +89,7 @@ export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props)
             <input
               type="text"
               className="outlier-tab__search-input"
-              placeholder="Filter by serial, trip ID, origin, destination…"
+              placeholder="Filter lanes by origin or destination…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -64,62 +106,108 @@ export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props)
         <p className="outlier-tab__all-clear">No trips fell outside their lane's duration fence.</p>
       )}
 
-      {data.flagged_trips > 0 && (
-        <div className="outlier-tab__table-wrap">
-          <table className="outlier-tab__table">
-            <thead>
-              <tr>
-                <th>Serial Number</th>
-                <th>Trip ID</th>
-                <th>Origin</th>
-                <th>Destination</th>
-                <th>Segment Days</th>
-                <th>Lane Fence (Days)</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map((r, idx) => (
-                <tr key={`${idx}::${r.serial ?? "?"}::${r.trip_id ?? "?"}`}>
-                  <td>{r.serial ?? "—"}</td>
-                  <td>{r.trip_id ?? "—"}</td>
-                  <td>{r.origin}</td>
-                  <td>{r.destination}</td>
-                  <td>
-                    {r.serial != null && r.trip_id != null ? (
-                      <EditableNumberCell
-                        value={r.segment_days}
-                        onSave={async (next) => {
-                          const updated = await updateTripValue(sessionId, {
-                            serial: r.serial!,
-                            tripId: r.trip_id!,
-                            field: "segment_days",
-                            value: next,
-                          });
-                          onUpdated(updated);
-                        }}
-                      />
-                    ) : (
-                      r.segment_days ?? "—"
-                    )}
-                  </td>
-                  <td>
-                    {r.lower_fence_days != null && r.upper_fence_days != null
-                      ? `${r.lower_fence_days} – ${r.upper_fence_days}`
-                      : "—"}
-                  </td>
-                  <td>{r.status}</td>
-                </tr>
-              ))}
-              {filteredRows.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="outlier-tab__table-empty">
-                    No outliers match "{query}".
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {data.lanes.length > 0 && (
+        <div className="outlier-tab__lanes">
+          <h4 className="outlier-tab__lanes-title">Lanes (Origin → Destination)</h4>
+          <div className="outlier-tab__lane-list">
+            {filteredLanes.map((lane) => (
+              <button
+                type="button"
+                key={`${lane.origin}::${lane.destination}`}
+                className="outlier-tab__lane-item"
+                disabled={lane.n_outliers === 0}
+                onClick={() => setOpenLane(lane)}
+              >
+                <span className="outlier-tab__lane-route">
+                  {lane.origin} → {lane.destination}
+                </span>
+                <span className={`outlier-tab__lane-badge outlier-tab__lane-badge--${lane.status_type}`}>
+                  {STATUS_LABELS[lane.status_type]}
+                </span>
+                <span className="outlier-tab__lane-fence">
+                  {lane.lower_fence != null && lane.upper_fence != null
+                    ? `${lane.lower_fence.toFixed(1)} – ${lane.upper_fence.toFixed(1)} days`
+                    : "—"}
+                </span>
+                <span className="outlier-tab__lane-count">
+                  {lane.n_outliers > 0 ? `${lane.n_outliers} of ${lane.n_trips} flagged` : `${lane.n_trips} trips`}
+                </span>
+                {lane.n_outliers > 0 && <IconChevronRight />}
+              </button>
+            ))}
+            {filteredLanes.length === 0 && (
+              <p className="outlier-tab__empty">No lanes match "{query}".</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {openLane && (
+        <div className="audit-issue__modal-backdrop" onClick={() => setOpenLane(null)}>
+          <div className="audit-issue__modal outlier-tab__product-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="audit-issue__modal-head">
+              <div className="audit-issue__top">
+                <h4 className="audit-issue__title">
+                  {openLane.origin} → {openLane.destination}
+                </h4>
+              </div>
+              <button type="button" className="audit-issue__modal-close" onClick={() => setOpenLane(null)} aria-label="Close">
+                ✕
+              </button>
+            </div>
+            <div className="audit-issue__modal-body">
+              <p className="outlier-tab__hint">
+                {openLane.n_outliers} of {openLane.n_trips} trip{openLane.n_trips === 1 ? "" : "s"} fell outside this
+                lane's fence
+                {openLane.lower_fence != null && openLane.upper_fence != null
+                  ? ` (${openLane.lower_fence.toFixed(1)} – ${openLane.upper_fence.toFixed(1)} days, ${openLane.status_label}).`
+                  : "."}{" "}
+                {durationCol && "Click a Segment Days value below to correct it."}
+              </p>
+              <div className="temp-chart__table-wrap temp-chart__table-wrap--tall">
+                <table className="outlier-lane-card__table">
+                  <thead>
+                    <tr>
+                      {data.columns.map((col) => (
+                        <th key={col}>{col}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openLane.outlier_rows.map((row, idx) => {
+                      const serial = serialCol ? row[serialCol] : null;
+                      const tripId = tripCol ? row[tripCol] : null;
+                      const canEdit = durationCol != null && serial != null && tripId != null;
+                      return (
+                        <tr key={idx}>
+                          {data.columns.map((col) =>
+                            col === durationCol && canEdit ? (
+                              <td key={col}>
+                                <EditableNumberCell
+                                  value={toNumberOrNull(row[col])}
+                                  onSave={async (next) => {
+                                    const updated = await updateTripValue(sessionId, {
+                                      serial: String(serial),
+                                      tripId: tripId as string | number,
+                                      field: "segment_days",
+                                      value: next,
+                                    });
+                                    onUpdated(updated);
+                                  }}
+                                />
+                              </td>
+                            ) : (
+                              <td key={col}>{formatCell(row[col])}</td>
+                            )
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

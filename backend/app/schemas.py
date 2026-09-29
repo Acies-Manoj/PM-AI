@@ -259,6 +259,11 @@ class AnalysisDrilldownSuggestion(BaseModel):
     name: str
     description: str
     calculation_intent: str
+    # Set when this drilldown reuses the parent's own chart type (a rate +
+    # volume pair, e.g. "combo") for visual consistency down a drill chain --
+    # see analysis_agent.suggest_drilldowns. None lets the normal chart-
+    # suggestion step decide when the entry is accepted.
+    chart_type_hint: str | None = None
     triggered: bool = False
     child_entry_id: str | None = None
 
@@ -462,6 +467,17 @@ class OverallAnalysisReport(BaseModel):
     narrative: str
 
 
+class ReportSummaryResponse(BaseModel):
+    """The Report page's own closing-slide bullet points -- synthesized from
+    the included analyses' interpretations, distinct from
+    OverallAnalysisReport's KPI-highlights narrative (see
+    final_summary_agent.py). Bullets, not one prose narrative, to match the
+    reference deck's own bullet-point closing slide."""
+
+    session_id: str
+    bullets: list[str]
+
+
 class LanguageOption(BaseModel):
     code: str
     name: str
@@ -469,3 +485,17 @@ class LanguageOption(BaseModel):
 
 class SupportedLanguagesResponse(BaseModel):
     languages: list[LanguageOption]
+
+
+class EntryTranslation(BaseModel):
+    """One analysis entry's name (its slide heading) and interpretation
+    (its caption), translated into the Report page's picked language --
+    mirrors exactly what report_generator.build_report writes onto that
+    entry's slide, so the on-screen preview matches the .pptx download."""
+
+    name: str
+    interpretation: str | None = None
+
+
+class ReportTranslationsResponse(BaseModel):
+    translations: dict[str, EntryTranslation]

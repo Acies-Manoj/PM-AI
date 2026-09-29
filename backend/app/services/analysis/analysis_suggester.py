@@ -43,6 +43,11 @@ or trivially rephrase an existing analysis. Every suggestion MUST reference \
 only columns that appear in the given column list, spelled exactly as \
 given -- never invent a column name.
 
+Example: an existing analysis is "Shipments by Carrier" (count of shipments \
+per carrier). "Carrier Shipment Volume" or "Shipment Count by Carrier" are \
+the SAME idea renamed -- skip them. "% in Spec by Carrier" is genuinely \
+NEW (a different metric, not just a different name for the same count).
+
 Respond with ONLY a JSON object of this exact shape, no markdown, no \
 commentary:
 {{"suggestions": [

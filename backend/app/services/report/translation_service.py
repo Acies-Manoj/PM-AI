@@ -1,12 +1,16 @@
-"""Wraps the DeepL translation API for the small, fixed set of English
-phrases the report builder itself writes onto a slide -- headings, captions,
-footer legal text, and the highlight-label keywords (e.g. "Avg", "Highest").
-This is NEVER handed a data value (an analysis name, interpretation
-sentence, column name, or category value from the uploaded spreadsheet) --
-a literal business term or proper noun isn't safe to run through a
-translator, so the report builder only ever translates its own authored
-words and splices data back in untouched around them (see
-report_generator.py's TRANSLATABLE_PHRASES and translate_highlight_label).
+"""Wraps the DeepL translation API for the report builder's own text: its
+fixed English phrases -- headings, captions, footer legal text -- plus each
+analysis entry's name and interpretation (natural-language sentences the
+Analysis Agent or the PM wrote, translatable like any other prose). This is
+NEVER handed a raw data value (a number, column name, or category value
+pulled straight from the uploaded spreadsheet) -- those aren't safe to run
+through a translator, so the report builder always splices them back in
+untouched around whatever text it does translate (see report_generator.py's
+TRANSLATABLE_PHRASES and translate_entry_texts). The closing summary's own
+bullet points (final_summary_agent.py) are never translated either -- same
+rule as an entry's interpretation would suggest translating them, but
+they're synthesized fresh per download in English and not worth a second
+translation pass on top of the per-entry one.
 
 Silently falls back to the original English text -- for one phrase, or for
 the whole batch -- if no API key is configured, the target language isn't

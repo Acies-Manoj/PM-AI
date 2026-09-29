@@ -5,9 +5,9 @@ Light-channel equivalents; see Merged_Temperature_Light_2024-2025.xlsx).
 
 Two layers:
   1. `compute_lane_duration_outliers` -- an Origin->Destination "lane"-level
-     Tukey-fence outlier check on transit duration, with a peer-group
-     shrinkage fallback for thin lanes (<=10 trips) so a 2-trip lane with
-     Q1==Q3 can't fence itself to a single point.
+     5th/95th percentile fence on transit duration, computed ONLY from that
+     exact lane's own trips (no borrowing from other lanes). A lane with
+     only 1-2 trips is marked "Insufficient History" instead of guessing.
   2. `compute_flags` -- the 9 trip-level rules (too warm/cold on average,
      non-conforming transport, high variability, severe heat/cold excursion
      magnitude, MKT confirmation, light-correlated excursion, missing
@@ -58,9 +58,9 @@ GROUP_COLS = (COL_ORIGIN, COL_DESTINATION, COL_PRODUCT)
 PERCENTILE = 0.95
 
 # Lane duration-outlier thresholds (see compute_lane_duration_outliers).
-LANE_DIRECT_MIN_N = 10  # lanes with MORE trips than this use their own fence outright
-PEER_GROUP_MIN_N = 10  # peer group must have more trips than this to be usable
-IQR_MULTIPLIER = 1.5
+LANE_MIN_TRIPS_FOR_FENCE = 3  # lanes with FEWER trips than this (i.e. 1-2) are "Insufficient History"
+DURATION_FENCE_LOWER_PERCENTILE = 0.05
+DURATION_FENCE_UPPER_PERCENTILE = 0.95
 
 FLAG_COLUMNS = [
     "flag_1_too_warm_avg",
@@ -90,11 +90,12 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 # -----------------------------------------------------------------------
 
 
-def _tukey_fence(values: pd.Series) -> tuple[float, float]:
-    q1 = values.quantile(0.25)
-    q3 = values.quantile(0.75)
-    iqr = q3 - q1
-    return q1 - IQR_MULTIPLIER * iqr, q3 + IQR_MULTIPLIER * iqr
+def _percentile_fence(values: pd.Series) -> tuple[float, float]:
+    """5th/95th percentile fence -- values inside this range are "normal" for
+    the lane; anything outside is an outlier. Deliberately not a Tukey/IQR
+    fence: with a 5%/95% cut, a fence's width follows the lane's own spread
+    (a tight lane gets a tight fence) without needing an IQR multiplier."""
+    return float(values.quantile(DURATION_FENCE_LOWER_PERCENTILE)), float(values.quantile(DURATION_FENCE_UPPER_PERCENTILE))
 
 
 def compute_lane_duration_summary(
@@ -103,10 +104,10 @@ def compute_lane_duration_summary(
     origin_col: str = COL_ORIGIN,
     destination_col: str = COL_DESTINATION,
 ) -> pd.DataFrame:
-    """The lane-level reference table itself (Origin, Destination, N, Q1,
-    Q3, Lower Fence, Upper Fence) -- the Audit page's "Segment Days" tab.
-    One row per (Origin, Destination) lane with at least one usable
-    duration value, each lane's own Tukey fence (same formula as
+    """The lane-level reference table itself (Origin, Destination, N,
+    Lower/Upper Fence) -- the Audit page's "Segment Days" tab. One row per
+    (Origin, Destination) lane with at least one usable duration value,
+    each lane's own 5th/95th percentile fence (same formula as
     `compute_lane_duration_outliers`'s "Own-Lane Fence" case) regardless of
     N, since this table is the reference itself rather than a per-trip flag
     -- a thin lane's fence is still worth showing, just wide/uncertain."""
@@ -121,21 +122,18 @@ def compute_lane_duration_summary(
         if n == 0:
             continue
         if n == 1:
-            q1 = q3 = lower = upper = float(values.iloc[0])
+            lower = upper = float(values.iloc[0])
         else:
-            q1, q3 = float(values.quantile(0.25)), float(values.quantile(0.75))
-            lower, upper = _tukey_fence(values)
+            lower, upper = _percentile_fence(values)
         rows.append({
             "origin": origin,
             "destination": destination,
             "n": n,
-            "q1_days": round(q1, 2),
-            "q3_days": round(q3, 2),
             "lower_fence_days": round(float(lower), 2),
             "upper_fence_days": round(float(upper), 2),
         })
 
-    columns = ["origin", "destination", "n", "q1_days", "q3_days", "lower_fence_days", "upper_fence_days"]
+    columns = ["origin", "destination", "n", "lower_fence_days", "upper_fence_days"]
     if not rows:
         return pd.DataFrame(columns=columns)
     return pd.DataFrame(rows, columns=columns).sort_values(["origin", "destination"]).reset_index(drop=True)
@@ -147,24 +145,17 @@ def compute_lane_duration_outliers(
     origin_col: str = COL_ORIGIN,
     destination_col: str = COL_DESTINATION,
 ) -> pd.DataFrame:
-    """Per-lane (Origin -> Destination) Tukey fence on `duration_col`.
+    """Per-lane (Origin -> Destination) 5th/95th percentile fence on `duration_col`,
+    computed ONLY from that exact lane's own trips -- no borrowing from other
+    lanes, even ones sharing the same Destination (those took a different
+    route; blending their durations in would fence this lane against trips
+    that never actually ran it).
 
-    - Lanes with > LANE_DIRECT_MIN_N trips: fence computed directly from the
-      lane's own Q1/Q3 -- stable enough at this sample size (already the
-      case for 45 lanes in 2024-2025 and 8 lanes in Q1-Q2 2026).
-    - Thinner lanes: NOT fenced on their own (a 2-trip lane can have
-      Q1 == Q3, i.e. IQR == 0, which would flag any non-identical trip).
-      Instead borrow a fence from a peer group and shrink toward the lane's
-      own quartiles as its own N grows (alpha = min(N / LANE_DIRECT_MIN_N, 1)).
-
-      True "distance-band" peer grouping needs geocoded lane distance, which
-      this export doesn't carry -- as a documented proxy, the peer group here
-      is every trip sharing the same Destination (a reasonable stand-in: the
-      last-mile leg, and often most of the corridor, is shared). Swap
-      `_peer_group_mask` for a real distance-band lookup if/when geocoding
-      is wired in.
-    - If even that peer group has <= PEER_GROUP_MIN_N trips, no fence is
-      guessed: the lane is marked "Insufficient History" for manual review.
+    - Lanes with >= LANE_MIN_TRIPS_FOR_FENCE trips: fenced from their own
+      5th/95th percentile.
+    - Lanes with only 1-2 usable trips: too few to say what's "normal" for
+      that exact route -- marked "Insufficient History" for manual review
+      rather than guessing.
     """
     duration = pd.to_numeric(df[duration_col], errors="coerce")
     lane = list(zip(df[origin_col].fillna("(blank)"), df[destination_col].fillna("(blank)")))
@@ -175,31 +166,16 @@ def compute_lane_duration_outliers(
     lower_fence = pd.Series(np.nan, index=df.index)
     upper_fence = pd.Series(np.nan, index=df.index)
 
-    for lane_key, idx in lane_series.groupby(lane_series).groups.items():
+    for _lane_key, idx in lane_series.groupby(lane_series).groups.items():
         values = duration.loc[idx].dropna()
         n = len(values)
-        if n == 0:
-            continue  # no usable duration at all for this lane -> stays "Insufficient History"
+        if n < LANE_MIN_TRIPS_FOR_FENCE:
+            continue  # 0-2 usable trips for this exact lane -> stays "Insufficient History"
 
-        if n > LANE_DIRECT_MIN_N:
-            lower, upper = _tukey_fence(values)
-            lane_status = "Own-Lane Fence"
-        else:
-            destination = lane_key[1]
-            peer_values = duration.loc[df[destination_col] == destination].dropna()
-            peer_n = len(peer_values)
-            if peer_n <= PEER_GROUP_MIN_N:
-                continue  # stays "Insufficient History" -- route to manual review, don't guess
-            peer_lower, peer_upper = _tukey_fence(peer_values)
-            lane_lower, lane_upper = (values.iloc[0], values.iloc[0]) if n == 1 else _tukey_fence(values)
-            alpha = min(n / LANE_DIRECT_MIN_N, 1.0)
-            lower = alpha * lane_lower + (1 - alpha) * peer_lower
-            upper = alpha * lane_upper + (1 - alpha) * peer_upper
-            lane_status = f"Peer-Shrunk Fence (own N={n}, peer N={peer_n}, alpha={alpha:.2f})"
-
+        lower, upper = _percentile_fence(values)
         lower_fence.loc[idx] = lower
         upper_fence.loc[idx] = upper
-        status.loc[idx] = lane_status
+        status.loc[idx] = "Own-Lane Fence"
         in_range = duration.loc[idx].between(lower, upper)
         is_outlier.loc[idx] = duration.loc[idx].notna() & ~in_range
 

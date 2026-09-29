@@ -25,11 +25,8 @@ export type { BriefState };
 const EMPTY_FILES: FilesState = {
   sensiwatch: null,
   coldstream: null,
-  thresholds: null,
   customerKpis: null,
   analysisProfile: null,
-  rawLight: null,
-  rawTemperature: null,
 };
 
 function App() {

@@ -151,34 +151,38 @@ export default function OutlierCorrectionStep({
 
       <div className="outlier-step__resolve">
         <div className="outlier-step__resolve-card">
-          <div className="outlier-step__resolve-text">
-            <h3 className="outlier-step__option-title">Correct these trips in SensiWatch</h3>
-            <p className="outlier-step__option-desc">
-              Download the flagged trips, correct the underlying readings in SensiWatch, then re-upload the export.
-            </p>
-            <a className="outlier-step__download" href={downloadFlaggedOutliersUrl(sessionId)} download>
-              <IconDownload />
-              Download flagged data
-            </a>
+          <div className="outlier-step__resolve-header">
+            <div className="outlier-step__resolve-header-text">
+              <h3 className="outlier-step__option-title">Corrected SensiWatch export</h3>
+              <p className="outlier-step__option-desc">
+                Download the flagged trips, correct the underlying readings in SensiWatch, then re-upload the export.
+              </p>
+            </div>
+            <div className="outlier-step__resolve-actions">
+              <a className="outlier-step__download" href={downloadFlaggedOutliersUrl(sessionId)} download>
+                <IconDownload />
+                Download flagged data
+              </a>
+              <button
+                type="button"
+                className="outlier-step__btn outlier-step__btn--primary"
+                disabled={!selectedFile || uploading}
+                onClick={() => selectedFile && onFileCorrected(selectedFile)}
+              >
+                {uploading ? "Uploading…" : "Upload corrected file"}
+              </button>
+            </div>
           </div>
 
-          <div className="outlier-step__reupload">
-            <FileUploadCard
-              config={REUPLOAD_SLOT_CONFIG}
-              file={selectedFile}
-              error={uploadError ?? undefined}
-              onSelect={setSelectedFile}
-              onRemove={() => setSelectedFile(null)}
-            />
-            <button
-              type="button"
-              className="outlier-step__btn outlier-step__btn--primary"
-              disabled={!selectedFile || uploading}
-              onClick={() => selectedFile && onFileCorrected(selectedFile)}
-            >
-              {uploading ? "Uploading…" : "Upload corrected file"}
-            </button>
-          </div>
+          <FileUploadCard
+            config={REUPLOAD_SLOT_CONFIG}
+            file={selectedFile}
+            error={uploadError ?? undefined}
+            onSelect={setSelectedFile}
+            onRemove={() => setSelectedFile(null)}
+            hideHeader
+            compact
+          />
         </div>
 
         <div className="outlier-step__skip-row">

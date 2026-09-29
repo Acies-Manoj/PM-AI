@@ -127,10 +127,19 @@ asking a follow-up question.
 available columns, say so plainly in the plan instead of inventing a \
 substitute.
 
+Examples:
+- Genuine per-row feature: "Transit Time Hours" from Ship Date/Delivery \
+Date -> steps say "subtract Ship Date from Delivery Date for each row, \
+convert to hours" -- a normal per-row value, no broadcast needed.
+- Group-broadcast feature: "Average Transit Time by Carrier" -> steps say \
+"compute the mean transit time PER CARRIER, then assign that SAME value to \
+every row for that carrier -- this is the intended result, not a \
+duplicate-looking bug."
+
 Respond with ONLY a JSON object, no markdown, no commentary. `steps` is an \
 array of short, self-contained instructions, each written as its own \
 sentence with no leading number -- the caller numbers them for display:
-{"steps": ["first step", "second step", "..."], "columns_used": ["exact column names"], "output_dtype": "numeric | percentage | string | category | boolean | datetime | duration"}"""
+{"formula": "ONE line, the calculation written like a formula using the exact column names, e.g. Transit Hours = (Actual Arrival - Actual Departure) in hours; In Spec Flag = Max Value <= Limit High", "steps": ["first step", "second step", "..."], "columns_used": ["exact column names"], "output_dtype": "numeric | percentage | string | category | boolean | datetime | duration"}"""
 
 
 def _plan_text(plan: dict) -> str:
@@ -195,6 +204,12 @@ group (a per-group average, rate, or count), you MUST compute it with \
 back to every row of that group) -- never compute it per-row or with a \
 row-by-row conditional, which produces different values within what should \
 be one identical group value.
+
+Example -- plan says "average Mean Value per Carrier, same value for every \
+row of that carrier":
+Wrong: `result = df.apply(lambda r: df[df["Carrier"] == r["Carrier"]]["Mean Value"].mean(), axis=1)` (a slow, error-prone row-by-row rebuild of the same lookup)
+Right: `result = df.groupby("Carrier")["Mean Value"].transform("mean")`
+
 - Respond with ONLY the Python code. No markdown fences, no explanation, \
 no comments."""
 
@@ -233,18 +248,41 @@ percentage should fall in a sane range (unless the plan says otherwise), a \
 duration shouldn't be negative (unless the plan expects that), a lookup \
 should show real mapped values rather than raw codes.
 
-IMPORTANT: if the plan says the result is ONE overall value or ONE value \
-PER GROUP broadcast to every row in that scope, then identical values \
-within that scope are the CORRECT, INTENDED result -- do not flag that as \
-suspicious. Only flag "constant when it shouldn't be" when the plan itself \
-describes a genuinely per-row calculation -- and even then, rows whose SOURCE \
-values are identical must get identical outputs: these exports often repeat \
-the same trip/segment on several rows, so compare each output with the \
-source columns shown beside it before calling repetition wrong. Be a skeptical reviewer of \
-correctness, not of repetition the plan already told you to expect.
+IMPORTANT -- if the plan says the result is ONE overall value or ONE value \
+PER GROUP broadcast to every row in that scope (an average, sum, count, or \
+similar aggregate per group), this is a MECHANICAL check, not a judgment \
+call:
+1. Recompute the aggregate yourself from the exact source numbers shown for \
+that group.
+2. Compare your recomputed number to the OUTPUT column's value for that \
+group.
+3. If they match: valid=true. Full stop -- do not additionally comment on \
+whether the source values "differ" or the output looks "constant" or \
+"the same across rows". A group aggregate's OUTPUT being identical while \
+its SOURCE rows differ is not a symptom of anything -- it is the definition \
+of what an aggregate is, on every single correct case you will ever see. \
+Noticing that pattern is not a finding.
+4. Only if your own recomputed number DISAGREES with the shown output do \
+you flag invalid=false, and your reason must state both numbers (yours vs. \
+the shown output).
 
-Respond with ONLY a JSON object, no markdown, no commentary:
-{"valid": true or false, "reason": "one concise sentence, specific to what you checked"}"""
+Example: plan says "average Mean Value per Carrier, broadcast to every row \
+of that carrier." Sample: DHL rows have Mean Value 4.0 and 4.4, both show \
+avg_mean_value_by_carrier 4.2. You recompute (4.0+4.4)/2 = 4.2. That equals \
+the shown output -> valid=true, reason "Recomputed DHL's average as 4.2, \
+matching the output." Do not add anything about the source values differing \
+-- that observation is irrelevant once the numbers match.
+
+For anything the plan describes as a genuinely PER-ROW calculation (no \
+grouping at all), rows whose SOURCE values are identical must get identical \
+outputs -- these exports often repeat the same trip/segment on several \
+rows, so compare each output with the source columns shown beside it before \
+calling repetition wrong.
+
+Respond with ONLY a JSON object, no markdown, no commentary. Write "reason" \
+FIRST, working out any recomputation in it, and only THEN decide "valid" so \
+your verdict follows what "reason" actually found rather than the reverse:
+{"reason": "one concise sentence showing your check (e.g. a recomputed number vs. the shown output)", "valid": true or false}"""
 
 
 def validate(entry: dict, plan: dict, sample_block: str) -> dict:

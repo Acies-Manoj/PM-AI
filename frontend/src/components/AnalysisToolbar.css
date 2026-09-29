@@ -68,18 +68,6 @@
   background: var(--carrier-blue-tint);
 }
 
-.analysis-toolbar__btn--primary {
-  background: var(--carrier-blue);
-  border-color: var(--carrier-blue);
-  color: #fff;
-}
-
-.analysis-toolbar__btn--primary:hover {
-  background: var(--carrier-light-blue);
-  border-color: var(--carrier-light-blue);
-  color: #fff;
-}
-
 .analysis-toolbar__count {
   background: var(--carrier-blue);
   color: #fff;
@@ -112,11 +100,6 @@
 .analysis-toolbar__popover--narrow {
   min-width: 180px;
   padding: 6px;
-}
-
-.analysis-toolbar__popover--right {
-  left: auto;
-  right: 0;
 }
 
 .analysis-toolbar__popover-label {
@@ -205,9 +188,5 @@
   .analysis-toolbar {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .analysis-toolbar__item--add {
-    align-self: flex-end;
   }
 }

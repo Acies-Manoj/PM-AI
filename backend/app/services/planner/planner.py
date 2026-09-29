@@ -205,6 +205,104 @@ Do NOT generate:
 
 Describe WHAT is required, not HOW it should be implemented.
 The Planner determines the requirements and planning structure. It does not calculate values or execute analyses.
+--- WORKED EXAMPLE ---
+This shows the full pattern end-to-end -- distinct requirements split apart, a
+feature that does NOT get an automatic analysis, a needs_clarification case
+with a specific question, and the exact JSON shape. Don't copy these names or
+column names verbatim; match the reasoning pattern to the brief you're given.
+
+CLIENT BRIEF: "Show shipment volume by carrier and by destination. Calculate
+transit time. Flag shipments that were delayed, but don't worry about
+defining 'delayed' precisely."
+
+COLUMN CATALOG (abbreviated): Carrier (categorical) | Destination
+(categorical) | Departure Date (date) | Arrival Date (date) | Planned
+Arrival Date (date)
+
+Expected output:
+{
+  "recommendations": [
+    {
+      "name": "Shipment volume by carrier",
+      "type": "analysis",
+      "description": "Count of shipments grouped by carrier.",
+      "status": "create_new",
+      "required_fields": ["Carrier"],
+      "missing_fields": [],
+      "reason": "Carrier exists in the catalog; no matching analysis exists yet.",
+      "clarifications_required": []
+    },
+    {
+      "name": "Shipment volume by destination",
+      "type": "analysis",
+      "description": "Count of shipments grouped by destination.",
+      "status": "create_new",
+      "required_fields": ["Destination"],
+      "missing_fields": [],
+      "reason": "Separate breakdown dimension from carrier -- kept as its own recommendation, not merged.",
+      "clarifications_required": []
+    },
+    {
+      "name": "Transit time",
+      "type": "feature",
+      "description": "Duration between departure and arrival for each shipment.",
+      "status": "create_new",
+      "required_fields": ["Departure Date", "Arrival Date"],
+      "missing_fields": [],
+      "reason": "Both dates exist in the catalog; no existing transit-time column.",
+      "clarifications_required": []
+    },
+    {
+      "name": "Delayed shipment flag",
+      "type": "feature",
+      "description": "Flag for shipments considered delayed.",
+      "status": "needs_clarification",
+      "required_fields": ["Arrival Date", "Planned Arrival Date"],
+      "missing_fields": [],
+      "reason": "The brief explicitly declines to define 'delayed', so the threshold can't be implemented reliably.",
+      "clarifications_required": ["What counts as 'delayed' -- a specific number of days/hours past the planned arrival date, or something else?"]
+    }
+  ]
+}
+
+Note what did NOT happen: "transit time by carrier" was not added as a bonus
+analysis (the brief never asked for that breakdown), and "delayed shipment
+flag" was not silently guessed at with an invented threshold.
+
+--- WORKED EXAMPLE: feature_and_analysis ---
+A per-group phrase ("for each X", "by X", "per X") combined with a metric
+that doesn't already exist in the catalog means BOTH a feature AND its
+analysis are needed -- not just the feature alone.
+
+CLIENT BRIEF: "Tell me the percentage of shipments in spec for each product."
+
+COLUMN CATALOG (abbreviated): Product (categorical) | Mean Value_Temperature
+(float) | Limit High_Temperature (float)
+
+Expected output:
+{
+  "recommendations": [
+    {
+      "name": "% In Spec by Product",
+      "type": "feature_and_analysis",
+      "description": "Percentage of shipments within temperature spec, broken down by product.",
+      "status": "create_new",
+      "required_fields": ["Product", "Mean Value_Temperature", "Limit High_Temperature"],
+      "missing_fields": [],
+      "reason": "'% in spec' isn't an existing column (needs a new feature), and 'for each product' explicitly asks for a breakdown -- so this needs both a feature and its analysis, not the feature alone.",
+      "clarifications_required": []
+    }
+  ]
+}
+
+Contrast: "Calculate transit time" alone (no "by X"/"for each X" and no
+breakdown language) stays a plain "feature" -- see the first worked example.
+Only add the paired analysis when the brief itself asks for the breakdown.
+
+A brief with no identifiable requirement (e.g. "Looks good, thanks!") returns
+exactly {"recommendations": []} -- do not invent a requirement to have
+something to return.
+
 --- OUTPUT ---
 Return ONLY a valid JSON object.
 No markdown.
@@ -437,6 +535,15 @@ def _analysis_think_entry_for(rec: dict) -> dict:
     }
 
 
+def _clean_line(value) -> str | None:
+    """A Think step's one-line formula/logic, or None if it's missing or not a string."""
+    return value.strip() or None if isinstance(value, str) else None
+
+
+def _clean_list(value) -> list[str]:
+    return [str(v).strip() for v in value if str(v).strip()] if isinstance(value, list) else []
+
+
 def _attach_generated_formulas(recommendations: list[dict], columns_block: str) -> None:
     """For every feature/feature_and_analysis recommendation, calls the
     Feature Agent's Think step (see feature_agent.py); for every analysis/
@@ -461,6 +568,9 @@ def _attach_generated_formulas(recommendations: list[dict], columns_block: str) 
         try:
             plan = feature_agent.think(_think_entry_for(rec), columns_block)
             rec["generated_feature_formula"] = plan.get("plan")
+            rec["feature_formula_expression"] = _clean_line(plan.get("formula"))
+            rec["feature_columns_used"] = _clean_list(plan.get("columns_used"))
+            rec["feature_output_dtype"] = _clean_line(plan.get("output_dtype"))
         except Exception:
             rec["generated_feature_formula"] = None
 
@@ -468,6 +578,9 @@ def _attach_generated_formulas(recommendations: list[dict], columns_block: str) 
         try:
             plan = analysis_agent.think(_analysis_think_entry_for(rec), columns_block)
             rec["generated_analysis_formula"] = plan.get("plan")
+            rec["analysis_logic"] = _clean_line(plan.get("logic"))
+            rec["analysis_group_by"] = _clean_list(plan.get("group_by"))
+            rec["analysis_metrics"] = _clean_list(plan.get("metrics"))
         except Exception:
             rec["generated_analysis_formula"] = None
 

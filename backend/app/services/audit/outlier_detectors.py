@@ -2,7 +2,7 @@
 
 Delegates to anomaly_detection.py (agent-orchestration-flow branch) for the
 actual algorithms:
-  - compute_lane_duration_outliers: Tukey fence with peer-shrunk fallback
+  - compute_lane_duration_outliers: 5th/95th percentile fence from each exact lane's own trips
   - compute_flags: 9 trip-level rules; flag_1/flag_2 used for temperature tab
 
 SensiWatch exports use a "long sensor format": one row per (trip, sensor channel),
@@ -130,12 +130,7 @@ def detect_segment_outliers(df: pd.DataFrame) -> dict:
         non_insuf = status_series[status_series != "Insufficient History"]
         status_label = str(non_insuf.iloc[0]) if len(non_insuf) > 0 else "Insufficient History"
 
-        if "Own-Lane Fence" in status_label:
-            status_type = "own_lane"
-        elif "Peer-Shrunk" in status_label:
-            status_type = "peer_shrunk"
-        else:
-            status_type = "insufficient"
+        status_type = "own_lane" if "Own-Lane Fence" in status_label else "insufficient"
 
         lower_fence: float | None = None
         upper_fence: float | None = None

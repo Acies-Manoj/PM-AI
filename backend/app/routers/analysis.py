@@ -7,6 +7,7 @@ from app.schemas import (
     AddCustomAnalysisRequest,
     AnalysisDefinitionsSummary,
     AnalysisDraft,
+    AnalysisDrilldownSuggestion,
     AnalysisRepositoryEntry,
     AnalysisRepositoryResponse,
     AnalysisResult,
@@ -17,6 +18,7 @@ from app.schemas import (
 )
 from app.services.analysis import analysis_definitions_store as defs_store
 from app.services.analysis import (
+    analysis_agent,
     analysis_designer,
     analysis_engine,
     analysis_filters,
@@ -288,6 +290,41 @@ def trigger_drilldown(session_id: str, entry_id: str, drilldown_id: str) -> Anal
     suggestion.child_entry_id = child_entry["id"]
 
     return _run_entry(session, session_id, child_entry)
+
+
+@router.post("/repository/{session_id}/entries/{entry_id}/drilldowns/suggest-more", response_model=AnalysisRepositoryEntry)
+def suggest_more_drilldowns(session_id: str, entry_id: str) -> AnalysisRepositoryEntry:
+    """Asks the Analysis Agent for up to 3 more follow-ups, different from the
+    ones this analysis already has, and appends them to its suggestions."""
+    session = _get_session_or_404(session_id)
+    entry = analysis_repository.get_entry(session_id, entry_id)
+    result = session.analysis_results.get(entry_id)
+    if entry is None or result is None or result.run_status != "done":
+        raise HTTPException(status_code=409, detail="Run this analysis before asking for more drill-downs.")
+
+    existing = result.drilldown_suggestions
+    try:
+        fresh = analysis_agent.suggest_drilldowns(
+            entry,
+            {"plan": result.plan_text or entry.get("calculation_intent") or entry["name"]},
+            analysis_agent._table_sample_block(result.result_table or []),
+            result.interpretation or "",
+            analysis_agent.describe_columns(session.df),
+            parent_chart_type=result.chart_type,
+            avoid=[d.name for d in existing],
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Couldn't get more drill-down suggestions: {exc}") from exc
+
+    seen = {d.name.strip().lower() for d in existing}
+    next_index = len(existing)
+    for spec in fresh:
+        if spec["name"].strip().lower() in seen:
+            continue
+        seen.add(spec["name"].strip().lower())
+        existing.append(AnalysisDrilldownSuggestion(id=f"{entry_id}_dd{next_index}", **spec))
+        next_index += 1
+    return _merge_entry(session, entry)
 
 
 @router.get("/{session_id}/overall", response_model=OverallAnalysisReport)

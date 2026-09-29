@@ -23,6 +23,12 @@ interface AnalysisDetailModalProps {
    * recorded yet, so already-explored drilldowns start out selected. */
   onSeedSelection: (drilldownIds: string[]) => void;
   triggeringDrilldownId: string | null;
+  /** True while a "Suggest more drill-downs" request for this entry is running. */
+  suggestingMore: boolean;
+  onSuggestMore: () => void;
+  /** True while this entry's own run is in flight; drives the Retry button. */
+  running: boolean;
+  onRetry: () => void;
   onClose: () => void;
   onTriggerDrilldown: (drilldownId: string) => void;
   onOpenChild: (childEntryId: string) => void;
@@ -39,6 +45,10 @@ export default function AnalysisDetailModal({
   onToggleSelect,
   onSeedSelection,
   triggeringDrilldownId,
+  suggestingMore,
+  onSuggestMore,
+  running,
+  onRetry,
   onClose,
   onTriggerDrilldown,
   onOpenChild,
@@ -107,6 +117,16 @@ export default function AnalysisDetailModal({
       )}
 
       <p className="analysis-card__description">{entry.description}</p>
+
+      {entry.run_status === "error" && (
+        <div className="analysis-card__error-block">
+          <p className="analysis-card__error">{entry.error ?? "This analysis couldn't be computed."}</p>
+          <button type="button" className="analysis-card__run-btn analysis-card__run-btn--retry" disabled={running} onClick={onRetry}>
+            {running ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      )}
+      {entry.run_status === "not_run" && running && <p className="analysis-card__status" role="status">Computing…</p>}
 
       {entry.run_status === "done" && (
         <div className="analysis-detail__meta-row">
@@ -215,7 +235,20 @@ export default function AnalysisDetailModal({
               )}
 
               <div className="analysis-detail__suggested-drilldowns">
-                <h4 className="analysis-detail__suggested-drilldowns-title">Suggested Drill-downs</h4>
+                <div className="analysis-detail__suggested-drilldowns-head">
+                  <h4 className="analysis-detail__suggested-drilldowns-title">Suggested Drill-downs</h4>
+                  {entry.run_status === "done" && (
+                    <button
+                      type="button"
+                      className="analysis-detail__suggest-more-btn"
+                      disabled={suggestingMore}
+                      onClick={onSuggestMore}
+                    >
+                      <IconSparkle />
+                      {suggestingMore ? "Finding more…" : "Suggest more"}
+                    </button>
+                  )}
+                </div>
                 {suggestionCount === 0 ? (
                   <p className="analysis-detail__empty-drilldown">No follow-up analyses suggested for this one yet.</p>
                 ) : (
@@ -225,18 +258,7 @@ export default function AnalysisDetailModal({
                       return (
                         <li key={d.id}>
                           <div className={`analysis-detail__drilldown-item${checked ? " analysis-detail__drilldown-item--selected" : ""}`}>
-                            <button
-                              type="button"
-                              className="analysis-detail__drilldown-select"
-                              onClick={() => onToggleSelect(d.id)}
-                              aria-label={checked ? `Deselect ${d.name}` : `Select ${d.name}`}
-                            >
-                              <span className="analysis-detail__drilldown-index">{i + 1}</span>
-                              <span
-                                className={`analysis-detail__drilldown-checkbox${checked ? " analysis-detail__drilldown-checkbox--checked" : ""}`}
-                                aria-hidden="true"
-                              />
-                            </button>
+                            <span className="analysis-detail__drilldown-index">{i + 1}</span>
                             <div className="analysis-detail__drilldown-text">
                               <span className="analysis-detail__drilldown-name">
                                 {d.name}
@@ -284,7 +306,6 @@ export default function AnalysisDetailModal({
                     .map((d) => (
                       <li key={d.id}>
                         <div className="analysis-detail__selected-item">
-                          <span className="analysis-detail__drilldown-checkbox analysis-detail__drilldown-checkbox--checked" aria-hidden="true" />
                           <span className="analysis-detail__drilldown-name">{d.name}</span>
                           <button
                             type="button"

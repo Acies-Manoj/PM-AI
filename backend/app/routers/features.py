@@ -114,7 +114,7 @@ def suggest_features(session_id: str) -> SuggestFeatureEntriesResponse:
     session = _get_session_or_404(session_id)
     base_df = session.pre_feature_df if session.pre_feature_df is not None else session.df
     try:
-        suggestions = feature_suggester.suggest_features(base_df)
+        suggestions = feature_suggester.suggest_features(base_df, feature_repository.get_repository(session_id))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Feature suggestion agent (OpenRouter) is unavailable: {exc}") from exc
     new_entries = feature_repository.add_ai_suggested_entries(session_id, suggestions)

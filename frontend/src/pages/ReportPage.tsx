@@ -4,19 +4,29 @@ import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
 import StatTile from "../components/StatTile";
-import OverallAnalysisCard from "../components/OverallAnalysisCard";
 import AnalysisChart from "../components/AnalysisChart";
-import { IconChevronLeft, IconClipboard, IconDoc, IconDownload, IconLayers, IconSparkle } from "../components/icons";
+import {
+  IconChevronDown,
+  IconChevronLeft,
+  IconClipboard,
+  IconDoc,
+  IconDownload,
+  IconGripVertical,
+  IconLayers,
+  IconSparkle,
+} from "../components/icons";
 import {
   fetchAnalysisRepository,
-  fetchOverallAnalysis,
+  fetchReportSummary,
+  fetchReportTranslations,
   fetchSupportedReportLanguages,
   AuditApiError,
   downloadReportUrl,
   type AnalysisRepositoryEntry,
+  type EntryTranslation,
   type LanguageOption,
-  type OverallAnalysisReport,
 } from "../api/audit";
+import { REPORT_CHART_TYPES, type ReportChartType } from "../utils/reportChartTypes";
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
 import type { AuditReportsState, FilesState } from "../App";
@@ -31,15 +41,26 @@ type RepositoriesState = Partial<Record<UploadSlotId, AnalysisRepositoryEntry[]>
 type LoadingState = Partial<Record<UploadSlotId, boolean>>;
 type ErrorsState = Partial<Record<UploadSlotId, string>>;
 
-const CHART_TYPE_LABELS: Record<string, string> = {
-  bar: "Bar chart",
-  grouped_bar: "Grouped bar chart",
-  line: "Line chart",
-  pie: "Pie chart",
-  scatter: "Scatter chart",
-  heatmap: "Heatmap",
-  table: "Table",
-};
+function defaultChartType(entry: AnalysisRepositoryEntry): ReportChartType {
+  return (REPORT_CHART_TYPES as readonly string[]).includes(entry.chart_type ?? "")
+    ? (entry.chart_type as ReportChartType)
+    : "bar";
+}
+
+// Strips the LLM's boilerplate "The chart shows..." framing and keeps only
+// the first couple of sentences -- the PM wants the gist, not a restatement
+// of what they're already looking at.
+const CHART_LEAD_IN_RE = /^(the|this)\s+(chart|graph|data|visuali[sz]ation)\s+(shows?|illustrates?|indicates?|reveals?|highlights?)\s*(that\s+)?/i;
+const MAX_SUMMARY_CHARS = 220;
+
+function shortenInterpretation(text: string): string {
+  let s = text.trim().replace(CHART_LEAD_IN_RE, "");
+  if (s) s = s[0].toUpperCase() + s.slice(1);
+  const sentences = s.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let result = sentences.slice(0, 2).join(" ");
+  if (result.length > MAX_SUMMARY_CHARS) result = `${result.slice(0, MAX_SUMMARY_CHARS - 1).trimEnd()}…`;
+  return result || text;
+}
 
 export default function ReportPage({ files, auditReports }: ReportPageProps) {
   const navigate = useNavigate();
@@ -49,12 +70,29 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
   const [errors, setErrors] = useState<ErrorsState>({});
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
-  const [overallReports, setOverallReports] = useState<Partial<Record<UploadSlotId, OverallAnalysisReport>>>({});
-  const [overallLoading, setOverallLoading] = useState<LoadingState>({});
-  const [overallError, setOverallError] = useState<ErrorsState>({});
+  // The PM's own chosen slide order (drag-reorderable) -- frontend-only
+  // until download time, when it's sent to the backend so the exported
+  // .pptx matches this preview's order exactly.
+  const [slideOrder, setSlideOrder] = useState<Partial<Record<UploadSlotId, string[]>>>({});
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  // Charts start collapsed -- a slide is mostly checkbox/name/chart-type
+  // until the PM asks to actually see the chart.
+  const [expandedCharts, setExpandedCharts] = useState<Record<string, boolean>>({});
+
+  // The Report's own closing-slide bullet points -- synthesized from the
+  // included slides' interpretations (see final_summary_agent.py), NOT the
+  // Analysis page's KPI-highlights Summary. Bullets, not one paragraph, to
+  // match the reference deck's own bullet-point closing slide.
+  const [summaryBullets, setSummaryBullets] = useState<Partial<Record<UploadSlotId, string[]>>>({});
+  const [summaryLoading, setSummaryLoading] = useState<LoadingState>({});
+  const [summaryError, setSummaryError] = useState<ErrorsState>({});
 
   const [languages, setLanguages] = useState<LanguageOption[]>([{ code: "en", name: "English" }]);
   const [language, setLanguage] = useState("en");
+  // Translated {entryId: {name, interpretation}} per slot, for whichever
+  // language is picked -- mirrors what build_report puts on each slide, so
+  // this on-screen list matches the .pptx before the PM ever downloads it.
+  const [translations, setTranslations] = useState<Partial<Record<UploadSlotId, Record<string, EntryTranslation>>>>({});
 
   const auditedReady = AUDITED_SLOTS.filter((id) => files[id] && auditReports[id]?.status === "reviewed");
 
@@ -68,6 +106,27 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
       .then((res) => setLanguages(res.languages))
       .catch(() => {});
   }, []);
+
+  // Re-fetches translated names/interpretations whenever the picked
+  // language or the set of done entries changes. English needs no fetch --
+  // clearing state lets the render fall back to each entry's own English
+  // text. A failed fetch (translation service down, etc.) leaves the prior
+  // (or no) translations in place rather than blocking the preview.
+  useEffect(() => {
+    if (language === "en") {
+      setTranslations({});
+      return;
+    }
+    for (const id of auditedReady) {
+      const doneIds = (repositories[id] ?? []).filter((e) => e.run_status === "done").map((e) => e.id);
+      if (doneIds.length === 0) continue;
+      const sessionId = auditReports[id]!.session_id;
+      fetchReportTranslations(sessionId, language, doneIds)
+        .then((res) => setTranslations((prev) => ({ ...prev, [id]: res.translations })))
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language, repositories, auditedReady]);
 
   useEffect(() => {
     for (const id of auditedReady) {
@@ -96,35 +155,75 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditedReady, auditReports]);
 
-  const runOverallAnalysis = (id: UploadSlotId) => {
-    const sessionId = auditReports[id]!.session_id;
-    setOverallLoading((prev) => ({ ...prev, [id]: true }));
-    setOverallError((prev) => ({ ...prev, [id]: undefined }));
-    fetchOverallAnalysis(sessionId)
-      .then((report) => setOverallReports((prev) => ({ ...prev, [id]: report })))
-      .catch((err) =>
-        setOverallError((prev) => ({
-          ...prev,
-          [id]: err instanceof AuditApiError ? err.message : "Could not reach the analysis agent.",
-        }))
-      )
-      .finally(() => setOverallLoading((prev) => ({ ...prev, [id]: false })));
-  };
-
-  // The summary generates on its own once a slot's analyses are loaded (and
-  // at least one has run) -- once per visit; "Try again" covers a failure.
-  const summaryRequested = useRef<Set<UploadSlotId>>(new Set());
+  // Seeds each slot's slide order from its done entries the first time they
+  // load, and appends any newly-finished entry ids at the end afterward --
+  // never disturbs an order the PM already dragged into place.
   useEffect(() => {
     for (const id of auditedReady) {
-      const hasDone = (repositories[id] ?? []).some((e) => e.run_status === "done");
-      if (!hasDone || summaryRequested.current.has(id)) continue;
-      summaryRequested.current.add(id);
-      runOverallAnalysis(id);
+      const doneIds = (repositories[id] ?? []).filter((e) => e.run_status === "done").map((e) => e.id);
+      if (doneIds.length === 0) continue;
+      setSlideOrder((prev) => {
+        const current = prev[id] ?? [];
+        const currentSet = new Set(current);
+        const missing = doneIds.filter((eid) => !currentSet.has(eid));
+        if (missing.length === 0) return prev;
+        return { ...prev, [id]: [...current, ...missing] };
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repositories, auditedReady]);
 
+  const runReportSummary = (id: UploadSlotId, entryIds: string[]) => {
+    const sessionId = auditReports[id]!.session_id;
+    setSummaryLoading((prev) => ({ ...prev, [id]: true }));
+    setSummaryError((prev) => ({ ...prev, [id]: undefined }));
+    fetchReportSummary(sessionId, entryIds)
+      .then((res) => setSummaryBullets((prev) => ({ ...prev, [id]: res.bullets })))
+      .catch((err) =>
+        setSummaryError((prev) => ({
+          ...prev,
+          [id]: err instanceof AuditApiError ? err.message : "Could not reach the summary agent.",
+        }))
+      )
+      .finally(() => setSummaryLoading((prev) => ({ ...prev, [id]: false })));
+  };
+
+  // The final summary regenerates whenever the ordered, selected, done
+  // entry-id list actually changes -- keyed by a signature of that exact
+  // list so toggling a checkbox or reordering slides refreshes it, but
+  // re-renders for unrelated reasons don't re-request it.
+  const summarizedFor = useRef<Partial<Record<UploadSlotId, string>>>({});
+  useEffect(() => {
+    for (const id of auditedReady) {
+      const order = slideOrder[id] ?? [];
+      const doneIds = new Set((repositories[id] ?? []).filter((e) => e.run_status === "done").map((e) => e.id));
+      const orderedSelectedDoneIds = order.filter((eid) => doneIds.has(eid) && selected[eid]);
+      if (orderedSelectedDoneIds.length === 0) continue;
+      const signature = orderedSelectedDoneIds.join("|");
+      if (summarizedFor.current[id] === signature || summaryLoading[id]) continue;
+      summarizedFor.current[id] = signature;
+      runReportSummary(id, orderedSelectedDoneIds);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repositories, auditedReady, slideOrder, selected]);
+
   const toggleSelected = (entryId: string) => setSelected((prev) => ({ ...prev, [entryId]: !prev[entryId] }));
+
+  const handleDrop = (id: UploadSlotId, targetEntryId: string) => {
+    if (!draggingId || draggingId === targetEntryId) {
+      setDraggingId(null);
+      return;
+    }
+    setSlideOrder((prev) => {
+      const current = prev[id] ?? [];
+      if (!current.includes(draggingId) || !current.includes(targetEntryId)) return prev;
+      const withoutDragged = current.filter((eid) => eid !== draggingId);
+      const targetIdx = withoutDragged.indexOf(targetEntryId);
+      const next = [...withoutDragged.slice(0, targetIdx), draggingId, ...withoutDragged.slice(targetIdx)];
+      return { ...prev, [id]: next };
+    });
+    setDraggingId(null);
+  };
 
   if (AUDITED_SLOTS.every((id) => !files[id])) {
     return (
@@ -193,7 +292,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
         <PageHeader
           icon={<IconClipboard />}
           title="Report"
-          subtitle="Pick which completed analyses go into the downloadable report, preview each slide, then export it as a .pptx."
+          subtitle="Pick which completed analyses go into the downloadable report, drag to reorder, preview each slide, then export it as a .pptx."
         />
 
         <div className="report-page__language-picker">
@@ -207,16 +306,22 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           </select>
           {language !== "en" && (
             <span className="report-page__language-hint">
-              Slide headings and footer text are translated -- analysis names, interpretations, and data values are not.
+              Slide headings, interpretations, and footer text are translated -- chart data and column/category values are not.
             </span>
           )}
         </div>
 
         {slotsWithResults.map((id) => {
           const slot = UPLOAD_SLOTS.find((s) => s.id === id)!;
-          const doneEntries = (repositories[id] ?? []).filter((e) => e.run_status === "done");
+          const doneEntriesRaw = (repositories[id] ?? []).filter((e) => e.run_status === "done");
+          const order = slideOrder[id] ?? [];
+          const orderIndex = new Map(order.map((eid, idx) => [eid, idx]));
+          const doneEntries = [...doneEntriesRaw].sort(
+            (a, b) => (orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+          );
           const aiSuggestedCount = doneEntries.filter((e) => e.source === "ai_suggested").length;
-          const selectedIds = doneEntries.filter((e) => selected[e.id]).map((e) => e.id);
+          const selectedEntries = doneEntries.filter((e) => selected[e.id]);
+          const selectedIds = selectedEntries.map((e) => e.id);
           const rowCount = auditReports[id]!.row_count;
 
           return (
@@ -241,38 +346,91 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
 
               <p className="report-page__included-title">This report will include:</p>
               <ul className="report-page__included-list">
-                {doneEntries.map((entry, idx) => (
-                  <li key={entry.id} className="report-page__slide-thumb">
-                    <label className="report-page__slide-thumb-head">
-                      <input type="checkbox" checked={!!selected[entry.id]} onChange={() => toggleSelected(entry.id)} />
-                      <span className="report-page__slide-label">Slide {idx + 1}</span>
-                      <span className="report-page__entry-name">{entry.name}</span>
-                      {entry.chart_type && (
-                        <span className="report-page__chart-type-pill">
-                          {CHART_TYPE_LABELS[entry.chart_type] ?? entry.chart_type}
+                {doneEntries.map((entry, idx) => {
+                  const entryTranslation = translations[id]?.[entry.id];
+                  const displayName = entryTranslation?.name ?? entry.name;
+                  const displayInterpretation = entryTranslation?.interpretation ?? entry.interpretation;
+                  return (
+                    <li
+                      key={entry.id}
+                      className={`report-page__slide-thumb${draggingId === entry.id ? " report-page__slide-thumb--dragging" : ""}`}
+                      draggable
+                      onDragStart={() => setDraggingId(entry.id)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDrop(id, entry.id);
+                      }}
+                      onDragEnd={() => setDraggingId(null)}
+                    >
+                      <div className="report-page__slide-thumb-head">
+                        <span className="report-page__drag-handle" aria-label="Drag to reorder">
+                          <IconGripVertical />
                         </span>
+                        <input type="checkbox" checked={!!selected[entry.id]} onChange={() => toggleSelected(entry.id)} />
+                        <span className="report-page__slide-label">Slide {idx + 1}</span>
+                        <span className="report-page__entry-name">{displayName}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="report-page__chart-toggle"
+                        aria-expanded={!!expandedCharts[entry.id]}
+                        onClick={() => setExpandedCharts((prev) => ({ ...prev, [entry.id]: !prev[entry.id] }))}
+                      >
+                        <span className={`report-page__chart-toggle-arrow${expandedCharts[entry.id] ? " report-page__chart-toggle-arrow--open" : ""}`}>
+                          <IconChevronDown />
+                        </span>
+                        {expandedCharts[entry.id] ? "Hide chart" : "Show chart"}
+                      </button>
+                      {expandedCharts[entry.id] && (
+                        <div className="report-page__slide-thumb-body">
+                          <AnalysisChart chartSpec={entry.chart_spec} chartType={entry.chart_type} resultTable={entry.result_table} />
+                        </div>
                       )}
-                    </label>
-                    <div className="report-page__slide-thumb-body">
-                      <AnalysisChart chartSpec={entry.chart_spec} chartType={entry.chart_type} resultTable={entry.result_table} />
-                    </div>
-                    {entry.interpretation && <p className="report-page__slide-thumb-caption">{entry.interpretation}</p>}
-                  </li>
-                ))}
-                <li className="report-page__included-summary">Overall analysis summary</li>
+                      {displayInterpretation && (
+                        <p className="report-page__slide-thumb-caption">{shortenInterpretation(displayInterpretation)}</p>
+                      )}
+                    </li>
+                  );
+                })}
+                <li className="report-page__included-summary">Final summary</li>
               </ul>
 
-              <OverallAnalysisCard
-                report={overallReports[id]}
-                loading={!!overallLoading[id]}
-                error={overallError[id]}
-                waitingForAnalyses={false}
-                onRetry={() => runOverallAnalysis(id)}
-              />
+              <div className="report-page__summary-card">
+                <h3 className="report-page__summary-title">
+                  <IconSparkle /> Final Summary
+                </h3>
+                {summaryError[id] ? (
+                  <div className="report-page__summary-error-row">
+                    <p className="report-page__summary-error">{summaryError[id]}</p>
+                    <button type="button" className="report-page__summary-retry" onClick={() => runReportSummary(id, selectedIds)}>
+                      Try again
+                    </button>
+                  </div>
+                ) : summaryLoading[id] && !summaryBullets[id] ? (
+                  <p className="report-page__summary-status">Writing the final summary…</p>
+                ) : summaryBullets[id] ? (
+                  <ul className="report-page__summary-bullets">
+                    {summaryBullets[id]!.map((bullet, i) => (
+                      <li key={i}>{bullet}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="report-page__summary-status">Select at least one analysis to generate the final summary.</p>
+                )}
+              </div>
 
               <a
                 className={`report-page__download-btn ${selectedIds.length === 0 ? "report-page__download-btn--disabled" : ""}`}
-                href={selectedIds.length > 0 ? downloadReportUrl(auditReports[id]!.session_id, selectedIds, language) : undefined}
+                href={
+                  selectedIds.length > 0
+                    ? downloadReportUrl(
+                        auditReports[id]!.session_id,
+                        selectedEntries.map((e) => ({ entryId: e.id, chartType: defaultChartType(e) })),
+                        language
+                      )
+                    : undefined
+                }
                 aria-disabled={selectedIds.length === 0}
                 onClick={(e) => {
                   if (selectedIds.length === 0) e.preventDefault();

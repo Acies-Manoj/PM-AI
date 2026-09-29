@@ -18,14 +18,6 @@ export const UPLOAD_SLOTS: UploadSlotConfig[] = [
     acceptLabel: "Excel or CSV (.xlsx, .xls, .csv)",
   },
   {
-    id: "thresholds",
-    title: "Threshold & Compliance Reference",
-    description: "Temperature/humidity thresholds and other compliance reference documentation.",
-    required: false,
-    accept: ".pdf,.doc,.docx,.xlsx,.csv,.md",
-    acceptLabel: "PDF, Word, Excel, CSV, or Markdown",
-  },
-  {
     id: "customerKpis",
     title: "Customer KPI Profile",
     description: "JSON feature definitions for the Features step (e.g. % In Spec formula).",
@@ -40,22 +32,6 @@ export const UPLOAD_SLOTS: UploadSlotConfig[] = [
     required: false,
     accept: ".json",
     acceptLabel: "JSON",
-  },
-  {
-    id: "rawLight",
-    title: "Raw Light Data",
-    description: "Raw ambient light sensor readings exported from the monitoring device (e.g. lux or on/off log).",
-    required: false,
-    accept: ".xlsx,.xls,.csv",
-    acceptLabel: "Excel or CSV (.xlsx, .xls, .csv)",
-  },
-  {
-    id: "rawTemperature",
-    title: "Raw Temperature Data",
-    description: "Raw temperature sensor readings from the monitoring device, at full recording resolution.",
-    required: false,
-    accept: ".xlsx,.xls,.csv",
-    acceptLabel: "Excel or CSV (.xlsx, .xls, .csv)",
   },
 ];
 

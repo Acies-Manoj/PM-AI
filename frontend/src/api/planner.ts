@@ -25,6 +25,14 @@ export interface PlannerRecommendation {
   // recommendation's type doesn't need that plan.
   generated_feature_formula?: string | null;
   generated_analysis_formula?: string | null;
+  // One-line formula (features) and spec (analyses) from the same Think
+  // step, shown above the numbered plan.
+  feature_formula_expression?: string | null;
+  feature_columns_used?: string[];
+  feature_output_dtype?: string | null;
+  analysis_logic?: string | null;
+  analysis_group_by?: string[];
+  analysis_metrics?: string[];
   pm_decision?: PmDecisionValue;
   pm_notes?: string;
 }

@@ -70,6 +70,25 @@ right call.
 finding's own numbers -- not generic advice, and don't contradict the \
 finding's own severity.
 
+If a finding's category or numbers don't clearly match any rule above, \
+default to "keep" and say so plainly in the note (e.g. "Ambiguous case -- \
+flagged for manual review") rather than guessing at a more aggressive action.
+
+Worked examples of the exact reasoning to apply (inputs abbreviated; match \
+this pattern, don't copy these specific numbers or notes verbatim):
+
+Example A -- outliers below the 15% threshold:
+  Input: id=out1 category=statistical_outliers affected: 42 of 500 rows (8.4%), options: [keep, remove_affected_rows]
+  Output: "out1": {"action": "keep", "note": "Only 8.4% of rows affected -- below the threshold for a systemic issue."}
+
+Example B -- outliers at/above the 15% threshold (same category, different share -> different action):
+  Input: id=out2 category=statistical_outliers affected: 96 of 500 rows (19.2%), options: [keep, remove_affected_rows]
+  Output: "out2": {"action": "remove_affected_rows", "note": "19.2% affected is high enough to suggest a systemic export problem."}
+
+Example C -- moderate (not severe) null share:
+  Input: id=null1 category=high_null_columns affected: 5 of 8 columns, columns are 55-65% empty, options: [drop_selected, keep]
+  Output: "null1": {"action": "keep", "note": "55-65% missing is moderate -- these columns may still carry usable signal."}
+
 Respond with ONLY a JSON object of this exact shape, no markdown, no \
 commentary, no restating these instructions:
 {"summary": "...", "recommendations": {"<finding_id>": {"action": "...", "note": "..."}, ...}}

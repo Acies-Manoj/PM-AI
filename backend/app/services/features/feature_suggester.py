@@ -8,9 +8,19 @@ writes, executes and validates the code for whatever gets accepted. Runs on
 OpenRouter, never Groq. Anything referencing a column that doesn't exist in
 the current data (a hallucination) is dropped rather than surfaced, since a
 broken suggestion is worse than a missing one.
+
+`existing_entries` (the repository's current entries) is shown to the model
+so it proposes genuinely new ideas, mirroring analysis_suggester.py's same
+pattern -- without it, a PM clicking "Suggest more" repeatedly got the same
+handful of ideas back every time, since the model never knew they'd already
+been proposed. output_column-exact-match dedup still runs afterward in
+feature_repository.add_ai_suggested_entries as a second line of defense,
+but that only catches an identical slug, not a conceptual repeat under a
+different name -- this prompt-level fix is what actually stops those.
 """
 import json
 import re
+from collections.abc import Iterable
 
 import pandas as pd
 from openai import OpenAI
@@ -18,28 +28,32 @@ from openai import OpenAI
 from app.config import OPENROUTER_API_KEY, OPENROUTER_MODEL
 from app.services.common import token_usage
 
-SYSTEM_PROMPT = """You are a data engineer proposing new engineered columns \
+MAX_SUGGESTIONS = 5
+
+SYSTEM_PROMPT = f"""You are a data engineer proposing new engineered columns \
 for an operational cold-chain shipment dataset, to help a program manager \
 build KPIs and reports. You'll be given the current column names, dtypes, \
-and a few sample values per column.
+and a few sample values per column, plus the features that already exist.
 
-Propose up to 5 NEW feature ideas that would be genuinely useful for \
+Propose up to {MAX_SUGGESTIONS} NEW feature ideas that would be genuinely useful for \
 cold-chain reporting (e.g. transit duration, percentage breakdowns of time \
-in/out of spec, seasonality, lane- or carrier-level aggregates). Every \
-suggestion MUST reference only columns that appear in the given column \
-list -- never invent a column name.
+in/out of spec, seasonality, lane- or carrier-level aggregates). Do not \
+repeat or trivially rephrase an existing feature (e.g. "Transit Duration" \
+vs. "Time in Transit" for the same calculation is the SAME idea under a \
+different name -- skip it). Every suggestion MUST reference only columns \
+that appear in the given column list -- never invent a column name.
 
 Respond with ONLY a JSON object of this exact shape, no markdown, no \
 commentary:
-{"suggestions": [
-  {
+{{"suggestions": [
+  {{
     "name": "short title, e.g. 'Time in Transit'",
     "description": "one plain-English sentence on why this is useful",
     "output_column": "short column name for the new field",
     "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below",
     "input_columns": ["exact column name(s) this calculation reads"]
-  }
-]}"""
+  }}
+]}}"""
 
 
 def _client() -> OpenAI:
@@ -57,12 +71,35 @@ def _columns_block(df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
-def suggest_features(df: pd.DataFrame) -> list[dict]:
+def _normalize_name(name: str) -> str:
+    """Loose dedup key -- case/punctuation-insensitive, so "Time in Transit"
+    and "time-in-transit" collide even though their `output_column` slugs
+    might not (mirrors analysis_repository._normalize_name's same idea)."""
+    return re.sub(r"\W+", " ", name.strip().lower()).strip()
+
+
+def _existing_block(existing_entries: Iterable[dict]) -> str:
+    lines = [
+        f"- {e['name']}: {e.get('calculation_intent') or e.get('description') or ''}".rstrip(": ")
+        for e in existing_entries
+        if e.get("name")
+    ]
+    return "\n".join(lines) if lines else "(none yet)"
+
+
+def suggest_features(df: pd.DataFrame, existing_entries: Iterable[dict] = ()) -> list[dict]:
     """Returns repository-shaped candidate dicts: name, description,
     output_column, calculation_intent, input_columns -- ready to hand to
-    feature_repository.add_ai_suggested_entries."""
+    feature_repository.add_ai_suggested_entries. `existing_entries` are the
+    repository's current entries, shown to the model so it proposes
+    genuinely new ideas and used to filter out any repeats it still makes."""
+    existing_entries = list(existing_entries)
     client = _client()
-    user_prompt = f"Columns:\n{_columns_block(df)}\n\nPropose the features now."
+    user_prompt = (
+        f"Columns:\n{_columns_block(df)}\n\n"
+        f"Existing features (do not repeat these):\n{_existing_block(existing_entries)}\n\n"
+        "Propose the features now."
+    )
     response = client.chat.completions.create(
         model=OPENROUTER_MODEL,
         temperature=0.4,
@@ -80,11 +117,14 @@ def suggest_features(df: pd.DataFrame) -> list[dict]:
         return []
 
     available_columns = set(df.columns.astype(str))
+    seen_names = {_normalize_name(e["name"]) for e in existing_entries if e.get("name")}
     suggestions: list[dict] = []
     for spec in candidates:
         if not isinstance(spec, dict):
             continue
         if not spec.get("name") or not spec.get("output_column") or not spec.get("calculation_intent"):
+            continue
+        if _normalize_name(spec["name"]) in seen_names:
             continue
         input_columns = spec.get("input_columns") or []
         if input_columns and not set(input_columns).issubset(available_columns):
@@ -97,5 +137,8 @@ def suggest_features(df: pd.DataFrame) -> list[dict]:
             "calculation_intent": spec["calculation_intent"],
             "input_columns": input_columns,
         })
+        seen_names.add(_normalize_name(spec["name"]))
+        if len(suggestions) == MAX_SUGGESTIONS:
+            break
 
     return suggestions

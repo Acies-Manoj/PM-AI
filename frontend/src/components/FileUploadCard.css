@@ -25,6 +25,29 @@
   animation: upload-card-pulse 0.8s ease-out;
 }
 
+.upload-card--compact {
+  min-height: 0;
+}
+
+.upload-card--compact .upload-card__dropzone {
+  padding: 12px 14px;
+}
+
+.upload-card--compact .upload-card__icon {
+  width: 18px;
+  height: 18px;
+  margin-bottom: 3px;
+}
+
+.upload-card--compact .upload-card__dropzone-text {
+  font-size: 12px;
+}
+
+.upload-card--compact .upload-card__accept-label {
+  margin-top: 3px;
+  font-size: 10px;
+}
+
 @keyframes upload-card-pulse {
   0% {
     box-shadow: 0 0 0 0 var(--carrier-blue-tint-2);

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-CHART_TYPES = ("bar", "grouped_bar", "line", "pie", "scatter", "heatmap", "table")
+CHART_TYPES = ("bar", "grouped_bar", "line", "pie", "scatter", "heatmap", "combo", "table")
 
 MAX_SERIES = 12
 MAX_PIE_SLICES = 20
@@ -26,15 +26,20 @@ MAX_Y_COLUMNS = 4
 class ChartRoles:
     """Which table column plays which part in the chart. `series` splits
     one metric into several traces (grouped bar / multi-line / heatmap
-    rows); `label` is hover text for scatter points."""
+    rows); `label` is hover text for scatter points. `combo_y` is a second
+    metric ONLY used by the "combo" chart type's secondary axis -- kept
+    separate from `y` (rather than just appending to it) so choosing a
+    non-combo chart type for the same table still draws exactly the `y`
+    columns it always did, with no second bar/line appearing uninvited."""
 
     x: str
     y: list[str]
     series: str | None = None
     label: str | None = None
+    combo_y: str | None = None
 
     def to_dict(self) -> dict:
-        return {"x": self.x, "y": list(self.y), "series": self.series, "label": self.label}
+        return {"x": self.x, "y": list(self.y), "series": self.series, "label": self.label, "combo_y": self.combo_y}
 
 
 @dataclass
@@ -155,6 +160,31 @@ def build_chart(table: list[dict], chart_type: str, roles: ChartRoles | None = N
 
     if chart_type == "line":
         return ChartResult("line", {"data": _xy_traces(table, roles, "scatter", "lines+markers"), "layout": layout})
+
+    if chart_type == "combo":
+        # Two metrics of different scale together -- e.g. a 0-100% rate and
+        # a raw count -- so the second metric gets its own right-side axis
+        # instead of being squashed flat next to the first on one scale.
+        # `combo_y` is the dedicated secondary metric (see ChartRoles); a
+        # template with 2+ metrics already in `y` (e.g. group_aggregate) can
+        # use its second one instead.
+        line_col = roles.combo_y or (roles.y[1] if len(roles.y) > 1 else None)
+        if roles.series or not line_col:
+            return ChartResult("bar", {"data": _xy_traces(table, roles, "bar", None), "layout": layout},
+                               ["A combo chart needs two metrics with no series split, so a bar chart is shown instead."])
+        xs = [row.get(roles.x) for row in table]
+        bar_col = roles.y[0]
+        bar_trace = {"type": "bar", "name": bar_col, "x": xs, "y": [_num_or_none(row.get(bar_col)) for row in table]}
+        line_trace = {
+            "type": "scatter", "mode": "lines+markers", "name": line_col, "yaxis": "y2",
+            "x": xs, "y": [_num_or_none(row.get(line_col)) for row in table],
+        }
+        combo_layout = {
+            "xaxis": _axis(roles.x),
+            "yaxis": _axis(bar_col),
+            "yaxis2": {"title": {"text": str(line_col)}, "overlaying": "y", "side": "right"},
+        }
+        return ChartResult("combo", {"data": [bar_trace, line_trace], "layout": combo_layout})
 
     if chart_type == "pie":
         rows = [r for r in table if _is_number(r.get(roles.y[0])) and r.get(roles.y[0]) >= 0]

@@ -142,10 +142,18 @@ asking a follow-up question.
 - If the requested analysis genuinely cannot be computed from the available \
 columns, say so plainly in the plan instead of inventing a substitute.
 
+Examples:
+- Request "% in spec by carrier" -> group by Carrier, metric is the share \
+of rows where Status = "In Spec" (a percentage, not a count), no pre-filter \
+(filtering to only "In Spec" rows first would make every carrier show 100%).
+- Request "average temperature by product, cannot be computed" case: if \
+no temperature-like column exists in the catalog, say so plainly instead of \
+substituting a different column that merely sounds related.
+
 Respond with ONLY a JSON object, no markdown, no commentary. `steps` is an \
 array of short, self-contained instructions, each written as its own \
 sentence with no leading number -- the caller numbers them for display:
-{"steps": ["first step", "second step", "..."], "group_by": ["exact column names, or [] if none"], "metrics": ["short description of each aggregated metric"]}"""
+{"logic": "ONE line spec of the analysis: filter (if any) -> group by -> metric(s) -> sort/limit, using exact column names, e.g. Group by Carrier -> count of Trip ID, % where Is Alarmed = Yes -> sort desc", "steps": ["first step", "second step", "..."], "group_by": ["exact column names, or [] if none"], "metrics": ["short description of each aggregated metric"]}"""
 
 
 def plan_text(plan: dict) -> str:
@@ -195,6 +203,16 @@ grouping column and every metric appears as its own named column.
 - Cap the result at a reasonable number of rows for a chart (e.g. sort and \
 `.head(50)` for a ranking) rather than returning every group unsorted.
 - Round float columns to 2 decimal places for a clean chart.
+
+Example -- plan says "group by Carrier, compute % of rows where Status = 'In Spec'":
+result = (
+    df.groupby("Carrier")["Status"].apply(lambda s: (s == "In Spec").mean() * 100)
+    .round(2).reset_index(name="% in spec")
+)
+This groups first, then computes the rate WITHIN each group -- never filter \
+`df` down to `Status == "In Spec"` before grouping, which would throw away \
+the very rows needed to compute the rate.
+
 - Respond with ONLY the Python code. No markdown fences, no explanation, \
 no comments."""
 
@@ -240,12 +258,17 @@ def generate_code(
 # describe the chart types identically.
 CHART_TYPE_GUIDANCE = """Chart types:
 - "bar": one category + one metric -- comparisons, rankings.
-- "grouped_bar": one category + several metrics, or two categories + one metric.
+- "grouped_bar": one category + several metrics of similar scale, or two categories + one metric.
+- "combo": one category + two metrics of DIFFERENT scale together -- e.g. a 0-100% rate as bars plus a raw count/volume as a line on a second axis. Use this instead of "grouped_bar" whenever the two metrics wouldn't read sanely on the same axis.
 - "line": a time or ordered axis + one or more metrics -- trends.
 - "pie": shares of a whole, one category with few (<= 8) values.
 - "scatter": two numeric measures against each other.
 - "heatmap": two categories + one metric with many combinations.
-- "table": nothing above fits, or the result is a few headline numbers."""
+- "table": nothing above fits, or the result is a few headline numbers.
+
+Example: metrics are "% in spec" and "shipment count", grouped by Carrier ->
+"combo" (not "grouped_bar" -- a 0-100% rate and a count in the hundreds
+don't read sanely on one shared axis)."""
 
 _CHART_SYSTEM = (
     "You are the chart-suggestion step of the Analysis Agent. You are given an analysis "
@@ -299,10 +322,19 @@ def ensure_chart(entry: dict, plan: dict, options: dict) -> None:
 
 _INTERPRET_SYSTEM = """You are the interpretation step of the Analysis Agent. You are given one \
 computed analysis table and its chart type. Write a short, plain-English \
-interpretation of what this chart shows -- the standout value(s), any clear \
-pattern, and why it might matter to a program manager. Do NOT invent any \
-number that isn't in the table. Write 2-4 plain sentences, no markdown, no \
-bullet lists."""
+interpretation covering the standout value(s), any clear pattern, and why \
+it might matter to a program manager. Do NOT invent any number that isn't \
+in the table. Write 2-4 plain sentences, no markdown, no bullet lists.
+
+Lead with the standout finding itself, not a description of the chart. \
+NEVER start with "This chart shows...", "The chart illustrates...", "The \
+data indicates...", or any other restatement of what the reader is already \
+looking at -- state the finding directly instead.
+
+Wrong: "This chart shows that DHL has the lowest % in spec among all carriers at 81%."
+Right: "DHL has the lowest % in spec among all carriers at 81%, well below FedEx (93%) and UPS (95%)."
+The second version states the same fact one clause shorter, with no \
+throwaway lead-in."""
 
 
 def interpret(entry: dict, plan: dict, table_sample: str, chart_type: str) -> str:
@@ -317,26 +349,70 @@ def interpret(entry: dict, plan: dict, table_sample: str, chart_type: str) -> st
 # --- Call 5: Suggest drilldowns -----------------------------------------------
 
 _DRILLDOWN_SYSTEM = """You are the drilldown-suggestion step of the Analysis Agent. Given an \
-analysis that was just computed and interpreted, propose up to 3 genuinely \
-useful FOLLOW-UP analyses a program manager might want to explore next -- \
-e.g. breaking a top-level finding down by another dimension, or zooming \
-into the specific group/time-period that stood out. Every suggestion MUST \
-reference only columns that appear in the given column list -- never invent \
-a column name.
+analysis that was just computed and interpreted, propose up to 3 FOLLOW-UP \
+analyses that zoom INTO the specific standout entity the interpretation just \
+named (the worst/best carrier, product, lane, month, etc.) -- never a generic \
+"break it down by another dimension" that ignores what actually stood out. \
+Think of this like a report that drills Product -> Supplier -> Carrier -> \
+Month, where each slide narrows into whatever underperformed on the slide \
+before it, instead of re-slicing the same top-level view a different way.
+
+Every suggestion MUST:
+- Name the standout entity from the interpretation and scope the drilldown to \
+it (e.g. "for Carrier X" or "within Product Y") -- filtering down, not just \
+re-grouping the same population.
+- Reference only columns that appear in the given column list -- never \
+invent a column name.
+- NOT group by the column the parent analysis already grouped by (see \
+"Parent grouped by" below, when given) -- re-sorting or re-filtering the \
+SAME grouping is not a drilldown.
+- Set "suggested_chart_type" to the parent's own chart type (see "Parent \
+chart type" below) when the drilldown reuses the same kind of two metrics \
+(a rate/percentage plus a count/volume) the parent used, so a drilldown \
+chain looks visually consistent, the way every slide in a real report reuses \
+one chart shape across a drill chain. Otherwise set it to null and let the \
+normal chart-suggestion step decide.
+
+Example -- parent "% in spec by Carrier" (chart type: combo), interpretation \
+names "DHL lowest at 81%":
+{"name": "% in spec by Lane for DHL", "description": "Breaks DHL's \
+compliance down by lane to find where it's weakest.", "calculation_intent": \
+"Filter to Carrier = DHL, then group by Lane and compute % in spec and \
+shipment count per lane.", "suggested_chart_type": "combo"}
+This is valid because it narrows into the named standout (DHL) and groups by \
+a NEW column (Lane), not the parent's own column (Carrier).
 
 Respond with ONLY a JSON object, no markdown, no commentary:
 {"drilldowns": [
   {
     "name": "short title",
     "description": "one plain-English sentence on what this drilldown would show",
-    "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below"
+    "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below, including the filter/scope down to the standout entity",
+    "suggested_chart_type": "<chart type, or null>"
   }
 ]}"""
 
 
-def suggest_drilldowns(entry: dict, plan: dict, table_sample: str, interpretation: str, columns_block: str) -> list[dict]:
+def suggest_drilldowns(
+    entry: dict, plan: dict, table_sample: str, interpretation: str, columns_block: str,
+    parent_chart_type: str | None = None,
+    avoid: list[str] | None = None,
+) -> list[dict]:
+    parent_group_by = plan.get("group_by") or []
+    context_lines = []
+    if parent_group_by:
+        context_lines.append(f"Parent grouped by: {', '.join(parent_group_by)}")
+    if parent_chart_type:
+        context_lines.append(f"Parent chart type: {parent_chart_type}")
+    if avoid:
+        # "Suggest more": the PM already has these -- propose different ones.
+        context_lines.append(
+            "Already suggested (do NOT repeat or rephrase these; pick a different standout entity or a different new column):\n"
+            + "\n".join(f"- {n}" for n in avoid)
+        )
+    context_block = ("\n" + "\n".join(context_lines) + "\n") if context_lines else ""
     user_prompt = (
-        f"Analysis: {entry['name']}\nPlan:\n{plan['plan']}\n\n"
+        f"Analysis: {entry['name']}\nPlan:\n{plan['plan']}\n{context_block}\n"
         f"Computed table sample:\n{table_sample}\n\nInterpretation:\n{interpretation}\n\n"
         f"COLUMN CATALOG:\n{columns_block}\n\nPropose the drilldowns now."
     )
@@ -352,10 +428,12 @@ def suggest_drilldowns(entry: dict, plan: dict, table_sample: str, interpretatio
             continue
         if not spec.get("name") or not spec.get("calculation_intent"):
             continue
+        chart_type_hint = spec.get("suggested_chart_type")
         drilldowns.append({
             "name": spec["name"],
             "description": spec.get("description", ""),
             "calculation_intent": spec["calculation_intent"],
+            "chart_type_hint": chart_type_hint if chart_type_hint in _ALLOWED_CHART_TYPES else None,
         })
     return drilldowns[:3]
 
@@ -448,7 +526,8 @@ def finish_computation(
         try:
             computation.interpretation = interpret(entry, plan, sample, computation.chart_type)
             computation.drilldown_suggestions = suggest_drilldowns(
-                entry, plan, sample, computation.interpretation, columns_block
+                entry, plan, sample, computation.interpretation, columns_block,
+                parent_chart_type=computation.chart_type,
             )
         except Exception as exc:
             computation.error = computation.error or f"Computed the table but couldn't interpret it: {exc}"

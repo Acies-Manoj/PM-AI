@@ -203,6 +203,20 @@ def run_analysis(session_id: str, entry: dict, df: pd.DataFrame) -> AnalysisComp
       3. a fresh design: chart + template match from the logic, then the
          template or generated code.
     Interpretation and drilldowns are never cached."""
+    missing = [c for c in entry.get("input_columns") or [] if c not in df.columns]
+    if missing:
+        # Retrying (or re-thinking) can't conjure a column the data no longer
+        # has -- most often one dropped in the Audit step (a high-null or
+        # constant-column decision) or a feature that hasn't been computed.
+        listed = ", ".join(f"'{c}'" for c in missing)
+        return AnalysisComputation(
+            plan_text=None, generated_code=None,
+            error=(
+                f"Column {listed} isn't in the current data, so this analysis can't run. "
+                "If it was dropped in the Audit step, go back and keep it; if it's a feature, "
+                "compute that feature first."
+            ),
+        )
     chart_type = _recommended_chart(entry)
     fallback_note = None
     if entry.get("template"):

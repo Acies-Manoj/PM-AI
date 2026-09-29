@@ -209,7 +209,15 @@ def add_ai_suggested_entries(session_id: str, suggestions: list[dict]) -> list[d
 def add_drilldown_entry(session_id: str, parent_id: str, drilldown: dict) -> dict:
     """Persists a new entry for a PM-triggered drilldown. Auto-approved --
     the PM's click on "Explore this" IS the approval, there's no separate
-    accept step for a drilldown the way there is for an AI suggestion."""
+    accept step for a drilldown the way there is for an AI suggestion.
+    `chart_type_hint`, when set (see analysis_agent.suggest_drilldowns),
+    becomes this entry's own `chart_recommendation` -- the same field a
+    predefined/planner/custom entry's PM-reviewed chart lives in -- so
+    run_analysis (analysis_engine._recommended_chart) picks it up directly
+    instead of running an independent chart-suggestion call that could pick
+    something different from the parent, breaking visual consistency down a
+    drill chain."""
+    chart_type_hint = drilldown.get("chart_type_hint")
     entry = {
         "id": f"drilldown_{uuid.uuid4().hex[:8]}",
         "source": "drilldown",
@@ -220,6 +228,10 @@ def add_drilldown_entry(session_id: str, parent_id: str, drilldown: dict) -> dic
         "input_columns": [],
         "formula": None,
         "parent_id": parent_id,
+        "chart_recommendation": (
+            {"chart_type": chart_type_hint, "reason": "Matches the parent analysis's chart for a consistent drilldown chain.", "alternatives": []}
+            if chart_type_hint else None
+        ),
     }
     persisted = _load_persisted(session_id)
     persisted.append(entry)

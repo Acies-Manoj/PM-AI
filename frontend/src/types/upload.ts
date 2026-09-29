@@ -1,4 +1,4 @@
-export type UploadSlotId = "sensiwatch" | "coldstream" | "thresholds" | "customerKpis" | "analysisProfile" | "rawLight" | "rawTemperature";
+export type UploadSlotId = "sensiwatch" | "coldstream" | "customerKpis" | "analysisProfile";
 
 export interface UploadSlotConfig {
   id: UploadSlotId;

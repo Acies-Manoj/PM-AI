@@ -22,7 +22,7 @@ from app.prompts.analysis_suggester import MAX_SUGGESTIONS, SYSTEM_PROMPT
 from app.services.analysis.analysis_columns import column_catalog
 from app.services.common import token_usage
 from app.services.common.entry_repository import normalize_name as _normalize_name
-from app.services.common.groq_client import get_client
+from app.services.common.llm_client import get_client
 
 logger = logging.getLogger(__name__)
 

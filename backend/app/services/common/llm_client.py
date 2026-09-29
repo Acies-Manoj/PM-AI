@@ -1,9 +1,11 @@
-"""Shared OpenRouter client + call wrapper used by the code-generating
-agents (Feature Agent, Analysis Agent, Planner): client instantiation, a
-json_mode-with-fallback call, and fence-stripping helpers. Same pattern as
-`groq_client.py`, which serves the narration-only agents (Audit,
-suggesters) on the same OpenRouter backend with a different call shape
-(single-shot prose/JSON vs. a fixed-model, named, retryable call).
+"""Shared OpenRouter client used by every agent in the pipeline: client
+instantiation, a json_mode-with-fallback call, fence-stripping helpers,
+and prompt-building helpers. Covers two call shapes -- `call()` for the
+code-generating agents (Feature Agent, Analysis Agent, Planner), which
+need an explicit model/timeout/retries per call, and `chat_text`/
+`chat_json` for the narration-only agents (Audit, overall-analysis,
+analysis suggester), which just need a single-shot prose or JSON
+response with sensible defaults.
 """
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ from functools import lru_cache
 import pandas as pd
 from openai import OpenAI
 
-from app.config import OPENROUTER_API_KEY
+from app.config import LLM_MODEL, OPENROUTER_API_KEY
 from app.services.common import token_usage
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -67,6 +69,32 @@ def call(
         response = client.chat.completions.create(**kwargs)
     token_usage.record(call_name, model, response)
     return response.choices[0].message.content or ""
+
+
+def chat_text(
+    system_prompt: str,
+    user_prompt: str,
+    model: str = LLM_MODEL,
+    temperature: float = 0.3,
+    call_name: str = "unnamed_chat_text",
+) -> str:
+    """Single-shot call returning plain prose -- used by the narration-only
+    agents (Audit, overall-analysis narrative)."""
+    return call(system_prompt, user_prompt, model=model, json_mode=False, temperature=temperature, call_name=call_name)
+
+
+def chat_json(
+    system_prompt: str,
+    user_prompt: str,
+    model: str = LLM_MODEL,
+    temperature: float = 0.4,
+    call_name: str = "unnamed_chat_json",
+) -> str:
+    """Single-shot call expecting a JSON object response -- used by the
+    narration-only agents (Audit, analysis suggester). Uses json_object
+    response_format when the model supports it; falls back to plain
+    completion if the model rejects the parameter (see `call`)."""
+    return call(system_prompt, user_prompt, model=model, json_mode=True, temperature=temperature, call_name=call_name) or "{}"
 
 
 def strip_code_fence(text: str) -> str:

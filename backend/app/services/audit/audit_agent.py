@@ -1,18 +1,19 @@
 """Turns the deterministic findings from data_audit.py into (1) a short,
 plain-English "data analyst" narrative and (2) a concrete per-finding
 recommendation -- including which of the finding's own decision options the
-agent thinks the user should pick -- via Groq. This is the only LLM call in
-the audit pipeline: it never decides what the issues ARE or fixes anything
-itself, it just explains what was already found and advises what to do about
-each one. There is no fallback: if Groq isn't configured or the call fails,
-that's a real error and the caller (routers/audit.py) surfaces it as one --
-the audit agent is required, not optional.
+agent thinks the user should pick -- via OpenRouter. This is the only LLM
+call in the audit pipeline: it never decides what the issues ARE or fixes
+anything itself, it just explains what was already found and advises what
+to do about each one. There is no fallback: if OPENROUTER_API_KEY isn't
+configured or the call fails, that's a real error and the caller
+(routers/audit.py) surfaces it as one -- the audit agent is required, not
+optional.
 """
 import json
 
 from app.prompts.audit_agent import SYSTEM_PROMPT
 from app.schemas import AuditIssue
-from app.services.common.groq_client import chat_json
+from app.services.common.llm_client import chat_json
 
 # Column-scoped categories store a column COUNT in affected_row_count, not a
 # row count -- kept in sync with AuditIssueCard's COLUMN_SCOPED_CATEGORIES on

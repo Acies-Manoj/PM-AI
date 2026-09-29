@@ -29,6 +29,11 @@ FEATURE_AGENT_MODEL = os.getenv("FEATURE_AGENT_MODEL", OPENROUTER_MODEL)
 # convention as the Feature Agent above.
 ANALYSIS_AGENT_MODEL = os.getenv("ANALYSIS_AGENT_MODEL", OPENROUTER_MODEL)
 
+# Guided drill-down proposals (which dimension / focus / top-N to drill into
+# next). A small JSON-only call, but a wrong pick sends the PM down the wrong
+# chain, so it can be pointed at a stronger model than the rest of the agent.
+DRILLDOWN_AGENT_MODEL = os.getenv("DRILLDOWN_AGENT_MODEL", ANALYSIS_AGENT_MODEL)
+
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY", "")
 # Free tier uses api-free.deepl.com; Pro uses api.deepl.com
 DEEPL_API_URL = os.getenv("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")

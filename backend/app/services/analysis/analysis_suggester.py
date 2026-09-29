@@ -48,6 +48,11 @@ per carrier). "Carrier Shipment Volume" or "Shipment Count by Carrier" are \
 the SAME idea renamed -- skip them. "% in Spec by Carrier" is genuinely \
 NEW (a different metric, not just a different name for the same count).
 
+If an EXISTING FEATURE already provides a calculation an analysis needs \
+(e.g. an "In Spec" column), USE that feature's column in input_columns \
+instead of recomputing the calculation in the analysis. Do not invent new \
+KPI definitions; keep ranking, sorting and comparison in the analysis.
+
 Respond with ONLY a JSON object of this exact shape, no markdown, no \
 commentary:
 {{"suggestions": [
@@ -149,16 +154,23 @@ def _validate(candidates: list, available_columns: set[str], existing_names: set
     return suggestions
 
 
-def suggest_analyses(df: pd.DataFrame, existing_entries: Iterable[dict] = ()) -> list[dict]:
+def suggest_analyses(df: pd.DataFrame, existing_entries: Iterable[dict] = (), features: Iterable[dict] = ()) -> list[dict]:
     """Returns repository-shaped candidate dicts: name, description,
     calculation_intent, input_columns -- ready to hand to
     analysis_repository.add_ai_suggested_entries. `existing_entries` are the
     repository's current entries, shown to the model so it proposes
     genuinely new ideas and used to filter out any repeats it still makes."""
     existing_entries = list(existing_entries)
+    feature_lines = [
+        f"- {f['name']} (column {f['output_column']}): {f.get('calculation_intent') or f.get('description') or ''}"
+        for f in features
+        if f.get("output_column") in df.columns
+    ]
     client = get_client().with_options(timeout=REQUEST_TIMEOUT_S)
     user_prompt = (
         f"Columns:\n{column_catalog(df)}\n\n"
+        f"Existing features already computed as columns (use them, do not recompute):\n"
+        f"{chr(10).join(feature_lines) or '(none)'}\n\n"
         f"Existing analyses (do not repeat these):\n{_existing_block(existing_entries)}\n\n"
         "Propose the analyses now."
     )

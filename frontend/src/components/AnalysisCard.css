@@ -213,3 +213,80 @@
   background: var(--color-error);
   border-color: var(--color-error);
 }
+
+/* Required features: the features this analysis consumes and whether each is
+   selected and computed. A blocked analysis cannot run until all are. */
+.analysis-card__required {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: default;
+}
+
+.analysis-card__required-title {
+  margin: 0 0 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.analysis-card__required-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.analysis-card__required-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.analysis-card__required-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.analysis-card__required-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.analysis-card__required-col {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.analysis-card__required-status {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.analysis-card__required-status--satisfied { color: var(--color-success, #2a7a3b); }
+.analysis-card__required-status--not_approved,
+.analysis-card__required-status--missing { color: var(--color-error); }
+.analysis-card__required-status--not_computed { color: #8a5a10; }
+
+.analysis-card__required-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+}
+
+.analysis-card__run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

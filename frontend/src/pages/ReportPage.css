@@ -462,3 +462,38 @@
   justify-content: space-between;
   margin-top: 8px;
 }
+
+/* -- drill-down slides: indented under their parent, numbered, with a
+   filter/rank subtitle; stale levels are flagged and can't be included ----- */
+
+.report-page__slide-label--off {
+  background: var(--color-text-muted);
+}
+
+.report-page__slide-subtitle {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.report-page__slide-thumb--stale {
+  border-left-color: var(--color-text-muted);
+}
+
+.report-page__stale-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.report-page__stale-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #92400e;
+}

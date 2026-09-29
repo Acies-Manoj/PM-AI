@@ -42,33 +42,113 @@ def _get_session_or_404(session_id: str) -> AuditSession:
     return session
 
 
+MAX_SUBTITLE_CHARS = 110
+MAX_SUBTITLE_VALUES = 3
+
+
+def _drilldown_subtitle(chain: dict) -> str:
+    """Short filter/rank line for a drill-down slide, e.g. 'Table Grapes - Top 3
+    Origin by trips' or 'Origins: A, B, C +2 - Top 3 Carrier by trips, with %
+    in spec'."""
+    values = [str(v) for v in chain.get("focus_values") or []]
+    if len(values) > 1:
+        shown = ", ".join(values[:MAX_SUBTITLE_VALUES])
+        extra = len(values) - MAX_SUBTITLE_VALUES
+        focus = f"{chain.get('focus_dimension') or 'Value'}s: {shown}" + (f" +{extra}" if extra > 0 else "")
+    else:
+        focus = values[0] if values else (chain.get("focus_label") or "")
+
+    rank = chain.get("rank") or {}
+    mode = "Bottom" if rank.get("mode") == "bottom" else "Top"
+    by = "% in spec" if rank.get("by") == "pct_in_spec" else "trips"
+    rank_text = f"{mode} {rank.get('n', 3)} {chain.get('dimension') or ''} by {by}".replace("  ", " ")
+    if chain.get("metric") == "pct_in_spec" and rank.get("by") != "pct_in_spec":
+        rank_text += ", with % in spec"
+
+    text = f"{focus} - {rank_text}" if focus else rank_text
+    if len(text) > MAX_SUBTITLE_CHARS:
+        text = text[: MAX_SUBTITLE_CHARS - 1].rstrip() + "…"
+    return text
+
+
 def _report_ready_entries(
     session: AuditSession,
     session_id: str,
     entry_ids: list[str] | None,
     chart_type_overrides: dict[str, str] | None = None,
+    include_stale: bool = False,
 ) -> list[dict]:
     """Definitions merged with their in-memory run result, limited to ones
     that actually finished successfully and (if entry_ids was given) were
-    chosen for inclusion -- returned in `entry_ids`' own order when given,
-    since that's the PM's chosen slide order (see ReportPage.tsx's drag
-    reorder), not the repository's own internal order."""
-    definitions = {d["id"]: d for d in analysis_repository.get_repository(session_id)}
-    ids = entry_ids if entry_ids is not None else list(definitions.keys())
+    chosen for inclusion -- returned as a TREE: each root in the PM's chosen
+    order (`entry_ids`' own order when given, see ReportPage.tsx's drag
+    reorder, else the repository's), each followed depth-first by its
+    drill-down levels (siblings in the PM's order among themselves), so slides
+    read 1, 2, 2.1, 2.1.1, 2.2, 3. A drill-down can never precede its parent;
+    one whose parent isn't included becomes a root (keeping its subtitle). Each entry gains
+    `slide_number`, `chain_level`, `parent_slide_number`, `subtitle` (drill-
+    downs only) and `stale`. Stale levels (their own or an ancestor's
+    filter/rank changed since they were built) are left out unless
+    `include_stale` -- the download and summary must never present them."""
+    all_defs = analysis_repository.get_repository(session_id)
+    definitions = {d["id"]: d for d in all_defs}
+    position = {eid: i for i, eid in enumerate(entry_ids)} if entry_ids is not None else {}
+    creation = {d["id"]: i for i, d in enumerate(all_defs)}
 
-    ready = []
-    for entry_id in ids:
+    def sort_key(eid: str) -> int:
+        return position.get(eid, creation[eid])
+
+    def is_stale(entry_id: str) -> bool:
+        seen: set[str] = set()
+        while entry_id in definitions and entry_id not in seen:
+            seen.add(entry_id)
+            d = definitions[entry_id]
+            if (d.get("chain") or {}).get("stale"):
+                return True
+            entry_id = d.get("parent_id") if d.get("chain") else None
+        return False
+
+    candidates: dict[str, dict] = {}
+    for entry_id in (entry_ids if entry_ids is not None else list(definitions.keys())):
         definition = definitions.get(entry_id)
-        if definition is None:
+        if definition is None or entry_id in candidates:
             continue
         result = session.analysis_results.get(entry_id)
         if not result or result.run_status != "done":
             continue
+        stale = is_stale(entry_id)
+        if stale and not include_stale:
+            continue
         merged = dict(definition)
         merged.update(result.model_dump())
+        merged["stale"] = stale
         if chart_type_overrides and entry_id in chart_type_overrides:
             merged["chart_type"] = chart_type_overrides[entry_id]
-        ready.append(merged)
+        candidates[entry_id] = merged
+
+    # Effective parent: only when the parent is itself included.
+    children: dict[str | None, list[str]] = {}
+    for entry_id, entry in candidates.items():
+        parent = entry.get("parent_id") if entry.get("chain") else None
+        children.setdefault(parent if parent in candidates else None, []).append(entry_id)
+    for siblings in children.values():
+        siblings.sort(key=sort_key)
+
+    ready: list[dict] = []
+
+    def walk(parent_id: str | None, prefix: str, parent_number: str | None) -> None:
+        for i, entry_id in enumerate(children.get(parent_id, []), start=1):
+            entry = candidates[entry_id]
+            number = f"{prefix}.{i}" if prefix else str(i)
+            chain = entry.get("chain")
+            entry["slide_number"] = number
+            entry["chain_level"] = chain["level"] if chain else 1
+            entry["parent_slide_number"] = parent_number
+            entry["subtitle"] = _drilldown_subtitle(chain) if chain else None
+            ready.append(entry)
+            walk(entry_id, number, number)
+
+    walk(None, "", None)
     return ready
 
 
@@ -100,7 +180,7 @@ def get_report_translations(
     session = _get_session_or_404(session_id)
     if language != "en" and language not in translation_service.SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=422, detail=f"'{language}' isn't a supported report language.")
-    entries = _report_ready_entries(session, session_id, entry_id)
+    entries = _report_ready_entries(session, session_id, entry_id, include_stale=True)
     phrases = report_generator.translate_entry_texts(entries, language)
 
     translations: dict[str, EntryTranslation] = {}

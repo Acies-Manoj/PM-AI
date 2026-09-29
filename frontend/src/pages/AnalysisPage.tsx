@@ -11,6 +11,7 @@ import Modal from "../components/Modal";
 import AnalysisSuggestionCard from "../components/AnalysisSuggestionCard";
 import AddAnalysisForm from "../components/AddAnalysisForm";
 import OverallAnalysisCard from "../components/OverallAnalysisCard";
+import { ancestorTrail, buildLevelTree } from "../utils/drilldownTree";
 import { sourceTag } from "../utils/analysisSourceTag";
 import { IconDoc, IconGrid, IconChevronLeft, IconChevronRight, IconBarChart, IconLayers, IconSparkle, IconPlus } from "../components/icons";
 import {
@@ -21,7 +22,14 @@ import {
   fetchFeatureReport,
   fetchOverallAnalysis,
   filterAnalysisEntry,
+  fetchDrilldownOptions,
+  proposeDrilldowns,
+  confirmDrilldown,
+  rerankDrilldown,
+  refreshDrilldown,
   runAnalysisEntry,
+  applyFeatures,
+  selectRequiredFeature,
   suggestAnalysisEntries,
   triggerDrilldown,
   suggestMoreDrilldowns,
@@ -31,6 +39,8 @@ import {
   type AnalysisFilterSelections,
   type AnalysisRepositoryEntry,
   type AnalysisSource,
+  type ConfirmDrilldownBody,
+  type DrilldownRank,
   type FeatureReport,
   type OverallAnalysisReport,
 } from "../api/audit";
@@ -54,6 +64,11 @@ type BusyIdState = Partial<Record<UploadSlotId, string>>;
 // Each analysis run is several LLM calls, so only this many run at once.
 const MAX_CONCURRENT_RUNS = 2;
 const PAGE_SIZE = 12;
+// Start of the 422 detail when a run is refused for unmet required features.
+const REQUIRED_FEATURES_PREFIX = "Select all required features";
+// Approved, not yet run, and waiting on required features.
+const isBlocked = (e: AnalysisRepositoryEntry) =>
+  e.status === "approved" && e.run_status === "not_run" && e.dependencies_satisfied === false;
 const STATUS_ORDER: Record<AnalysisRepositoryEntry["run_status"], number> = { not_run: 0, error: 1, done: 2 };
 // Predefined analyses lead, mirroring the Feature page's PREDEFINED-first grouping --
 // not alphabetical, since "ai_suggested" would otherwise sort before "predefined".
@@ -83,6 +98,9 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   // Entries the auto-runner has already started once -- it never starts the
   // same entry twice; a failed run is retried only from the card.
   const autoStarted = useRef<Set<string>>(new Set());
+  // Required-feature actions per analysis entry: what's running, and errors.
+  const [featureBusy, setFeatureBusy] = useState<Record<string, string | undefined>>({});
+  const [featureErrors, setFeatureErrors] = useState<Record<string, string | undefined>>({});
   // Per slot: the set of finished analyses the last summary was generated
   // for, so the summary regenerates only when that set actually changes.
   const summarizedFor = useRef<Partial<Record<UploadSlotId, string>>>({});
@@ -93,6 +111,9 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const [addingAnalysis, setAddingAnalysis] = useState<LoadingState>({});
   const [showSuggestionsModal, setShowSuggestionsModal] = useState<LoadingState>({});
   const [triggeringDrilldownId, setTriggeringDrilldownId] = useState<string | null>(null);
+  // Explore / Suggest-more failures. The page-level error line sits behind the
+  // open modal, so these are handed to the modal to show next to the list.
+  const [drilldownError, setDrilldownError] = useState<string | null>(null);
   const [suggestingMoreFor, setSuggestingMoreFor] = useState<string | null>(null);
   // Which drilldown suggestions the PM has selected for each entry --
   // frontend-only bookkeeping (see AnalysisDetailModal's Selected Drill-downs
@@ -197,16 +218,64 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
     setRunningIds((prev) => ({ ...prev, [entry.id]: true }));
     runAnalysisEntry(sessionId, entry.id)
       .then((updated) => updateEntry(id, updated))
-      .catch((err) =>
+      .catch((err) => {
+        const message = err instanceof AuditApiError ? err.message : "Could not run this analysis.";
+        if (message.startsWith(REQUIRED_FEATURES_PREFIX)) {
+          // The backend refused because a required feature isn't ready.
+          // Show the detail on the card, refresh the entry's dependency
+          // status, and let the auto-runner pick it up once satisfied.
+          autoStarted.current.delete(entry.id);
+          setFeatureErrors((prev) => ({ ...prev, [entry.id]: message }));
+          refreshRepository(id, sessionId).catch(() => undefined);
+          return;
+        }
         // Recorded per entry (not as a page-level error) so the card can say
         // what went wrong -- the auto-runner never retries a failed entry on
         // its own, which would loop on a persistent failure.
-        setRunFailures((prev) => ({
+        setRunFailures((prev) => ({ ...prev, [entry.id]: message }));
+      })
+      .finally(() => setRunningIds((prev) => ({ ...prev, [entry.id]: false })));
+  };
+
+  // Computes features (the existing Feature step) so an approved required
+  // feature becomes usable, then refetches so dependency status updates.
+  const computeRequiredFeatures = (id: UploadSlotId, entryId: string): Promise<void> => {
+    const sessionId = auditReports[id]!.session_id;
+    setFeatureBusy((prev) => ({ ...prev, [entryId]: "compute" }));
+    return applyFeatures(sessionId)
+      .then((report) => {
+        setFeatureReports((prev) => ({ ...prev, [id]: report }));
+        return refreshRepository(id, sessionId);
+      })
+      .catch((err) =>
+        setFeatureErrors((prev) => ({
           ...prev,
-          [entry.id]: err instanceof AuditApiError ? err.message : "Could not run this analysis.",
+          [entryId]: err instanceof AuditApiError ? err.message : "Could not compute features.",
         }))
       )
-      .finally(() => setRunningIds((prev) => ({ ...prev, [entry.id]: false })));
+      .finally(() => setFeatureBusy((prev) => ({ ...prev, [entryId]: undefined })));
+  };
+
+  const selectFeature = (id: UploadSlotId, entry: AnalysisRepositoryEntry, featureId: string) => {
+    const sessionId = auditReports[id]!.session_id;
+    setFeatureErrors((prev) => ({ ...prev, [entry.id]: undefined }));
+    setFeatureBusy((prev) => ({ ...prev, [entry.id]: `select:${featureId}` }));
+    selectRequiredFeature(sessionId, entry.id, featureId)
+      .then((updated) => {
+        updateEntry(id, updated);
+        // Approved but not computed yet -> compute it now.
+        if ((updated.required_features ?? []).some((f) => f.state === "not_computed")) {
+          return computeRequiredFeatures(id, entry.id);
+        }
+        return refreshRepository(id, sessionId);
+      })
+      .catch((err) =>
+        setFeatureErrors((prev) => ({
+          ...prev,
+          [entry.id]: err instanceof AuditApiError ? err.message : "Could not select that feature.",
+        }))
+      )
+      .finally(() => setFeatureBusy((prev) => ({ ...prev, [entry.id]: prev[entry.id]?.startsWith("select:") ? undefined : prev[entry.id] })));
   };
 
   const runSuggest = (id: UploadSlotId) => {
@@ -252,27 +321,41 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const handleTriggerDrilldown = (id: UploadSlotId, entryId: string, drilldownId: string) => {
     const sessionId = auditReports[id]!.session_id;
     setTriggeringDrilldownId(drilldownId);
+    setDrilldownError(null);
     triggerDrilldown(sessionId, entryId, drilldownId)
       .then((child) => refreshRepository(id, sessionId).then(() => setOpenEntry({ slotId: id, entryId: child.id })))
       .catch((err) =>
-        setRepoError((prev) => ({
-          ...prev,
-          [id]: err instanceof AuditApiError ? err.message : "Could not run that drilldown.",
-        }))
+        setDrilldownError(err instanceof AuditApiError ? err.message : "Could not run that drill-down. Is the backend still running?")
       )
       .finally(() => setTriggeringDrilldownId(null));
+  };
+
+  // Guided drill-down chain. These reject so the modal can show the error
+  // next to the control that failed; each refetches the repository so new and
+  // stale levels appear.
+  const confirmChainDrilldown = (id: UploadSlotId, entryId: string, body: ConfirmDrilldownBody): Promise<void> => {
+    const sessionId = auditReports[id]!.session_id;
+    return confirmDrilldown(sessionId, entryId, body).then(() => refreshRepository(id, sessionId));
+  };
+
+  const rerankChainLevel = (id: UploadSlotId, entryId: string, rank: DrilldownRank): Promise<void> => {
+    const sessionId = auditReports[id]!.session_id;
+    return rerankDrilldown(sessionId, entryId, rank).then(() => refreshRepository(id, sessionId));
+  };
+
+  const refreshChainLevel = (id: UploadSlotId, entryId: string): Promise<void> => {
+    const sessionId = auditReports[id]!.session_id;
+    return refreshDrilldown(sessionId, entryId).then(() => refreshRepository(id, sessionId));
   };
 
   const handleSuggestMoreDrilldowns = (id: UploadSlotId, entryId: string) => {
     const sessionId = auditReports[id]!.session_id;
     setSuggestingMoreFor(entryId);
+    setDrilldownError(null);
     suggestMoreDrilldowns(sessionId, entryId)
       .then(() => refreshRepository(id, sessionId))
       .catch((err) =>
-        setRepoError((prev) => ({
-          ...prev,
-          [id]: err instanceof AuditApiError ? err.message : "Could not get more drill-down suggestions.",
-        }))
+        setDrilldownError(err instanceof AuditApiError ? err.message : "Could not get more drill-down suggestions.")
       )
       .finally(() => setSuggestingMoreFor(null));
   };
@@ -318,6 +401,8 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       for (const entry of repositories[id] ?? []) {
         if (slots <= 0) return;
         if (entry.status !== "approved" || entry.run_status !== "not_run") continue;
+        // Blocked on required features: running would just return a 422.
+        if (entry.dependencies_satisfied === false) continue;
         if (autoStarted.current.has(entry.id) || runningIds[entry.id]) continue;
         autoStarted.current.add(entry.id);
         runEntry(id, entry);
@@ -334,7 +419,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
     for (const id of slotsReady) {
       const approved = (repositories[id] ?? []).filter((e) => e.status === "approved");
       const pending = approved.some(
-        (e) => runningIds[e.id] || (e.run_status === "not_run" && !runFailures[e.id])
+        (e) => runningIds[e.id] || (e.run_status === "not_run" && !runFailures[e.id] && !isBlocked(e))
       );
       const done = approved.filter((e) => e.run_status === "done").map((e) => e.id).sort().join("|");
       if (pending || !done || overallLoading[id] || summarizedFor.current[id] === done) continue;
@@ -416,6 +501,8 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       </div>
     );
   }
+
+  const blockedCount = slotsReady.reduce((n, sid) => n + (repositories[sid] ?? []).filter(isBlocked).length, 0);
 
   return (
     <div className="analysis-page">
@@ -576,6 +663,15 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                           runFailure={runFailures[entry.id]}
                           onRun={() => runEntry(id, entry)}
                           onExpand={() => setOpenEntry({ slotId: id, entryId: entry.id })}
+                          levels={buildLevelTree(visibleEntries, entry.id)}
+                          onOpenLevel={(entryId) => setOpenEntry({ slotId: id, entryId })}
+                          onSelectFeature={(featureId) => selectFeature(id, entry, featureId)}
+                          onComputeFeatures={() => {
+                            setFeatureErrors((prev) => ({ ...prev, [entry.id]: undefined }));
+                            computeRequiredFeatures(id, entry.id);
+                          }}
+                          featureBusy={featureBusy[entry.id]}
+                          featureError={featureErrors[entry.id]}
                         />
                       ))}
                     </div>
@@ -620,7 +716,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                 loading={!!overallLoading[id]}
                 error={overallError[id]}
                 waitingForAnalyses={visibleEntries.some(
-                  (e) => runningIds[e.id] || (e.run_status === "not_run" && !runFailures[e.id])
+                  (e) => runningIds[e.id] || (e.run_status === "not_run" && !runFailures[e.id] && !isBlocked(e))
                 )}
                 onRetry={() => runOverallAnalysis(id)}
               />
@@ -717,6 +813,12 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           );
         })}
 
+        {blockedCount > 0 && (
+          <p className="analysis-page__blocked-notice" role="status">
+            {blockedCount} {blockedCount === 1 ? "analysis is" : "analyses are"} waiting on required features.
+          </p>
+        )}
+
         <div className="analysis-page__actions">
           <button type="button" className="analysis-page__btn analysis-page__btn--secondary analysis-page__nav-btn" onClick={() => navigate("/features")}>
             <IconChevronLeft /> Back to Features
@@ -745,11 +847,19 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
               triggeringDrilldownId={triggeringDrilldownId}
               running={!!runningIds[openEntryData.id]}
               onRetry={() => runEntry(openEntry.slotId, openEntryData)}
+              drilldownError={drilldownError}
               suggestingMore={suggestingMoreFor === openEntryData.id}
               onSuggestMore={() => handleSuggestMoreDrilldowns(openEntry.slotId, openEntry.entryId)}
               onClose={() => setOpenEntry(null)}
               onTriggerDrilldown={(drilldownId) => handleTriggerDrilldown(openEntry.slotId, openEntry.entryId, drilldownId)}
               onOpenChild={(childEntryId) => setOpenEntry({ slotId: openEntry.slotId, entryId: childEntryId })}
+              trail={ancestorTrail(openRepo, openEntryData)}
+              childLevels={buildLevelTree(openRepo, openEntryData.id)}
+              onFetchDrilldownOptions={() => fetchDrilldownOptions(auditReports[openEntry.slotId]!.session_id, openEntry.entryId)}
+              onProposeDrilldowns={() => proposeDrilldowns(auditReports[openEntry.slotId]!.session_id, openEntry.entryId)}
+              onConfirmDrilldown={(body) => confirmChainDrilldown(openEntry.slotId, openEntry.entryId, body)}
+              onRerankLevel={(rank) => rerankChainLevel(openEntry.slotId, openEntry.entryId, rank)}
+              onRefreshLevel={() => refreshChainLevel(openEntry.slotId, openEntry.entryId)}
               onApplyFilters={(filters: AnalysisFilterSelections) =>
                 filterAnalysisEntry(auditReports[openEntry.slotId]!.session_id, openEntry.entryId, filters)
               }

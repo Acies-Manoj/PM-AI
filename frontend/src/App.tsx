@@ -170,7 +170,7 @@ function App() {
         />
         <Route
           path="/planner"
-          element={<PlannerPage sessionId={plannerSessionId} />}
+          element={<PlannerPage sessionId={plannerSessionId} files={files} />}
         />
         <Route
           path="/audit"

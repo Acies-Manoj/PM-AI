@@ -4,19 +4,18 @@ import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
 import { fetchSuggestions, saveDecisions } from "../api/planner";
+import { uploadAnalysisDefinitions, uploadFeatureDefinitions } from "../api/audit";
+import type { FilesState } from "../App";
 import type { PlannerRecommendation, PlannerRecommendationType, PlannerSuggestResponse, PmDecisionValue } from "../api/planner";
 import PlanText from "../components/PlanText";
 import "./PlannerPage.css";
 
 type PlannerTab = "features" | "analyses";
 
-// A "feature_and_analysis" recommendation produces an entry on BOTH the
-// Features page and the Analysis page when accepted (see
-// feature_repository.py / analysis_repository.py's _planner_entries) --
-// so it must be counted and shown in BOTH tabs here too. Showing it under
-// only one tab is what let a PM accept it while looking at "Feature
-// Suggestions" and then be surprised to see one MORE entry than expected
-// show up on the Analysis page later.
+// New suggestions are only "analysis" | "feature" | "configuration". A legacy
+// "feature_and_analysis" recommendation (old saved sessions) still produces an
+// entry on BOTH the Features and Analysis pages when accepted, so it stays in
+// both tabs.
 function getTabs(type: PlannerRecommendationType): PlannerTab[] {
   if (type === "feature_and_analysis") return ["features", "analyses"];
   if (type === "analysis") return ["analyses"];
@@ -52,11 +51,12 @@ function buildFeatureColumnMap(recs: PlannerRecommendation[]): Map<string, strin
 
 interface PlannerPageProps {
   sessionId: string | null;
+  files: FilesState;
 }
 
 type DecisionsMap = Record<number, PmDecisionValue>;
 
-export default function PlannerPage({ sessionId }: PlannerPageProps) {
+export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +72,16 @@ export default function PlannerPage({ sessionId }: PlannerPageProps) {
     fetched.current = true;
     setLoading(true);
     setError(null);
-    fetchSuggestions(sessionId)
+    // The customer KPI profile and analysis profile are only held by the
+    // backend once uploaded, and the Features/Analysis pages come AFTER this
+    // one -- so send them now, or the Planner can't check them for reuse.
+    // A failed upload just means the Planner runs without that profile.
+    const profileUploads = [
+      files.customerKpis ? uploadFeatureDefinitions(files.customerKpis) : null,
+      files.analysisProfile ? uploadAnalysisDefinitions(files.analysisProfile) : null,
+    ].filter((upload) => upload !== null);
+    Promise.allSettled(profileUploads)
+      .then(() => fetchSuggestions(sessionId))
       .then((res) => setResult(res))
       .catch((err) => setError(err.message ?? "Planner failed."))
       .finally(() => setLoading(false));
@@ -235,11 +244,14 @@ export default function PlannerPage({ sessionId }: PlannerPageProps) {
                     decision={decisions[i] ?? "pending"}
                     onDecide={setDecision}
                     featureColumnMap={featureColumnMap}
+                    dependencyWarning={dependencyWarningFor(rec, decisions[i] ?? "pending", recs, decisions)}
                   />
                 ))}
               {recs.filter((r) => getTabs(r.type).includes(activeTab)).length === 0 && (
                 <div className="planner-page__empty-tab">
-                  No {activeTab === "features" ? "feature" : "analysis"} suggestions yet.
+                  {activeTab === "features" && recs.some((r) => r.type === "analysis")
+                    ? "No new features needed - the analyses reuse existing features or customer KPIs, or use the existing columns directly. Check the Analysis tab for the details."
+                    : `No ${activeTab === "features" ? "feature" : "analysis"} suggestions yet.`}
                 </div>
               )}
             </div>
@@ -295,6 +307,7 @@ interface RecCardProps {
   decision: PmDecisionValue;
   onDecide: (index: number, value: PmDecisionValue) => void;
   featureColumnMap: Map<string, string>;
+  dependencyWarning?: string | null;
 }
 
 interface RequirementNote {
@@ -335,15 +348,52 @@ function requirementNote(rec: PlannerRecommendation, ownName: string, featureCol
   return { text: `Missing required column${unresolved.length > 1 ? "s" : ""}: ${unresolved.join(", ")}`, kind: "missing" };
 }
 
+// A legacy "feature_and_analysis" is shown as an analysis (plus its required
+// feature), the same as the current model -- never as a combined type.
 function typeLabel(type: string): string {
-  if (type === "analysis") return "Analysis";
-  if (type === "feature_and_analysis") return "Feature + Analysis";
+  if (type === "analysis" || type === "feature_and_analysis") return "Analysis";
   if (type === "configuration") return "Configuration";
   return "Feature";
 }
 
 function typeSlug(type: string): string {
-  return type.replace(/_/g, "-");
+  return type === "feature_and_analysis" ? "analysis" : type.replace(/_/g, "-");
+}
+
+// Why this card exists: reused from something already there, or newly
+// suggested -- so the PM can see the reasoning behind each suggestion.
+function decisionSourceLabel(rec: PlannerRecommendation): string {
+  if (rec.type === "analysis" || rec.type === "feature_and_analysis") {
+    if (rec.analysis_source === "analysis_profile") return "Existing analysis profile";
+    if ((rec.kpi_dependencies?.length ?? 0) > 0) return "Existing customer KPI";
+    if ((rec.feature_dependencies ?? []).some((d) => d.action === "reuse_existing")) return "Existing feature";
+    return "New";
+  }
+  if (rec.type === "feature") {
+    if (rec.decision_source === "analysis_profile") return "Existing analysis profile";
+    if (rec.status === "existing") return "Existing feature";
+    return (rec.required_for_analysis?.length ?? 0) > 0 || rec.decision_source === "new_feature" ? "New feature" : "New";
+  }
+  return "New";
+}
+
+// A rejected feature that an accepted/pending analysis needs would leave that
+// analysis blocked on the Analysis page. Warn only -- Proceed is not blocked.
+function dependencyWarningFor(
+  rec: PlannerRecommendation,
+  decision: PmDecisionValue,
+  recs: PlannerRecommendation[],
+  decisions: DecisionsMap
+): string | null {
+  if (rec.type !== "feature" || decision !== "rejected") return null;
+  const names = new Set(rec.required_for_analysis ?? []);
+  if (names.size === 0) return null;
+  const blocked = recs
+    .map((r, i) => ({ r, d: decisions[i] ?? "pending" }))
+    .filter(({ r, d }) => (r.type === "analysis" || r.type === "feature_and_analysis") && names.has(r.name) && d !== "rejected")
+    .map(({ r }) => r.name);
+  if (blocked.length === 0) return null;
+  return `${blocked.join(", ")} depend${blocked.length === 1 ? "s" : ""} on this feature - it will be blocked until the feature is selected.`;
 }
 
 function statusLabel(status: string): string {
@@ -352,7 +402,7 @@ function statusLabel(status: string): string {
   return "New";
 }
 
-function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap }: RecCardProps) {
+function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap, dependencyWarning }: RecCardProps) {
   // Defensive fallbacks: an older cached suggestion, a dev-server hot-reload
   // that preserved stale state from before this schema changed, or an LLM
   // response that omitted an array field should never blank the whole page.
@@ -362,6 +412,11 @@ function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap }
   const generatedFormula = rec.generated_feature_formula;
   const generatedAnalysisFormula = rec.generated_analysis_formula;
   const requirement = requirementNote(rec, rec.name, featureColumnMap);
+  const isAnalysis = rec.type === "analysis" || rec.type === "feature_and_analysis";
+  const requiredFor = rec.type === "feature" ? (rec.required_for_analysis ?? []) : [];
+  const guardrails = rec.guardrail_warnings ?? [];
+  const kpiDeps = rec.kpi_dependencies ?? [];
+  const featureDeps = rec.feature_dependencies ?? [];
 
   return (
     <div
@@ -373,12 +428,18 @@ function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap }
             <span className={`planner-page__badge planner-page__badge--type-${typeSlug(rec.type)}`}>
               {typeLabel(rec.type)}
             </span>
+            {requiredFor.length > 0 && (
+              <span className="planner-page__badge planner-page__badge--required">Required for analysis</span>
+            )}
             <span className={`planner-page__badge planner-page__badge--status-${statusLabel(rec.status).toLowerCase().replace(/\s+/g, "-")}`}>
               {statusLabel(rec.status)}
             </span>
           </div>
           <h3 className="planner-page__card-name">{rec.name}</h3>
           <p className="planner-page__card-desc">{rec.description}</p>
+          {requiredFor.length > 0 && (
+            <div className="planner-page__needed-by">Needed by: {requiredFor.join(", ")}</div>
+          )}
           {rec.feature_formula_expression && (
             <div className="planner-page__spec">
               <span className="planner-page__spec-label">ƒ Feature formula</span>
@@ -414,9 +475,50 @@ function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap }
               ))}
             </div>
           )}
+          {isAnalysis && (
+            <div className="planner-page__deps">
+              {kpiDeps.map((k) => (
+                <div key={`kpi-${k.name}`} className="planner-page__dep planner-page__dep--reuse">
+                  Uses customer KPI: {k.name} ({k.source})
+                </div>
+              ))}
+              {featureDeps.map((d) => (
+                <div
+                  key={`feat-${d.feature_name}`}
+                  className={`planner-page__dep planner-page__dep--${d.action === "create_new" ? "new" : "reuse"}`}
+                >
+                  {d.action === "create_new" ? "New feature required" : "Reuse existing feature"}: {d.feature_name}
+                  {d.reason ? ` - ${d.reason}` : ""}
+                </div>
+              ))}
+              {rec.analysis_source === "analysis_profile" && (
+                <div className="planner-page__dep planner-page__dep--reuse">
+                  Reuses analysis profile entry: {rec.existing_analysis_name ?? rec.name}
+                </div>
+              )}
+              {rec.feature_required === false && (
+                <div className="planner-page__dep planner-page__dep--none">
+                  No feature needed - computed directly from existing columns
+                </div>
+              )}
+            </div>
+          )}
           <div className={`planner-page__requirement planner-page__requirement--${requirement.kind}`}>
             {requirement.text}
           </div>
+          <div className="planner-page__decision-source">Source: {decisionSourceLabel(rec)}</div>
+          {guardrails.length > 0 && (
+            <div className="planner-page__guardrail" role="alert">
+              {guardrails.map((w, i) => (
+                <div key={i}>&#9888; {w}</div>
+              ))}
+            </div>
+          )}
+          {dependencyWarning && (
+            <div className="planner-page__guardrail" role="alert">
+              &#9888; {dependencyWarning}
+            </div>
+          )}
         </div>
       </div>
 

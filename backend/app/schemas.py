@@ -1,7 +1,7 @@
 """Pydantic response models for the data audit API."""
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 Severity = Literal["info", "warning", "critical"]
 IssueStatus = Literal["pending", "resolved"]
@@ -156,6 +156,10 @@ class FeatureRepositoryEntry(BaseModel):
     # Feature Agent will never silently replace it -- only retry writing
     # code against it.
     formula: str | None = None
+    # Names of the analyses that depend on this feature -- set means the
+    # feature is only here because an analysis needs it (labelled REQUIRED FOR
+    # ANALYSIS); empty means the client asked for it in its own right.
+    required_for_analysis: list[str] = []
 
 
 class FeatureRepositoryResponse(BaseModel):
@@ -268,7 +272,80 @@ class AnalysisDrilldownSuggestion(BaseModel):
     child_entry_id: str | None = None
 
 
-AnalysisChartType = Literal["bar", "grouped_bar", "line", "pie", "scatter", "heatmap", "table"]
+class DrilldownRank(BaseModel):
+    """How a guided drill-down step picks its groups: the top or bottom `n`
+    by `by` (trip count, or % in spec)."""
+    mode: Literal["top", "bottom"] = "top"
+    n: int = Field(default=3, ge=1, le=10)
+    by: Literal["count", "pct_in_spec"] = "count"
+
+
+class DrilldownChain(BaseModel):
+    """Marks a repository entry as one level of a guided drill-down chain.
+    Level 1 is the original analysis; each confirmed drill-down adds one."""
+    chain_id: str
+    level: int
+    dimension: str
+    metric: Literal["count", "pct_in_spec"] = "count"
+    rank: DrilldownRank = DrilldownRank()
+    # Row pre-filter this level inherits from its ancestors plus the focus the
+    # PM confirmed, as analysis_templates conditions.
+    where: list[dict[str, Any]] = []
+    focus_dimension: str | None = None
+    focus_values: list[str] = []
+    focus_label: str = ""
+    # True when this level is one of several sibling slides created from one
+    # Confirm ("one slide per selected value"); its focus stays a single value.
+    split: bool = False
+    # Set when an ancestor's rank/focus changed after this level was built.
+    stale: bool = False
+
+
+class DrilldownFocusOption(BaseModel):
+    value: str
+    rows: int
+    child_count: int
+    is_wide: bool
+
+
+class DrilldownOptions(BaseModel):
+    entry_id: str
+    level: int
+    max_level: int
+    can_drill: bool
+    reason: str = ""
+    focus_dimension: str | None = None
+    child_dimension: str | None = None
+    # Every column that could be the next level (the hierarchy's next step first).
+    candidate_dimensions: list[str] = []
+    # Root analyses: candidate focus values (e.g. products) with how many child
+    # groups (origins) each has. Chain levels: their own top/bottom groups.
+    focus_options: list[DrilldownFocusOption] = []
+    default_focus: list[str] = []
+    default_rank: DrilldownRank = DrilldownRank()
+    metrics: list[str] = []
+
+
+class DrilldownProposal(BaseModel):
+    """One suggested next drill-down, ready to confirm as-is."""
+    child_dimension: str
+    metric: Literal["count", "pct_in_spec"] = "count"
+    rank: DrilldownRank = DrilldownRank()
+    focus_values: list[str]
+    reason: str = ""
+    source: Literal["ai", "default"] = "ai"
+
+
+class ConfirmDrilldownRequest(BaseModel):
+    focus_values: list[str] = Field(min_length=1, max_length=30)
+    child_dimension: str | None = None
+    metric: Literal["count", "pct_in_spec"] = "count"
+    rank: DrilldownRank = DrilldownRank()
+    # One slide (sibling level) per focus value instead of one combined level.
+    split: bool = False
+
+
+AnalysisChartType = Literal["bar", "grouped_bar", "line", "pie", "scatter", "heatmap", "combo", "table"]
 AnalysisFilterKind = Literal["categorical", "numeric_range", "date_range"]
 AnalysisComputationMode = Literal["template", "code"]
 
@@ -309,6 +386,24 @@ class AnalysisFilterSelection(BaseModel):
     end: str | None = None
 
 
+RequiredFeatureState = Literal["satisfied", "not_approved", "not_computed", "missing"]
+
+
+class RequiredFeatureStatus(BaseModel):
+    """One feature an analysis consumes, and whether it is ready to use."""
+    feature_id: str | None = None
+    name: str
+    output_column: str
+    definition: str = ""
+    state: RequiredFeatureState
+    satisfied: bool
+    message: str = ""
+
+
+class SelectRequiredFeatureRequest(BaseModel):
+    feature_id: str
+
+
 class AnalysisRepositoryEntry(BaseModel):
     """One candidate analysis in a session's repository, regardless of which
     of the five sources proposed it. `calculation_intent` is always a plain-
@@ -333,6 +428,16 @@ class AnalysisRepositoryEntry(BaseModel):
     # Set only for source == "drilldown": the entry id this one was spawned
     # from by a PM clicking "Explore this" on a suggested follow-up.
     parent_id: str | None = None
+    # Set when this entry is one level of a guided drill-down chain.
+    chain: DrilldownChain | None = None
+    # Features this analysis requires (it consumes their columns instead of
+    # recomputing them) and whether all of them are approved and computed.
+    # The analysis cannot run until `dependencies_satisfied` is true.
+    required_features: list[RequiredFeatureStatus] = []
+    dependencies_satisfied: bool = True
+    dependency_message: str | None = None
+    # Customer KPIs (customer_kpi.json) this analysis reuses the definition of.
+    kpi_dependencies: list[dict[str, Any]] = []
     # Deterministic template spec (analysis_templates.py) fitted by the
     # Analysis Designer -- None means the entry is computed by generated code.
     template: dict[str, Any] | None = None

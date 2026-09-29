@@ -5,6 +5,8 @@ import "./FeatureCard.css";
 interface FeatureCardProps {
   feature: FeatureResult;
   colorIndex?: number;
+  /** Names of analyses that need this feature; non-empty shows a tag. */
+  requiredFor?: string[];
   onExpand: () => void;
 }
 
@@ -60,7 +62,7 @@ export function Distribution({ entries, maxCount }: { entries: [string, number][
   );
 }
 
-export default function FeatureCard({ feature, colorIndex = 0, onExpand }: FeatureCardProps) {
+export default function FeatureCard({ feature, colorIndex = 0, requiredFor = [], onExpand }: FeatureCardProps) {
   const total = feature.non_null_count + feature.null_count;
   const distributionEntries = Object.entries(feature.distribution);
   const statsEntries = displayStats(feature.stats);
@@ -81,6 +83,11 @@ export default function FeatureCard({ feature, colorIndex = 0, onExpand }: Featu
           <span className="feature-card__column">{feature.output_column}</span>
         </div>
         <div className="feature-card__badges">
+          {requiredFor.length > 0 && (
+            <span className="feature-card__required-badge" title={requiredFor.join(", ")}>
+              Required for analysis: {requiredFor.join(", ")}
+            </span>
+          )}
           {feature.source !== "predefined" && (
             <span className={feature.source === "ai_suggested" ? "feature-card__ai-badge" : "feature-card__custom-badge"}>
               {SOURCE_LABELS[feature.source] ?? feature.source}

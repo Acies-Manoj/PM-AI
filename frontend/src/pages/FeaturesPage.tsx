@@ -243,6 +243,8 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
           const preview = previews[id];
           const repo = repositories[id] ?? [];
           const pendingSuggestions = repo.filter((e) => e.source === "ai_suggested" && e.status === "pending");
+          // Analyses that need each feature (by feature id) -> "Required for analysis" tag.
+          const requiredFor = (featureId: string): string[] => repo.find((e) => e.id === featureId)?.required_for_analysis ?? [];
 
           const panelsSection = report && (
             <div className="features-page__panels-grid">
@@ -399,6 +401,11 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                                   >
                                     <span className="features-page__summary-name">{f.name}</span>
                                     <code className="features-page__summary-col">{f.output_column}</code>
+                                    {requiredFor(f.id).length > 0 && (
+                                      <span className="features-page__required-tag" title={requiredFor(f.id).join(", ")}>
+                                        Required for analysis: {requiredFor(f.id).join(", ")}
+                                      </span>
+                                    )}
                                   </button>
                                 </li>
                               ))}
@@ -424,6 +431,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                             key={f.id}
                             feature={f}
                             colorIndex={idx}
+                            requiredFor={requiredFor(f.id)}
                             onExpand={() => setOpenFeature({ slotId: id, featureId: f.id })}
                           />
                         ))}

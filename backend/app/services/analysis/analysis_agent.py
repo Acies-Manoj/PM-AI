@@ -15,6 +15,8 @@ entirely (see analysis_engine.py / analysis_templates.py).
 """
 from __future__ import annotations
 
+import datetime
+import decimal
 import json
 import math
 import re
@@ -23,7 +25,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 from openai import OpenAI
 
-from app.config import ANALYSIS_AGENT_MODEL, OPENROUTER_API_KEY
+from app.config import ANALYSIS_AGENT_MODEL, DRILLDOWN_AGENT_MODEL, OPENROUTER_API_KEY
 from app.services.analysis import analysis_charts
 from app.services.analysis.analysis_charts import ChartRoles
 from app.services.analysis.analysis_columns import column_catalog
@@ -61,11 +63,13 @@ def _get_client() -> OpenAI:
 
 
 def call_llm(
-    system_prompt: str, user_prompt: str, *, json_mode: bool, temperature: float, call_name: str
+    system_prompt: str, user_prompt: str, *, json_mode: bool, temperature: float, call_name: str,
+    model: str | None = None,
 ) -> str:
     client = _get_client()
+    model = model or ANALYSIS_AGENT_MODEL
     kwargs: dict = {
-        "model": ANALYSIS_AGENT_MODEL,
+        "model": model,
         "temperature": temperature,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -79,7 +83,7 @@ def call_llm(
             response = client.chat.completions.create(**kwargs)
     else:
         response = client.chat.completions.create(**kwargs)
-    token_usage.record(call_name, ANALYSIS_AGENT_MODEL, response)
+    token_usage.record(call_name, model, response)
     return response.choices[0].message.content or ""
 
 
@@ -112,6 +116,23 @@ def _entry_block(entry: dict) -> str:
         f"Description: {entry.get('description', '')}\n"
         f"Calculation intent: {entry['calculation_intent']}"
         f"{cols_hint}"
+        f"{_required_features_block(entry)}"
+    )
+
+
+def _required_features_block(entry: dict) -> str:
+    """Features this analysis depends on. They are already computed columns:
+    the analysis must read them, never rebuild the calculation itself."""
+    lines = [
+        f"- `{f['output_column']}` ({f.get('name', '')}): {f.get('definition', '')}".rstrip(": ")
+        for f in entry.get("required_features") or []
+        if f.get("output_column")
+    ]
+    if not lines:
+        return ""
+    return (
+        "\nREQUIRED FEATURES (already computed as columns of the data -- use these columns directly "
+        "and do NOT recompute their calculation inside this analysis):\n" + "\n".join(lines)
     )
 
 
@@ -134,6 +155,11 @@ output table almost always has FEWER rows than the source data.
 The plan MUST:
 - Name the EXACT column(s) from the catalog it uses. Never invent a column \
 name that isn't in the catalog.
+- If a REQUIRED FEATURES section is given, those columns are already computed \
+in the data (even though the catalog may not list them yet): use them \
+directly by their exact column name and do NOT recompute their calculation \
+(e.g. use a required count column instead of counting again, use a required \
+"in spec" column instead of rebuilding it from raw hour columns).
 - State what to group by (if anything) and what metric(s) to aggregate \
 (sum, mean, count, min, max, median, distinct count, or share of total).
 - State how nulls / missing values are handled.
@@ -350,47 +376,103 @@ def interpret(entry: dict, plan: dict, table_sample: str, chart_type: str) -> st
 
 _DRILLDOWN_SYSTEM = """You are the drilldown-suggestion step of the Analysis Agent. Given an \
 analysis that was just computed and interpreted, propose up to 3 FOLLOW-UP \
-analyses that zoom INTO the specific standout entity the interpretation just \
-named (the worst/best carrier, product, lane, month, etc.) -- never a generic \
-"break it down by another dimension" that ignores what actually stood out. \
-Think of this like a report that drills Product -> Supplier -> Carrier -> \
-Month, where each slide narrows into whatever underperformed on the slide \
-before it, instead of re-slicing the same top-level view a different way.
+analyses a program manager would genuinely want next. They should narrow into \
+the standout entity the interpretation named (the worst/best carrier, product, \
+origin, month, etc.) OR compare it against the rest -- and each must answer a \
+DIFFERENT QUESTION.
+
+The most important rule: the ideas must differ in WHAT THEY MEASURE, not just \
+in the x-axis. "Distinct serial numbers by carrier", "... by month" and \
+"... by destination" are ONE idea (the same count re-sliced three ways) -- \
+never return that. Give each suggestion its own LENS:
+
+- "quality": compliance / temperature-spec performance -- % in spec, time out \
+of spec, excursion or alarm rate. Use an engineered quality feature column if \
+one is listed below.
+- "volume": how many trips, or the share of volume. At most ONE suggestion may \
+be a plain volume/count view.
+- "trend": the same measure over time (week / month) for the standout.
+- "duration": transit time / segment length / delays.
+- "temperature": temperature behaviour -- mean, peak, variability or deviation \
+from the limits (Mean Value, Max Value, Standard Deviation, Limit columns).
+- "outliers": the worst individual shipments or segments (ranked rows), to find \
+what actually went wrong.
 
 Every suggestion MUST:
-- Name the standout entity from the interpretation and scope the drilldown to \
-it (e.g. "for Carrier X" or "within Product Y") -- filtering down, not just \
-re-grouping the same population.
-- Reference only columns that appear in the given column list -- never \
-invent a column name.
-- NOT group by the column the parent analysis already grouped by (see \
-"Parent grouped by" below, when given) -- re-sorting or re-filtering the \
-SAME grouping is not a drilldown.
-- Set "suggested_chart_type" to the parent's own chart type (see "Parent \
-chart type" below) when the drilldown reuses the same kind of two metrics \
-(a rate/percentage plus a count/volume) the parent used, so a drilldown \
-chain looks visually consistent, the way every slide in a real report reuses \
-one chart shape across a drill chain. Otherwise set it to null and let the \
-normal chart-suggestion step decide.
+- Use a DIFFERENT lens from the others (three suggestions = three lenses).
+- Use a different metric from the others; where sensible also a different \
+breakdown column.
+- If ENGINEERED FEATURES are listed, at least one suggestion must be built on \
+one of them (use its column name exactly).
+- Reference only columns that appear in the given column list -- never invent \
+a column name.
+- NOT group by the column the parent analysis already grouped by (see "Parent \
+grouped by" below, when given).
+- Count trips as "Trip ID" only when the lens is volume; do not default to \
+distinct Serial Numbers.
+- Set "suggested_chart_type" to the parent's own chart type ONLY when it reuses \
+the same kind of two metrics (a rate plus a volume); otherwise null.
 
-Example -- parent "% in spec by Carrier" (chart type: combo), interpretation \
-names "DHL lowest at 81%":
-{"name": "% in spec by Lane for DHL", "description": "Breaks DHL's \
-compliance down by lane to find where it's weakest.", "calculation_intent": \
-"Filter to Carrier = DHL, then group by Lane and compute % in spec and \
-shipment count per lane.", "suggested_chart_type": "combo"}
-This is valid because it narrows into the named standout (DHL) and groups by \
-a NEW column (Lane), not the parent's own column (Carrier).
+Example -- parent "Trips by Origin for Table Grapes", interpretation names \
+"Origin A carries 60% of trips", engineered feature "% In Spec" available. \
+Three DIFFERENT ideas:
+1. lens quality: "% in spec by Carrier for Origin A" (mean of % In Spec + trip \
+count per carrier).
+2. lens trend: "Monthly % in spec for Origin A" (mean of % In Spec by month).
+3. lens outliers: "10 lowest % in spec shipments from Origin A" (ranked rows \
+with carrier, date and % In Spec).
 
 Respond with ONLY a JSON object, no markdown, no commentary:
 {"drilldowns": [
   {
     "name": "short title",
+    "lens": "quality | volume | trend | duration | temperature | outliers",
+    "metric": "the measure in a few words, e.g. mean % In Spec",
+    "dimension": "the breakdown column, 'time', or 'none'",
     "description": "one plain-English sentence on what this drilldown would show",
-    "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below, including the filter/scope down to the standout entity",
+    "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below, including any filter/scope to the standout entity",
     "suggested_chart_type": "<chart type, or null>"
   }
 ]}"""
+
+_LENSES = {"quality", "volume", "trend", "duration", "temperature", "outliers"}
+
+
+def _features_block(entry: dict) -> str:
+    lines = [
+        f"- `{f['output_column']}` ({f.get('name', '')}): {f.get('definition', '')}".rstrip(": ")
+        for f in entry.get("available_features") or []
+    ]
+    return ("ENGINEERED FEATURES (computed columns you can build on):\n" + "\n".join(lines) + "\n\n") if lines else ""
+
+
+def _metric_key(text: str) -> str:
+    return " ".join(sorted(set(re.sub(r"[^a-z0-9%]+", " ", (text or "").lower()).split())))
+
+
+def _diverse(candidates: list, avoid: list[str] | None = None, parent_dims: list[str] | None = None) -> list[dict]:
+    """Keeps only ideas that ask a different question: one per lens, never the
+    same metric twice (same measure re-sliced by another x-axis), and never a
+    breakdown by the column the parent already groups by."""
+    taken = {_metric_key(n) for n in avoid or []}
+    parent = {str(d).strip().lower() for d in parent_dims or []}
+    lenses: set[str] = set()
+    metrics: set[str] = set()
+    kept: list[dict] = []
+    for spec in candidates:
+        if not isinstance(spec, dict) or not spec.get("name") or not spec.get("calculation_intent"):
+            continue
+        lens = str(spec.get("lens") or "").strip().lower()
+        lens = lens if lens in _LENSES else "volume"
+        metric = _metric_key(spec.get("metric") or spec["name"])
+        if str(spec.get("dimension") or "").strip().lower() in parent:
+            continue
+        if lens in lenses or metric in metrics or _metric_key(spec["name"]) in taken:
+            continue
+        lenses.add(lens)
+        metrics.add(metric)
+        kept.append({**spec, "lens": lens})
+    return kept
 
 
 def suggest_drilldowns(
@@ -407,27 +489,37 @@ def suggest_drilldowns(
     if avoid:
         # "Suggest more": the PM already has these -- propose different ones.
         context_lines.append(
-            "Already suggested (do NOT repeat or rephrase these; pick a different standout entity or a different new column):\n"
+            "Already suggested (do NOT repeat or rephrase these; use a different lens, metric or standout):\n"
             + "\n".join(f"- {n}" for n in avoid)
         )
     context_block = ("\n" + "\n".join(context_lines) + "\n") if context_lines else ""
     user_prompt = (
         f"Analysis: {entry['name']}\nPlan:\n{plan['plan']}\n{context_block}\n"
         f"Computed table sample:\n{table_sample}\n\nInterpretation:\n{interpretation}\n\n"
-        f"COLUMN CATALOG:\n{columns_block}\n\nPropose the drilldowns now."
+        f"{_features_block(entry)}COLUMN CATALOG:\n{columns_block}\n\nPropose the drilldowns now."
     )
-    raw = call_llm(_DRILLDOWN_SYSTEM, user_prompt, json_mode=True, temperature=0.4, call_name="analysis_agent_drilldown")
-    payload = json.loads(strip_json_fence(raw))
-    candidates = payload.get("drilldowns", [])
-    if not isinstance(candidates, list):
-        return []
+
+    kept: list[dict] = []
+    for attempt in range(2):
+        prompt = user_prompt
+        if attempt:
+            prompt += (
+                "\n\nYOUR PREVIOUS IDEAS WERE TOO SIMILAR (same measure, different x-axis): "
+                + "; ".join(k["name"] for k in kept)
+                + ". Return ideas with DIFFERENT lenses and metrics."
+            )
+        raw = call_llm(
+            _DRILLDOWN_SYSTEM, prompt, json_mode=True, temperature=0.5, call_name="analysis_agent_drilldown",
+            model=DRILLDOWN_AGENT_MODEL,
+        )
+        payload = json.loads(strip_json_fence(raw))
+        candidates = payload.get("drilldowns", [])
+        kept = _diverse(candidates if isinstance(candidates, list) else [], avoid, parent_group_by)
+        if len(kept) >= 2 or len(candidates or []) < 2:
+            break
 
     drilldowns: list[dict] = []
-    for spec in candidates:
-        if not isinstance(spec, dict):
-            continue
-        if not spec.get("name") or not spec.get("calculation_intent"):
-            continue
+    for spec in kept:
         chart_type_hint = spec.get("suggested_chart_type")
         drilldowns.append({
             "name": spec["name"],
@@ -452,12 +544,32 @@ def is_plausible_table(table: list[dict]) -> tuple[bool, str | None]:
 
 
 def _json_safe(table: list[dict]) -> list[dict]:
-    """NaN / inf aren't valid JSON -- the browser's response.json() rejects
-    them -- so they become None before a table leaves the agent."""
+    """Everything in a table must survive JSON: NaN / inf aren't valid (the
+    browser's response.json() rejects them) and generated code often returns
+    pandas types the response serializer can't write -- a month `Period`,
+    timestamps, timedeltas, numpy scalars, Decimals. All become plain
+    None / number / string values before a table leaves the agent."""
     def clean(v):
-        if isinstance(v, float) and not math.isfinite(v):
+        if v is None or v is pd.NaT:
             return None
-        return v
+        if isinstance(v, (bool, str, int)):
+            return v
+        if isinstance(v, float):
+            return v if math.isfinite(v) else None
+        if isinstance(v, pd.Period):
+            return str(v)
+        if isinstance(v, (datetime.datetime, datetime.date)):  # includes pd.Timestamp
+            return v.isoformat()
+        if isinstance(v, (datetime.timedelta, pd.Timedelta)):
+            return round(v.total_seconds() / 3600, 2)  # hours, matching the data's own duration columns
+        if isinstance(v, decimal.Decimal):
+            return clean(float(v))
+        if hasattr(v, "item"):  # numpy scalar
+            try:
+                return clean(v.item())
+            except (ValueError, TypeError):
+                pass
+        return str(v)
     return [{k: clean(v) for k, v in row.items()} for row in table]
 
 

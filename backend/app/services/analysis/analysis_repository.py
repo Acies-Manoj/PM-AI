@@ -64,8 +64,25 @@ def _predefined_entries() -> list[dict]:
             # "ai_generated" predefined type.
             "formula": spec.get("formula"),
             "parent_id": None,
+            # Optional in analysis_profile.json: the features (by id, output
+            # column or name) this analysis consumes.
+            "required_features": _profile_feature_refs(spec.get("required_features")),
         })
     return entries
+
+
+def _profile_feature_refs(raw) -> list[dict]:
+    """Normalises an analysis-profile `required_features` list -- each item a
+    feature id / output column / name string, or a dict with those keys."""
+    refs = []
+    for item in raw or []:
+        if isinstance(item, str) and item.strip():
+            key = item.strip()
+            refs.append({"feature_id": key if key.startswith("predefined_") else None, "name": key, "output_column": key})
+        elif isinstance(item, dict) and (item.get("feature_id") or item.get("name") or item.get("output_column")):
+            refs.append({"feature_id": item.get("feature_id"), "name": item.get("name") or item.get("output_column") or "",
+                         "output_column": item.get("output_column")})
+    return refs
 
 
 def predefined_catalog_lines() -> list[str]:
@@ -83,12 +100,36 @@ def _planner_entries(session_id: str) -> list[dict]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return []
+    # Imported here: planner_dependencies itself reads this module's predefined entries.
+    from app.services.planner import planner_dependencies
+
+    recs = data.get("recommendations", [])
+    slug_to_index = {
+        planner_dependencies.slug(r.get("name", "")): j
+        for j, r in enumerate(recs) if r.get("type") in ("feature", "feature_and_analysis")
+    }
     entries = []
-    for i, rec in enumerate(data.get("recommendations", [])):
+    for i, rec in enumerate(recs):
         if rec.get("pm_decision") != "accepted":
             continue
         if rec.get("type") not in ("analysis", "feature_and_analysis"):
             continue
+        if rec.get("analysis_source") == "analysis_profile":
+            # Already present as a predefined entry with its own configuration.
+            continue
+        required = []
+        for dep in rec.get("feature_dependencies") or []:
+            if dep.get("action") == "reuse_existing" and dep.get("existing_id"):
+                required.append({"feature_id": dep["existing_id"], "name": dep["feature_name"],
+                                 "output_column": dep.get("output_column")})
+            elif planner_dependencies.slug(dep.get("feature_name", "")) in slug_to_index:
+                j = slug_to_index[planner_dependencies.slug(dep["feature_name"])]
+                required.append({"feature_id": f"planner_{j}", "name": recs[j]["name"],
+                                 "output_column": planner_dependencies.slug(recs[j]["name"])})
+        if rec.get("type") == "feature_and_analysis" and not required:
+            # Older output: the combined recommendation's own feature is the dependency.
+            required.append({"feature_id": f"planner_{i}", "name": rec.get("name", ""),
+                             "output_column": planner_dependencies.slug(rec.get("name", ""))})
         # The Planner's current schema is flat (name/description/required_fields
         # directly on the recommendation) -- see planner.py's system prompt.
         name = rec.get("name") or f"Planner Analysis {i + 1}"
@@ -105,6 +146,8 @@ def _planner_entries(session_id: str) -> list[dict]:
             # plan specifically, so it's carried through verbatim.
             "formula": rec.get("generated_analysis_formula"),
             "parent_id": None,
+            "required_features": required,
+            "kpi_dependencies": rec.get("kpi_dependencies") or [],
         })
     return entries
 
@@ -238,6 +281,50 @@ def add_drilldown_entry(session_id: str, parent_id: str, drilldown: dict) -> dic
     entries = _predefined_entries() + _planner_entries(session_id) + persisted
     _save(session_id, entries)
     return entry
+
+
+def add_chain_entry(
+    session_id: str, parent_id: str, *, name: str, description: str, template: dict, chart_type: str,
+    filters: list[dict], chain: dict,
+) -> dict:
+    """Persists one confirmed level of a guided drill-down chain. Its
+    deterministic `template` carries the whole narrowed-down scope, so it
+    runs without any LLM call."""
+    entry = {
+        "id": f"drilldown_{uuid.uuid4().hex[:8]}",
+        "source": "drilldown",
+        "status": "approved",
+        "name": name,
+        "description": description,
+        "calculation_intent": description,
+        "input_columns": [],
+        "formula": None,
+        "parent_id": parent_id,
+        "template": template,
+        "chart_recommendation": {"chart_type": chart_type, "reason": "Chosen for this drill-down level.", "alternatives": []},
+        "filters": filters,
+        "chain": chain,
+    }
+    persisted = _load_persisted(session_id)
+    persisted.append(entry)
+    _save(session_id, _predefined_entries() + _planner_entries(session_id) + persisted)
+    return entry
+
+
+def update_entry(session_id: str, entry_id: str, fields: dict) -> dict | None:
+    """Merges `fields` into one persisted entry (predefined and planner
+    entries are derived, so they can't be edited here)."""
+    persisted = _load_persisted(session_id)
+    found = None
+    for e in persisted:
+        if e["id"] == entry_id:
+            e.update(fields)
+            found = e
+            break
+    if found is None:
+        return None
+    _save(session_id, _predefined_entries() + _planner_entries(session_id) + persisted)
+    return found
 
 
 def set_entry_status(session_id: str, entry_id: str, status: str) -> dict | None:

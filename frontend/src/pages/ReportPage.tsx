@@ -26,6 +26,7 @@ import {
   type EntryTranslation,
   type LanguageOption,
 } from "../api/audit";
+import { buildReportTree, drilldownSubtitle, isStaleEntry } from "../utils/reportTree";
 import { REPORT_CHART_TYPES, type ReportChartType } from "../utils/reportChartTypes";
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
@@ -136,10 +137,12 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
       fetchAnalysisRepository(sessionId)
         .then((res) => {
           setRepositories((prev) => ({ ...prev, [id]: res.entries }));
+          const byId = new Map(res.entries.map((e) => [e.id, e]));
           setSelected((prev) => {
             const next = { ...prev };
             for (const entry of res.entries) {
-              if (entry.run_status === "done" && !(entry.id in next)) next[entry.id] = true;
+              // Stale drill-down levels are never included by default.
+              if (entry.run_status === "done" && !(entry.id in next)) next[entry.id] = !isStaleEntry(entry, byId);
             }
             return next;
           });
@@ -197,7 +200,11 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
     for (const id of auditedReady) {
       const order = slideOrder[id] ?? [];
       const doneIds = new Set((repositories[id] ?? []).filter((e) => e.run_status === "done").map((e) => e.id));
-      const orderedSelectedDoneIds = order.filter((eid) => doneIds.has(eid) && selected[eid]);
+      const byId = new Map((repositories[id] ?? []).map((e) => [e.id, e]));
+      const orderedSelectedDoneIds = buildReportTree(
+        (repositories[id] ?? []).filter((e) => doneIds.has(e.id) && selected[e.id] && !isStaleEntry(e, byId)),
+        order
+      ).map((n) => n.entry.id);
       if (orderedSelectedDoneIds.length === 0) continue;
       const signature = orderedSelectedDoneIds.join("|");
       if (summarizedFor.current[id] === signature || summaryLoading[id]) continue;
@@ -209,8 +216,10 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
 
   const toggleSelected = (entryId: string) => setSelected((prev) => ({ ...prev, [entryId]: !prev[entryId] }));
 
-  const handleDrop = (id: UploadSlotId, targetEntryId: string) => {
-    if (!draggingId || draggingId === targetEntryId) {
+  const handleDrop = (id: UploadSlotId, targetEntryId: string, parentOf: Map<string, string | null>) => {
+    // Reordering only happens among roots or among siblings -- a drill-down
+    // can never leave its parent, nor precede it.
+    if (!draggingId || draggingId === targetEntryId || parentOf.get(draggingId) !== parentOf.get(targetEntryId)) {
       setDraggingId(null);
       return;
     }
@@ -315,12 +324,21 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           const slot = UPLOAD_SLOTS.find((s) => s.id === id)!;
           const doneEntriesRaw = (repositories[id] ?? []).filter((e) => e.run_status === "done");
           const order = slideOrder[id] ?? [];
-          const orderIndex = new Map(order.map((eid, idx) => [eid, idx]));
-          const doneEntries = [...doneEntriesRaw].sort(
-            (a, b) => (orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER)
-          );
+          const byId = new Map((repositories[id] ?? []).map((e) => [e.id, e]));
+          const staleIds = new Set(doneEntriesRaw.filter((e) => isStaleEntry(e, byId)).map((e) => e.id));
+          // Display tree: every done level, drill-downs indented under their parent.
+          const tree = buildReportTree(doneEntriesRaw, order);
+          const doneEntries = tree.map((n) => n.entry);
+          const parentOf = new Map(tree.map((n) => [n.entry.id, n.parentId]));
           const aiSuggestedCount = doneEntries.filter((e) => e.source === "ai_suggested").length;
-          const selectedEntries = doneEntries.filter((e) => selected[e.id]);
+          // What the export will contain: selected, non-stale levels, numbered
+          // over that subset exactly as the backend does.
+          const includedTree = buildReportTree(
+            doneEntriesRaw.filter((e) => selected[e.id] && !staleIds.has(e.id)),
+            order
+          );
+          const slideNumbers = new Map(includedTree.map((n) => [n.entry.id, n.number]));
+          const selectedEntries = includedTree.map((n) => n.entry);
           const selectedIds = selectedEntries.map((e) => e.id);
           const rowCount = auditReports[id]!.row_count;
 
@@ -346,20 +364,23 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
 
               <p className="report-page__included-title">This report will include:</p>
               <ul className="report-page__included-list">
-                {doneEntries.map((entry, idx) => {
+                {tree.map(({ entry, depth }) => {
                   const entryTranslation = translations[id]?.[entry.id];
                   const displayName = entryTranslation?.name ?? entry.name;
                   const displayInterpretation = entryTranslation?.interpretation ?? entry.interpretation;
+                  const stale = staleIds.has(entry.id);
+                  const slideNumber = slideNumbers.get(entry.id);
                   return (
                     <li
                       key={entry.id}
-                      className={`report-page__slide-thumb${draggingId === entry.id ? " report-page__slide-thumb--dragging" : ""}`}
+                      className={`report-page__slide-thumb${draggingId === entry.id ? " report-page__slide-thumb--dragging" : ""}${stale ? " report-page__slide-thumb--stale" : ""}`}
+                      style={depth > 0 ? { marginLeft: depth * 28 } : undefined}
                       draggable
                       onDragStart={() => setDraggingId(entry.id)}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => {
                         e.preventDefault();
-                        handleDrop(id, entry.id);
+                        handleDrop(id, entry.id, parentOf);
                       }}
                       onDragEnd={() => setDraggingId(null)}
                     >
@@ -367,10 +388,24 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
                         <span className="report-page__drag-handle" aria-label="Drag to reorder">
                           <IconGripVertical />
                         </span>
-                        <input type="checkbox" checked={!!selected[entry.id]} onChange={() => toggleSelected(entry.id)} />
-                        <span className="report-page__slide-label">Slide {idx + 1}</span>
+                        <input
+                          type="checkbox"
+                          checked={!stale && !!selected[entry.id]}
+                          disabled={stale}
+                          onChange={() => toggleSelected(entry.id)}
+                        />
+                        <span className={`report-page__slide-label${slideNumber ? "" : " report-page__slide-label--off"}`}>
+                          {slideNumber ? `Slide ${slideNumber}` : "Not included"}
+                        </span>
                         <span className="report-page__entry-name">{displayName}</span>
+                        {stale && <span className="report-page__stale-badge">Stale</span>}
                       </div>
+                      {entry.chain && <p className="report-page__slide-subtitle">{drilldownSubtitle(entry.chain)}</p>}
+                      {stale && (
+                        <p className="report-page__stale-note">
+                          Stale - an earlier level's filter or ranking changed. Refresh it on the Analysis page to include it.
+                        </p>
+                      )}
                       <button
                         type="button"
                         className="report-page__chart-toggle"

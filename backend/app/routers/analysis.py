@@ -1,5 +1,6 @@
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
@@ -11,15 +12,23 @@ from app.schemas import (
     AnalysisRepositoryEntry,
     AnalysisRepositoryResponse,
     AnalysisResult,
+    ConfirmDrilldownRequest,
     DraftAnalysisRequest,
+    DrilldownOptions,
+    DrilldownProposal,
+    DrilldownRank,
     FilterAnalysisRequest,
     OverallAnalysisReport,
+    SelectRequiredFeatureRequest,
     SuggestAnalysisEntriesResponse,
 )
 from app.services.analysis import analysis_definitions_store as defs_store
 from app.services.analysis import (
     analysis_agent,
+    analysis_dependencies,
     analysis_designer,
+    analysis_drilldown,
+    analysis_drilldown_agent,
     analysis_engine,
     analysis_filters,
     analysis_repository,
@@ -30,8 +39,11 @@ from app.services.analysis import (
 )
 from app.services.analysis.analysis_agent import AnalysisComputation
 from app.services.audit.audit_store import AuditSession, store
+from app.services.features import feature_repository
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
+# "One slide per value" creates this many sibling levels at most (each is an LLM run).
+MAX_SPLIT_SLIDES = 6
 logger = logging.getLogger(__name__)
 
 
@@ -85,6 +97,10 @@ def _merge_entry(session: AuditSession, definition: dict) -> AnalysisRepositoryE
     options are computed from the CURRENT data on every read."""
     result = session.analysis_results.get(definition["id"])
     merged = dict(definition)
+    resolved = analysis_dependencies.resolve(session.session_id, definition, session.df)
+    merged["required_features"] = resolved
+    merged["dependencies_satisfied"] = not analysis_dependencies.unmet(resolved)
+    merged["dependency_message"] = analysis_dependencies.block_message(resolved)
     merged["template_summary"] = analysis_templates.summarize(definition.get("template"))
     # A custom entry already has its own saved filters; every other source
     # only has them once a run has discovered them (see analysis_engine).
@@ -167,7 +183,9 @@ def add_custom_analysis(session_id: str, body: AddCustomAnalysisRequest) -> Anal
 def suggest_analyses(session_id: str) -> SuggestAnalysisEntriesResponse:
     session = _get_session_or_404(session_id)
     try:
-        suggestions = analysis_suggester.suggest_analyses(session.df, analysis_repository.get_repository(session_id))
+        suggestions = analysis_suggester.suggest_analyses(
+            session.df, analysis_repository.get_repository(session_id), feature_repository.get_approved_entries(session_id),
+        )
     except Exception as exc:
         logger.exception("Analysis suggestion agent failed for session %s", session_id)
         raise HTTPException(
@@ -201,7 +219,9 @@ def _run_entry(session: AuditSession, session_id: str, entry: dict) -> AnalysisR
     recorded as run_status="error" so one entry's failure never blocks the
     rest of the page, mirroring the feature system's skipped_notes
     philosophy."""
-    computation = analysis_engine.run_analysis(session_id, entry, session.df)
+    computation = analysis_engine.run_analysis(
+        session_id, analysis_dependencies.prepare_entry(session_id, entry, session.df), session.df,
+    )
     session.analysis_results[entry["id"]] = _to_result(entry, computation)
     return _merge_entry(session, entry)
 
@@ -237,7 +257,28 @@ def run_entry(session_id: str, entry_id: str) -> AnalysisRepositoryEntry:
         raise HTTPException(status_code=404, detail="Analysis entry not found in this session's repository.")
     if entry["status"] == "rejected":
         raise HTTPException(status_code=422, detail="This analysis was rejected and can't be run.")
+    # Required features must be selected (approved) and computed first --
+    # enforced here, not only by the UI.
+    blocked = analysis_dependencies.block_message(analysis_dependencies.resolve(session_id, entry, session.df))
+    if blocked:
+        raise HTTPException(status_code=422, detail=blocked)
     return _run_entry(session, session_id, entry)
+
+
+@router.post("/repository/{session_id}/entries/{entry_id}/required-features/select", response_model=AnalysisRepositoryEntry)
+def select_required_feature(session_id: str, entry_id: str, body: SelectRequiredFeatureRequest) -> AnalysisRepositoryEntry:
+    """Approves one of the features this analysis requires. It still has to be
+    computed (the Features step) before the analysis can run."""
+    session = _get_session_or_404(session_id)
+    entry = analysis_repository.get_entry(session_id, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Analysis entry not found in this session's repository.")
+    wanted = {r.get("feature_id") for r in analysis_dependencies.resolve(session_id, entry, session.df)}
+    if body.feature_id not in wanted:
+        raise HTTPException(status_code=404, detail="That feature is not a requirement of this analysis.")
+    if not analysis_dependencies.select_feature(session_id, body.feature_id):
+        raise HTTPException(status_code=422, detail="This feature can't be selected.")
+    return _merge_entry(session, analysis_repository.get_entry(session_id, entry_id))
 
 
 @router.post("/repository/{session_id}/entries/{entry_id}/filter", response_model=AnalysisRepositoryEntry)
@@ -265,7 +306,7 @@ def filter_entry(session_id: str, entry_id: str, body: FilterAnalysisRequest) ->
     merged = _merge_entry(session, entry).model_dump()
     # chart_recommendation comes from _merge_entry above (the stored run's),
     # not from the filtered view.
-    merged.update(view.model_dump(exclude={"id", "chart_recommendation", "template"}))
+    merged.update(view.model_dump(exclude={"id", "chart_recommendation", "template", "filters"}))
     merged["applied_filters"] = applied
     return AnalysisRepositoryEntry(**merged)
 
@@ -305,7 +346,7 @@ def suggest_more_drilldowns(session_id: str, entry_id: str) -> AnalysisRepositor
     existing = result.drilldown_suggestions
     try:
         fresh = analysis_agent.suggest_drilldowns(
-            entry,
+            analysis_dependencies.prepare_entry(session_id, entry, session.df),
             {"plan": result.plan_text or entry.get("calculation_intent") or entry["name"]},
             analysis_agent._table_sample_block(result.result_table or []),
             result.interpretation or "",
@@ -325,6 +366,265 @@ def suggest_more_drilldowns(session_id: str, entry_id: str) -> AnalysisRepositor
         existing.append(AnalysisDrilldownSuggestion(id=f"{entry_id}_dd{next_index}", **spec))
         next_index += 1
     return _merge_entry(session, entry)
+
+
+# --- Guided drill-down chains ---------------------------------------------------
+
+
+def _result_labels(result: AnalysisResult | None) -> list[str]:
+    """The groups a finished level shows (its label column), in table order."""
+    if result is None or not result.result_table or not result.result_columns:
+        return []
+    col = result.result_columns[0]
+    return [str(r[col]) for r in result.result_table if r.get(col) is not None]
+
+
+def _level_of(entry: dict) -> int:
+    return (entry.get("chain") or {}).get("level", 1)
+
+
+def _focus_label(values: list[str]) -> str:
+    return ", ".join(values) if len(values) <= 2 else f"{values[0]}, {values[1]} +{len(values) - 2}"
+
+
+def _parent_scope(session: AuditSession, parent: dict) -> tuple[str | None, list[dict]]:
+    """(the dimension the parent groups by, the row filter it already applies)."""
+    result = session.analysis_results.get(parent["id"])
+    if parent.get("chain"):
+        return parent["chain"]["dimension"], list(parent["chain"].get("where") or [])
+    template = parent.get("template") or (result.template if result else None) or {}
+    dimension = analysis_drilldown.root_dimension(parent, result.template if result else None,
+                                                  result.result_columns if result else None, session.df)
+    return dimension, [w for w in template.get("where", [])]
+
+
+@router.get("/repository/{session_id}/entries/{entry_id}/drilldown/options", response_model=DrilldownOptions)
+def drilldown_options(session_id: str, entry_id: str) -> DrilldownOptions:
+    """What a guided drill-down from this analysis can look like: for a
+    level-1 analysis, which values are 'wide' (span many child groups);
+    for a chain level, its own top/bottom groups as the default focus."""
+    session = _get_session_or_404(session_id)
+    entry = analysis_repository.get_entry(session_id, entry_id)
+    result = session.analysis_results.get(entry_id)
+    if entry is None or result is None or result.run_status != "done":
+        raise HTTPException(status_code=409, detail="Run this analysis before drilling into it.")
+
+    level = _level_of(entry)
+    base = dict(entry_id=entry_id, level=level, max_level=analysis_drilldown.MAX_CHAIN_LEVEL,
+                metrics=analysis_drilldown.available_metrics(session.df))
+    if level >= analysis_drilldown.MAX_CHAIN_LEVEL:
+        return DrilldownOptions(**base, can_drill=False, reason=f"Drill-downs stop at level {analysis_drilldown.MAX_CHAIN_LEVEL}.")
+
+    dimension, where = _parent_scope(session, entry)
+    if dimension is None:
+        return DrilldownOptions(**base, can_drill=False, reason="This analysis isn't grouped by a single column, so there is nothing to drill into.")
+    pinned = {dimension} | {w["column"] for w in where}
+    candidates = analysis_drilldown_agent.candidate_dimensions(session.df, pinned)
+    child = analysis_drilldown.next_dimension(dimension, session.df)
+    if child not in candidates:
+        child = candidates[0] if candidates else None
+    if child is None:
+        return DrilldownOptions(**base, can_drill=False, focus_dimension=dimension,
+                                reason="There is no other column left to break this down by.")
+
+    options, default_focus = _focus_pool(session, entry, result, dimension, where, child)
+    next_where = where + ([analysis_drilldown.focus_condition(dimension, default_focus)] if default_focus else [])
+    return DrilldownOptions(
+        **base, can_drill=bool(options), focus_dimension=dimension, child_dimension=child,
+        candidate_dimensions=candidates, focus_options=options, default_focus=default_focus,
+        default_rank=DrilldownRank(**analysis_drilldown.default_rank_for(session.df, next_where, child)),
+    )
+
+
+def _focus_pool(session: AuditSession, entry: dict, result: AnalysisResult, dimension: str, where: list[dict], child: str) -> tuple[list[dict], list[str]]:
+    """The values the PM can focus on. A chain level offers the groups it shows
+    (all selected by default); a level-1 analysis offers the biggest values,
+    with the widest one selected."""
+    scoped = analysis_drilldown._apply(session.df, where)
+    if entry.get("chain"):
+        labels = _result_labels(result)
+        col = analysis_drilldown.as_labels(scoped[dimension])
+        options = [
+            {"value": v, "rows": int((col == v).sum()),
+             "child_count": int(scoped[col == v][child].nunique()), "is_wide": False}
+            for v in labels
+        ]
+        return options, labels
+    options = analysis_drilldown.focus_options(scoped, dimension, child)
+    wide = [o["value"] for o in options if o["is_wide"]]
+    return options, (wide[:1] or [o["value"] for o in options[:1]])
+
+
+@router.post("/repository/{session_id}/entries/{entry_id}/drilldown/propose", response_model=list[DrilldownProposal])
+def propose_drilldowns(session_id: str, entry_id: str) -> list[DrilldownProposal]:
+    """Up to 3 AI-suggested next drill-downs (dimension, focus, top/bottom N,
+    metric), validated against the data. Always returns at least the
+    deterministic default when there is anything to drill into."""
+    session = _get_session_or_404(session_id)
+    entry = analysis_repository.get_entry(session_id, entry_id)
+    result = session.analysis_results.get(entry_id)
+    if entry is None or result is None or result.run_status != "done":
+        raise HTTPException(status_code=409, detail="Run this analysis before drilling into it.")
+    if _level_of(entry) >= analysis_drilldown.MAX_CHAIN_LEVEL:
+        return []
+    dimension, where = _parent_scope(session, entry)
+    if dimension is None:
+        return []
+    pool_child = analysis_drilldown_agent.candidate_dimensions(session.df, {dimension} | {w["column"] for w in where})
+    if not pool_child:
+        return []
+    options, _ = _focus_pool(session, entry, result, dimension, where, pool_child[0])
+    proposals = analysis_drilldown_agent.propose(
+        session.df, entry, dimension, where, [o["value"] for o in options],
+        result.result_table or [], result.interpretation,
+    )
+    return [DrilldownProposal(**p) for p in proposals]
+
+
+def _build_level(session: AuditSession, dimension: str, metric: str, rank: dict, where: list[dict]) -> tuple[dict, str]:
+    try:
+        return analysis_drilldown.build_template(dimension, metric, rank, where, session.df)
+    except analysis_templates.TemplateError as exc:
+        raise HTTPException(status_code=422, detail=f"Can't build this drill-down: {exc}") from exc
+
+
+def _mark_stale(session_id: str, entry_id: str) -> None:
+    entries = analysis_repository.get_repository(session_id)
+    for d in analysis_drilldown.descendants(entries, entry_id):
+        analysis_repository.update_entry(session_id, d["id"], {"chain": {**d["chain"], "stale": True}})
+
+
+@router.post("/repository/{session_id}/entries/{entry_id}/drilldown", response_model=AnalysisRepositoryEntry)
+def confirm_drilldown(session_id: str, entry_id: str, body: ConfirmDrilldownRequest) -> AnalysisRepositoryEntry:
+    """The PM's Confirm: builds and runs the next chain level for the chosen
+    focus (e.g. Product = Table Grapes -> its top 3 Origins)."""
+    session = _get_session_or_404(session_id)
+    parent = analysis_repository.get_entry(session_id, entry_id)
+    result = session.analysis_results.get(entry_id)
+    if parent is None or result is None or result.run_status != "done":
+        raise HTTPException(status_code=409, detail="Run this analysis before drilling into it.")
+    level = _level_of(parent) + 1
+    if level > analysis_drilldown.MAX_CHAIN_LEVEL:
+        raise HTTPException(status_code=422, detail=f"Drill-downs stop at level {analysis_drilldown.MAX_CHAIN_LEVEL}.")
+
+    dimension, where = _parent_scope(session, parent)
+    child = body.child_dimension or (analysis_drilldown.next_dimension(dimension, session.df) if dimension else None)
+    pinned = ({dimension} | {w["column"] for w in where}) if dimension else set()
+    if dimension is None or child is None or child not in session.df.columns or child in pinned:
+        raise HTTPException(status_code=422, detail="Couldn't work out which level to drill into.")
+    if body.metric == "pct_in_spec" and analysis_drilldown.find_in_spec_column(session.df) is None:
+        raise HTTPException(status_code=422, detail="No '% in spec' column exists yet -- compute that feature first.")
+
+    values = list(dict.fromkeys(v for v in body.focus_values if v))
+    rank = body.rank.model_dump()
+    common = dict(session=session, session_id=session_id, parent=parent, dimension=dimension, where=where,
+                  child=child, metric=body.metric, rank=rank, level=level)
+
+    if body.split and len(values) > 1:
+        if len(values) > MAX_SPLIT_SLIDES:
+            raise HTTPException(status_code=422, detail=f"Pick at most {MAX_SPLIT_SLIDES} values to get one slide each.")
+        # Entries are created one at a time (they share one file); the runs -- an
+        # LLM interpretation each -- then happen concurrently.
+        created = [_create_level(values=[v], split=True, **common) for v in values]
+        todo = [entry for entry, is_new in created if is_new]
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            list(pool.map(lambda e: _run_entry(session, session_id, e), todo))
+        return _merge_entry(session, created[0][0])
+
+    entry, is_new = _create_level(values=values, split=False, **common)
+    return _run_entry(session, session_id, entry) if is_new else _merge_entry(session, entry)
+
+
+def _create_level(
+    *, session: AuditSession, session_id: str, parent: dict, dimension: str, where: list[dict], child: str,
+    metric: str, rank: dict, level: int, values: list[str], split: bool,
+) -> tuple[dict, bool]:
+    """Creates one chain level for `values` (not yet run), or returns the
+    identical level if it already exists. Returns (entry, was_created)."""
+    new_where = where + [analysis_drilldown.focus_condition(dimension, values)]
+    template, chart_type = _build_level(session, child, metric, rank, new_where)
+    label = _focus_label(values)
+    chain = {
+        "chain_id": (parent.get("chain") or {}).get("chain_id") or f"chain_{parent['id']}",
+        "level": level, "dimension": child, "metric": metric, "rank": rank, "where": new_where,
+        "focus_dimension": dimension, "focus_values": values, "focus_label": label, "split": split, "stale": False,
+    }
+    for existing in analysis_repository.get_repository(session_id):
+        c = existing.get("chain")
+        if existing.get("parent_id") == parent["id"] and c and c["where"] == new_where and c["dimension"] == child:
+            return existing, False
+
+    exclude = {child} | {w["column"] for w in new_where}
+    filters = analysis_designer.finalize_custom(
+        session.df, None, None, "", [], analysis_drilldown.chart_filters(session.df, exclude),
+    )[2]
+    name = analysis_drilldown.level_name(child, rank, label, metric)
+    entry = analysis_repository.add_chain_entry(
+        session_id, parent["id"], name=name, description=f"{name} (drill-down from {parent['name']}).",
+        template=template, chart_type=chart_type, filters=filters, chain=chain,
+    )
+    return entry, True
+
+
+@router.post("/repository/{session_id}/entries/{entry_id}/drilldown/rank", response_model=AnalysisRepositoryEntry)
+def rerank_drilldown(session_id: str, entry_id: str, body: DrilldownRank) -> AnalysisRepositoryEntry:
+    """Changes a level's Top/Bottom and N (or what it ranks by). Re-runs just
+    this level and marks every level below it stale, so the report never
+    changes unnoticed."""
+    session = _get_session_or_404(session_id)
+    entry = analysis_repository.get_entry(session_id, entry_id)
+    if entry is None or not entry.get("chain"):
+        raise HTTPException(status_code=404, detail="That isn't a drill-down level.")
+    chain = entry["chain"]
+    if body.by == "pct_in_spec" and analysis_drilldown.find_in_spec_column(session.df) is None:
+        raise HTTPException(status_code=422, detail="No '% in spec' column exists yet -- compute that feature first.")
+    rank = body.model_dump()
+    template, chart_type = _build_level(session, chain["dimension"], chain["metric"], rank, chain["where"])
+    name = analysis_drilldown.level_name(chain["dimension"], rank, chain["focus_label"], chain["metric"])
+    updated = analysis_repository.update_entry(session_id, entry_id, {
+        "template": template, "name": name, "chain": {**chain, "rank": rank, "stale": False},
+        "chart_recommendation": {"chart_type": chart_type, "reason": "Chosen for this drill-down level.", "alternatives": []},
+    })
+    _mark_stale(session_id, entry_id)
+    return _run_entry(session, session_id, updated)
+
+
+@router.post("/repository/{session_id}/entries/{entry_id}/drilldown/refresh", response_model=AnalysisRepositoryEntry)
+def refresh_drilldown(session_id: str, entry_id: str) -> AnalysisRepositoryEntry:
+    """Rebuilds a stale level from its parent's CURRENT groups (e.g. the
+    parent is now top 2 origins, so this level covers just those 2)."""
+    session = _get_session_or_404(session_id)
+    entry = analysis_repository.get_entry(session_id, entry_id)
+    if entry is None or not entry.get("chain"):
+        raise HTTPException(status_code=404, detail="That isn't a drill-down level.")
+    parent = analysis_repository.get_entry(session_id, entry["parent_id"])
+    chain = entry["chain"]
+    if parent is not None and parent.get("chain") and chain.get("split"):
+        # A "one slide per value" sibling keeps its own single focus; it only
+        # needs the value to still be one of the parent's groups.
+        labels = _result_labels(session.analysis_results.get(parent["id"]))
+        if not labels:
+            raise HTTPException(status_code=409, detail="Run the level above first.")
+        if not set(chain["focus_values"]) <= set(labels):
+            raise HTTPException(
+                status_code=409,
+                detail=f"{chain['focus_label']} is no longer one of the level above's groups. Restore that level's rank, or drill down again.",
+            )
+    elif parent is not None and parent.get("chain"):
+        labels = _result_labels(session.analysis_results.get(parent["id"]))
+        if not labels:
+            raise HTTPException(status_code=409, detail="Run the level above first.")
+        parent_dim, parent_where = _parent_scope(session, parent)
+        where = parent_where + [analysis_drilldown.focus_condition(parent_dim, labels)]
+        chain = {**chain, "where": where, "focus_values": labels, "focus_label": _focus_label(labels)}
+    template, chart_type = _build_level(session, chain["dimension"], chain["metric"], chain["rank"], chain["where"])
+    name = analysis_drilldown.level_name(chain["dimension"], chain["rank"], chain["focus_label"], chain["metric"])
+    updated = analysis_repository.update_entry(session_id, entry_id, {
+        "template": template, "name": name, "chain": {**chain, "stale": False},
+        "chart_recommendation": {"chart_type": chart_type, "reason": "Chosen for this drill-down level.", "alternatives": []},
+    })
+    _mark_stale(session_id, entry_id)
+    return _run_entry(session, session_id, updated)
 
 
 @router.get("/{session_id}/overall", response_model=OverallAnalysisReport)

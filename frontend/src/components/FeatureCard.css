@@ -275,3 +275,15 @@
   font-size: 12.5px;
   line-height: 1.5;
 }
+
+.feature-card__required-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--carrier-blue);
+  background: var(--carrier-blue-tint);
+  border-radius: 999px;
+  padding: 2px 8px;
+  line-height: 1.2;
+}

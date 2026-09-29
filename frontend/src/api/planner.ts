@@ -10,6 +10,25 @@ export type PmDecisionValue = "accepted" | "rejected" | "pending";
 // analysis_repository.py) and the actual computation plan is pre-generated
 // separately by the Feature/Analysis Agent's Think step (generated_*_formula
 // below).
+/** A feature an analysis needs: reused from the library / a customer KPI, or
+ * newly created (then a matching "feature" recommendation exists). */
+export interface PlannerFeatureDependency {
+  feature_name: string;
+  required: boolean;
+  action: "reuse_existing" | "create_new";
+  existing_id?: string;
+  output_column?: string;
+  reason?: string;
+}
+
+export interface PlannerKpiDependency {
+  name: string;
+  source: string; // "customer_kpi.json"
+  action: "reuse_existing";
+  existing_id: string;
+  output_column?: string;
+}
+
 export interface PlannerRecommendation {
   type: PlannerRecommendationType;
   status: PlannerRecommendationStatus;
@@ -35,6 +54,24 @@ export interface PlannerRecommendation {
   analysis_metrics?: string[];
   pm_decision?: PmDecisionValue;
   pm_notes?: string;
+  // Analyses only: what it depends on. No combined "feature + analysis" type
+  // exists any more -- a feature needed by an analysis lists it in
+  // `required_for_analysis` and is labelled REQUIRED FOR ANALYSIS.
+  kpi_dependencies?: PlannerKpiDependency[];
+  feature_dependencies?: PlannerFeatureDependency[];
+  feature_required?: boolean;
+  existing_analysis_id?: string | null;
+  existing_analysis_name?: string;
+  // "analysis_profile" = reuses an entry of analysis_profile.json, "new" otherwise.
+  analysis_source?: "new" | "analysis_profile";
+  // Features only: names of the analyses that need this feature (empty = the
+  // client asked for it directly).
+  required_for_analysis?: string[];
+  // Non-empty when a feature's text mentions ranking/sorting/comparison logic
+  // that belongs to an Analysis.
+  guardrail_warnings?: string[];
+  // Where this decision came from: "new" | "new_feature" | "analysis_profile".
+  decision_source?: string;
 }
 
 export interface PlannerSuggestResponse {

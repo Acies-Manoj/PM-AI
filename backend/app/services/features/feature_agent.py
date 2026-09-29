@@ -112,7 +112,13 @@ value per row of the dataframe `df`.
 The plan MUST:
 - Name the EXACT column(s) from the catalog it uses. Never invent a column \
 name that isn't in the catalog.
-- State how nulls / missing values are handled.
+- State how nulls / missing values are handled. A row that cannot be scored \
+(a required input is missing, e.g. no temperature limits) stays blank; do \
+not fill it with 0, which would score it as perfect.
+- Check the UNITS of every column used (a name or header like "(Days)" vs \
+"Hours") and convert so both sides of a calculation use the same unit. Never \
+subtract hours from days.
+- A percentage or ratio must stay within 0-100 (or 0-1): clamp it and say so.
 - State the output type: numeric, percentage, string, category, boolean, \
 datetime, or duration.
 - If the calculation naturally produces ONE value for the whole dataset (an \

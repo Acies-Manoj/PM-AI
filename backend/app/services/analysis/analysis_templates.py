@@ -131,6 +131,9 @@ class GroupAggregate(_Base):
     metrics: list[Metric] = Field(min_length=1, max_length=4)
     sort: Literal["desc", "asc", "label"] = "desc"
     top_n: int | None = Field(default=None, ge=1, le=100)
+    # Groups with fewer rows are dropped -- keeps a bottom-N by a rate from
+    # being filled with 1-2 trip groups (used by guided drill-downs).
+    min_rows: int = Field(default=1, ge=1)
 
 
 class TopNRanking(_Base):
@@ -598,6 +601,11 @@ def _sort_and_limit(out: pd.DataFrame, by: str, sort: str, limit: int | None, la
 
 def _run_group_aggregate(spec: GroupAggregate, df: pd.DataFrame) -> TemplateOutput:
     out = _grouped(df, {spec.group_by: as_labels(df[spec.group_by])}, spec.metrics)
+    if spec.min_rows > 1:
+        sizes = as_labels(df[spec.group_by]).value_counts()
+        out = out[out[spec.group_by].map(sizes).fillna(0) >= spec.min_rows]
+        if out.empty:
+            raise TemplateError(f"No group has at least {spec.min_rows} rows.")
     first = spec.metrics[0].output_label()
     out = _sort_and_limit(out, first, spec.sort, spec.top_n or 50, spec.group_by)
     labels = [m.output_label() for m in spec.metrics]

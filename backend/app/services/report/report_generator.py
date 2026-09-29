@@ -363,7 +363,7 @@ class ReportBuilder:
         pp.font.color.rgb = MUTED
         pp.font.name = style.FONT_BODY
 
-    def _caption(self, slide, text: str, top):
+    def _caption(self, slide, text: str, top, bold: bool = False, size: int = 12):
         box = slide.shapes.add_textbox(Inches(0.5), top, style.SLIDE_W - Inches(1.0), Inches(0.35))
         tf = box.text_frame
         tf.word_wrap = True
@@ -374,6 +374,17 @@ class ReportBuilder:
         run.font.name = style.FONT_BODY
 
     # -- slides ---------------------------------------------------------------
+    def _captions(self, slide, description: str, subtitle: str | None):
+        """Caption block under the heading; returns where the chart/table
+        may start. A drill-down slide's filter/rank subtitle takes its own
+        line above the description and pushes the content down to fit."""
+        if not subtitle:
+            self._caption(slide, description, top=Inches(0.6))
+            return style.CHART_TOP
+        self._caption(slide, subtitle, top=Inches(0.6), bold=True, size=11)
+        self._caption(slide, description, top=Inches(0.9))
+        return style.CHART_TOP + Inches(0.3)
+
     def add_title_slide(self, title: str, subtitle: str | None):
         """Cover slide: logo top-left, title/subtitle on the left, and a
         photo-collage-shaped block of flat colour on the right -- no actual
@@ -422,6 +433,7 @@ class ReportBuilder:
     def add_bar_or_line_slide(
         self, heading: str, description: str, categories: list[str], series: list[tuple[str, list[float]]],
         value_axis_title: str, category_axis_title: str, is_line: bool,
+        subtitle: str | None = None,
     ):
         """One native column (or line) chart -- `series` is one or more
         (name, values) pairs sharing `categories`, so this covers a plain
@@ -429,7 +441,7 @@ class ReportBuilder:
         alike."""
         slide = self._new_slide()
         self._header(slide, heading)
-        self._caption(slide, description, top=Inches(0.6))
+        chart_top = self._captions(slide, description, subtitle)
 
         data = CategoryChartData()
         data.categories = categories
@@ -438,7 +450,7 @@ class ReportBuilder:
 
         chart_type = XL_CHART_TYPE.LINE_MARKERS if is_line else XL_CHART_TYPE.COLUMN_CLUSTERED
         gf = slide.shapes.add_chart(
-            chart_type, Inches(0.5), style.CHART_TOP, style.SLIDE_W - Inches(1.0), style.SLIDE_H - style.CHART_TOP - Inches(0.6), data,
+            chart_type, Inches(0.5), chart_top, style.SLIDE_W - Inches(1.0), style.SLIDE_H - chart_top - Inches(0.6), data,
         )
         chart = gf.chart
         style_native_chart(chart, number_format="#,##0.##", single_series=len(series) == 1)
@@ -450,6 +462,7 @@ class ReportBuilder:
         self, heading: str, description: str, categories: list[str],
         bar_name: str, bar_values: list[float], line_name: str, line_values: list[float],
         bar_axis_title: str, line_axis_title: str, category_axis_title: str,
+        subtitle: str | None = None,
     ):
         """One native combo chart -- `bar_name` on the primary (left) axis as
         columns, `line_name` on a secondary (right) axis as a line -- for two
@@ -460,7 +473,7 @@ class ReportBuilder:
         leave an unstyled chart on the slide)."""
         slide = self._new_slide()
         self._header(slide, heading)
-        self._caption(slide, description, top=Inches(0.6))
+        chart_top = self._captions(slide, description, subtitle)
 
         data = CategoryChartData()
         data.categories = categories
@@ -468,8 +481,8 @@ class ReportBuilder:
         data.add_series(line_name, line_values)
 
         gf = slide.shapes.add_chart(
-            XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.5), style.CHART_TOP,
-            style.SLIDE_W - Inches(1.0), style.SLIDE_H - style.CHART_TOP - Inches(0.6), data,
+            XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.5), chart_top,
+            style.SLIDE_W - Inches(1.0), style.SLIDE_H - chart_top - Inches(0.6), data,
         )
         chart = gf.chart
         if not split_into_combo(chart, line_axis_title):
@@ -517,17 +530,17 @@ class ReportBuilder:
         set_axis_title(chart.category_axis, category_axis_title)
         self._footer(slide)
 
-    def add_pie_slide(self, heading: str, description: str, labels: list[str], values: list[float]):
+    def add_pie_slide(self, heading: str, description: str, labels: list[str], values: list[float], subtitle: str | None = None):
         slide = self._new_slide()
         self._header(slide, heading)
-        self._caption(slide, description, top=Inches(0.6))
+        chart_top = self._captions(slide, description, subtitle)
 
         data = CategoryChartData()
         data.categories = [str(label) for label in labels]
         data.add_series(heading, [_to_number(v) for v in values])
 
         gf = slide.shapes.add_chart(
-            XL_CHART_TYPE.PIE, Inches(1.5), style.CHART_TOP, style.SLIDE_W - Inches(3.0), style.SLIDE_H - style.CHART_TOP - Inches(0.6), data,
+            XL_CHART_TYPE.PIE, Inches(1.5), chart_top, style.SLIDE_W - Inches(3.0), style.SLIDE_H - chart_top - Inches(0.6), data,
         )
         chart = gf.chart
         style.set_chart_default_font(chart, style.CHART_DATA_LABEL_FONT_PT, style.FONT_BODY)
@@ -551,10 +564,10 @@ class ReportBuilder:
             point.format.fill.fore_color.rgb = BAR_PALETTE[i % len(BAR_PALETTE)]
         self._footer(slide)
 
-    def add_table_slide(self, heading: str, description: str, columns: list[str], rows: list[dict]):
+    def add_table_slide(self, heading: str, description: str, columns: list[str], rows: list[dict], subtitle: str | None = None):
         slide = self._new_slide()
         self._header(slide, heading)
-        self._caption(slide, description, top=Inches(0.6))
+        chart_top = self._captions(slide, description, subtitle)
 
         cols = columns[:MAX_TABLE_COLS]
         display_rows = rows[:MAX_TABLE_ROWS]
@@ -562,7 +575,7 @@ class ReportBuilder:
             self._footer(slide)
             return
 
-        table_top = Inches(1.3)
+        table_top = chart_top + Inches(0.35)
         table_height = style.SLIDE_H - table_top - Inches(0.6)
         gf = slide.shapes.add_table(len(display_rows) + 1, len(cols), Inches(0.5), table_top, style.SLIDE_W - Inches(1.0), table_height)
         table = gf.table
@@ -701,6 +714,13 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
     content_phrases = content_phrases or {}
     raw_heading = entry.get("name") or "Analysis"
     heading = content_phrases.get(raw_heading, raw_heading)
+    # Every slide (roots included) leads with its number so a drill-down
+    # reads as "2.1  ..." right after its parent "2  ..."; the subtitle
+    # (filter + rank line) only exists on drill-down levels.
+    number = entry.get("slide_number")
+    if number:
+        heading = f"{number}  {heading}"
+    subtitle = entry.get("subtitle") or None
     raw_description = entry.get("interpretation") or entry.get("description") or ""
     description = content_phrases.get(raw_description, raw_description) if raw_description else raw_description
     chart_type = entry.get("chart_type")
@@ -720,7 +740,7 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
                 labels = [_blank_label(row.get(label_col)) for row in rows]
                 values = [row.get(numeric[0]) for row in rows]
         if labels and values:
-            builder.add_pie_slide(heading, description, list(labels)[:MAX_CHART_ROWS], list(values)[:MAX_CHART_ROWS])
+            builder.add_pie_slide(heading, description, list(labels)[:MAX_CHART_ROWS], list(values)[:MAX_CHART_ROWS], subtitle=subtitle)
             return True
 
     elif chart_type == "combo":
@@ -731,6 +751,7 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
             builder.add_combo_slide(
                 heading, description, categories, bar_name, bar_values, line_name, line_values,
                 bar_axis_title=bar_name, line_axis_title=line_name, category_axis_title=category_axis_title,
+                subtitle=subtitle,
             )
             return True
 
@@ -742,14 +763,14 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
             builder.add_bar_or_line_slide(
                 heading, description, categories, series,
                 value_axis_title=value_axis_title, category_axis_title=category_axis_title,
-                is_line=(chart_type == "line"),
+                is_line=(chart_type == "line"), subtitle=subtitle,
             )
             return True
 
     # heatmap / table / no usable chart data -> plain data table, the same
     # fallback the on-screen AnalysisChart component uses.
     if result_table and result_columns:
-        builder.add_table_slide(heading, description, result_columns, result_table[:MAX_TABLE_ROWS])
+        builder.add_table_slide(heading, description, result_columns, result_table[:MAX_TABLE_ROWS], subtitle=subtitle)
         return True
 
     return False

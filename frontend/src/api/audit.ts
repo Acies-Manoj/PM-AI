@@ -117,6 +117,9 @@ export interface FeatureRepositoryEntry {
   // PM-approved, or a fully structured predefined spec) -- null means the
   // Feature Agent hasn't thought about this one yet.
   formula: string | null;
+  // Names of analyses that need this feature; non-empty => label it
+  // REQUIRED FOR ANALYSIS.
+  required_for_analysis: string[];
 }
 
 export interface FeatureRepositoryResponse {
@@ -215,6 +218,85 @@ export interface AnalysisDraft {
   notes: string[];
 }
 
+export interface DrilldownRank {
+  mode: "top" | "bottom";
+  n: number;
+  by: "count" | "pct_in_spec";
+}
+
+export type DrilldownMetric = "count" | "pct_in_spec";
+
+/** Marks an entry as one level of a guided drill-down chain (level 1 is the
+ * original analysis, which has no `chain`). */
+export interface DrilldownChain {
+  chain_id: string;
+  level: number;
+  dimension: string;
+  metric: DrilldownMetric;
+  rank: DrilldownRank;
+  where: Record<string, unknown>[];
+  focus_dimension: string | null;
+  focus_values: string[];
+  focus_label: string;
+  // One of several sibling slides created from one Confirm.
+  split?: boolean;
+  // An ancestor's rank/focus changed after this level was built.
+  stale: boolean;
+}
+
+export interface DrilldownFocusOption {
+  value: string;
+  rows: number;
+  child_count: number;
+  is_wide: boolean;
+}
+
+export interface DrilldownOptions {
+  entry_id: string;
+  level: number;
+  max_level: number;
+  can_drill: boolean;
+  reason: string;
+  focus_dimension: string | null;
+  child_dimension: string | null;
+  candidate_dimensions: string[];
+  focus_options: DrilldownFocusOption[];
+  default_focus: string[];
+  default_rank: DrilldownRank;
+  metrics: DrilldownMetric[];
+}
+
+export interface DrilldownProposal {
+  child_dimension: string;
+  metric: DrilldownMetric;
+  rank: DrilldownRank;
+  focus_values: string[];
+  reason: string;
+  source: "ai" | "default";
+}
+
+export interface ConfirmDrilldownBody {
+  focus_values: string[];
+  child_dimension?: string | null;
+  metric: DrilldownMetric;
+  rank: DrilldownRank;
+  // One slide (sibling level) per focus value instead of one combined level.
+  split?: boolean;
+}
+
+export type RequiredFeatureState = "satisfied" | "not_approved" | "not_computed" | "missing";
+
+/** One feature an analysis consumes and whether it is ready to use. */
+export interface RequiredFeatureStatus {
+  feature_id: string | null;
+  name: string;
+  output_column: string;
+  definition: string;
+  state: RequiredFeatureState;
+  satisfied: boolean;
+  message: string;
+}
+
 export interface AnalysisRepositoryEntry {
   id: string;
   source: AnalysisSource;
@@ -231,6 +313,14 @@ export interface AnalysisRepositoryEntry {
   // Set only for source === "drilldown": the entry id this one was spawned
   // from.
   parent_id: string | null;
+  // Set when this entry is one level of a guided drill-down chain.
+  chain: DrilldownChain | null;
+  // Features this analysis requires. It cannot run (the backend returns 422)
+  // until every one is satisfied: approved AND computed.
+  required_features: RequiredFeatureStatus[];
+  dependencies_satisfied: boolean;
+  dependency_message: string | null;
+  kpi_dependencies: Record<string, unknown>[];
   // Deterministic template this entry is computed with -- null means code
   // generation.
   template: Record<string, unknown> | null;
@@ -647,6 +737,61 @@ export async function suggestMoreDrilldowns(sessionId: string, entryId: string):
   const response = await fetch(
     `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/suggest-more`,
     { method: "POST" }
+  );
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+async function postDrilldown<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${path}`, {
+    method: "POST",
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+/** What a guided drill-down from this analysis can look like (wide values,
+ * default focus and top-N). No LLM. */
+export async function fetchDrilldownOptions(sessionId: string, entryId: string): Promise<DrilldownOptions> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldown/options`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+/** Up to 3 AI-suggested next drill-downs, validated against the data. */
+export function proposeDrilldowns(sessionId: string, entryId: string): Promise<DrilldownProposal[]> {
+  return postDrilldown(`${sessionId}/entries/${entryId}/drilldown/propose`);
+}
+
+/** The PM's Confirm: builds and runs the next chain level. */
+export function confirmDrilldown(sessionId: string, entryId: string, body: ConfirmDrilldownBody): Promise<AnalysisRepositoryEntry> {
+  return postDrilldown(`${sessionId}/entries/${entryId}/drilldown`, body);
+}
+
+/** Changes a level's Top/Bottom and N; levels below it become stale. */
+export function rerankDrilldown(sessionId: string, entryId: string, rank: DrilldownRank): Promise<AnalysisRepositoryEntry> {
+  return postDrilldown(`${sessionId}/entries/${entryId}/drilldown/rank`, rank);
+}
+
+/** Rebuilds a stale level from its parent's current groups. */
+export function refreshDrilldown(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
+  return postDrilldown(`${sessionId}/entries/${entryId}/drilldown/refresh`);
+}
+
+/** Approves one required feature of an analysis (it still has to be
+ * computed on the Features step before the analysis can run). */
+export async function selectRequiredFeature(sessionId: string, entryId: string, featureId: string): Promise<AnalysisRepositoryEntry> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/required-features/select`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feature_id: featureId }) }
   );
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));

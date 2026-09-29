@@ -162,6 +162,10 @@ def _planner_entries(session_id: str) -> list[dict]:
             # plan specifically, so it's carried through verbatim rather
             # than re-thought.
             "formula": rec.get("generated_feature_formula"),
+            # Analyses that depend on this feature: the Features page labels it
+            # REQUIRED FOR ANALYSIS instead of a combined feature+analysis.
+            "required_for_analysis": list(rec.get("required_for_analysis") or (
+                [name] if rec.get("type") == "feature_and_analysis" else [])),
         })
     return entries
 

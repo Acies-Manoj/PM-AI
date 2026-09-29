@@ -36,7 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
-from app.services.analysis import analysis_agent, analysis_cache, analysis_designer, analysis_filters, analysis_templates
+from app.services.analysis import analysis_agent, analysis_cache, analysis_dependencies, analysis_designer, analysis_filters, analysis_templates
 from app.services.analysis.analysis_agent import AnalysisComputation
 from app.services.analysis.analysis_filters import FilterSelection
 from app.services.analysis.analysis_templates import TemplateError
@@ -61,6 +61,8 @@ def _run_template(
         chart_type = output.default_chart
     spec = analysis_templates.validate(template, df)
     plan = {"plan": plan_text or entry.get("formula") or analysis_templates.describe(spec)}
+    # So the drill-down step won't suggest re-grouping by the column this level already uses.
+    plan["group_by"] = [c for c in (template.get("group_by"), template.get("row_dimension")) if isinstance(c, str)]
     columns_block = analysis_agent.describe_columns(df) if narrate else ""
     computation = analysis_agent.finish_computation(
         entry, plan, None, rows, columns_block,
@@ -203,6 +205,12 @@ def run_analysis(session_id: str, entry: dict, df: pd.DataFrame) -> AnalysisComp
       3. a fresh design: chart + template match from the logic, then the
          template or generated code.
     Interpretation and drilldowns are never cached."""
+    required = entry.get("required_features") or []
+    if required and "state" not in required[0]:
+        required = analysis_dependencies.resolve(session_id, entry, df)
+    blocked = analysis_dependencies.block_message(required)
+    if blocked:
+        return AnalysisComputation(plan_text=None, generated_code=None, error=blocked)
     missing = [c for c in entry.get("input_columns") or [] if c not in df.columns]
     if missing:
         # Retrying (or re-thinking) can't conjure a column the data no longer

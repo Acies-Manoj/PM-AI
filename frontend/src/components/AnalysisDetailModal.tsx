@@ -1,9 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import type { AnalysisFilterSelections, AnalysisRepositoryEntry } from "../api/audit";
+import type {
+  AnalysisFilterSelections,
+  AnalysisRepositoryEntry,
+  ConfirmDrilldownBody,
+  DrilldownOptions,
+  DrilldownProposal,
+  DrilldownRank,
+} from "../api/audit";
 import { AuditApiError } from "../api/audit";
 import Modal from "./Modal";
 import AnalysisChart from "./AnalysisChart";
 import AnalysisFilterBar from "./AnalysisFilterBar";
+import DrilldownPanel, { DrilldownRankControl } from "./DrilldownPanel";
+import type { LevelNode } from "../utils/drilldownTree";
 import { IconChevronLeft, IconChevronRight, IconLayers, IconSparkle } from "./icons";
 import { CHART_LABELS } from "../utils/analysisLabels";
 import "./AnalysisCard.css";
@@ -23,6 +32,8 @@ interface AnalysisDetailModalProps {
    * recorded yet, so already-explored drilldowns start out selected. */
   onSeedSelection: (drilldownIds: string[]) => void;
   triggeringDrilldownId: string | null;
+  /** Last Explore / Suggest-more failure (e.g. the backend session expired). */
+  drilldownError?: string | null;
   /** True while a "Suggest more drill-downs" request for this entry is running. */
   suggestingMore: boolean;
   onSuggestMore: () => void;
@@ -34,6 +45,17 @@ interface AnalysisDetailModalProps {
   onOpenChild: (childEntryId: string) => void;
   /** Returns a filtered VIEW of this entry; the stored result is untouched. */
   onApplyFilters: (filters: AnalysisFilterSelections) => Promise<AnalysisRepositoryEntry>;
+  /** Ancestors of this entry (root first) for the chain breadcrumb. */
+  trail: { id: string; label: string }[];
+  /** Drill-down levels beneath this entry, depth-first. */
+  childLevels: LevelNode[];
+  /** Guided drill-down (see DrilldownPanel). Each rejects with an AuditApiError on failure. */
+  onFetchDrilldownOptions: () => Promise<DrilldownOptions>;
+  onProposeDrilldowns: () => Promise<DrilldownProposal[]>;
+  onConfirmDrilldown: (body: ConfirmDrilldownBody) => Promise<void>;
+  /** Re-rank / refresh this chain level; the page refetches the repository afterwards. */
+  onRerankLevel: (rank: DrilldownRank) => Promise<void>;
+  onRefreshLevel: () => Promise<void>;
 }
 
 type ModalTab = "analysis" | "selected";
@@ -45,6 +67,7 @@ export default function AnalysisDetailModal({
   onToggleSelect,
   onSeedSelection,
   triggeringDrilldownId,
+  drilldownError,
   suggestingMore,
   onSuggestMore,
   running,
@@ -53,6 +76,13 @@ export default function AnalysisDetailModal({
   onTriggerDrilldown,
   onOpenChild,
   onApplyFilters,
+  trail,
+  childLevels,
+  onFetchDrilldownOptions,
+  onProposeDrilldowns,
+  onConfirmDrilldown,
+  onRerankLevel,
+  onRefreshLevel,
 }: AnalysisDetailModalProps) {
   // The filtered view, if filters are applied. Reset whenever the stored
   // entry changes (a re-run, or navigating to another entry).
@@ -64,6 +94,12 @@ export default function AnalysisDetailModal({
   // Only the latest filter request may update the view -- an older, slower
   // response must not overwrite a newer selection.
   const latestRequest = useRef(0);
+  const [drillOptions, setDrillOptions] = useState<DrilldownOptions | null>(null);
+  const [drillError, setDrillError] = useState<string | null>(null);
+  const [levelBusy, setLevelBusy] = useState(false);
+  const [levelError, setLevelError] = useState<string | null>(null);
+  const fetchOptionsRef = useRef(onFetchDrilldownOptions);
+  fetchOptionsRef.current = onFetchDrilldownOptions;
 
   useEffect(() => {
     latestRequest.current += 1;
@@ -71,6 +107,33 @@ export default function AnalysisDetailModal({
     setFilterError(null);
     setFiltering(false);
     setModalTab("analysis");
+  }, [entry]);
+
+  // Options belong to one entry; drop them when navigating to another.
+  useEffect(() => {
+    setDrillOptions(null);
+    setDrillError(null);
+    setLevelError(null);
+  }, [entry.id]);
+
+  // Refetched whenever the stored entry changes (a re-rank or refresh alters
+  // what the next level can offer); the previous options stay up meanwhile.
+  useEffect(() => {
+    if (entry.run_status !== "done") return;
+    let cancelled = false;
+    fetchOptionsRef.current()
+      .then((o) => {
+        if (!cancelled) {
+          setDrillOptions(o);
+          setDrillError(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setDrillError(err instanceof AuditApiError ? err.message : "Couldn't load drill-down options.");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [entry]);
 
   useEffect(() => {
@@ -84,6 +147,15 @@ export default function AnalysisDetailModal({
   const canFilter = entry.run_status === "done" && entry.filters.length > 0;
   const suggestionCount = entry.drilldown_suggestions.length;
   const selectedCount = selectedIds?.size ?? 0;
+
+  const chain = entry.chain;
+  const runLevelAction = (action: () => Promise<void>) => {
+    setLevelBusy(true);
+    setLevelError(null);
+    action()
+      .catch((err) => setLevelError(err instanceof AuditApiError ? err.message : "Couldn't update this drill-down level."))
+      .finally(() => setLevelBusy(false));
+  };
 
   const changeFilters = (filters: AnalysisFilterSelections) => {
     const request = ++latestRequest.current;
@@ -116,7 +188,42 @@ export default function AnalysisDetailModal({
         </button>
       )}
 
+      {chain && trail.length > 0 && (
+        <nav className="drilldown-crumbs" aria-label="Drill-down chain">
+          {trail.map((t) => (
+            <span key={t.id}>
+              <button type="button" onClick={() => onOpenChild(t.id)}>{t.label}</button> ›{" "}
+            </span>
+          ))}
+          <span>{`Level ${chain.level} · ${chain.focus_label || entry.name}`}</span>
+        </nav>
+      )}
+
       <p className="analysis-card__description">{entry.description}</p>
+
+      {chain && (
+        <>
+          <div className="drilldown-level">
+            <span className="drilldown-level__chip">{`Level ${chain.level} · ${chain.focus_label || entry.name}`}</span>
+            {chain.stale && <span className="drilldown-tag drilldown-tag--stale">Stale</span>}
+            <DrilldownRankControl
+              rank={chain.rank}
+              metrics={drillOptions?.metrics ?? ["count"]}
+              disabled={levelBusy}
+              onChange={(rank) => runLevelAction(() => onRerankLevel(rank))}
+            />
+          </div>
+          {chain.stale && (
+            <div className="drilldown-stale" role="status">
+              Stale - upstream changed
+              <button type="button" className="drilldown-btn" disabled={levelBusy} onClick={() => runLevelAction(onRefreshLevel)}>
+                {levelBusy ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
+          )}
+          {levelError && <p className="analysis-card__error">{levelError}</p>}
+        </>
+      )}
 
       {entry.run_status === "error" && (
         <div className="analysis-card__error-block">
@@ -249,6 +356,32 @@ export default function AnalysisDetailModal({
                     </button>
                   )}
                 </div>
+                {drillError && <p className="analysis-card__error">{drillError}</p>}
+                {drilldownError && <p className="analysis-card__error">{drilldownError}</p>}
+                {drillOptions && drillOptions.can_drill && (
+                  <DrilldownPanel
+                    key={entry.id}
+                    options={drillOptions}
+                    multiFocus={!!chain}
+                    onPropose={onProposeDrilldowns}
+                    onConfirm={onConfirmDrilldown}
+                  />
+                )}
+                {drillOptions && !drillOptions.can_drill && drillOptions.reason && (
+                  <p className="analysis-detail__empty-drilldown">{drillOptions.reason}</p>
+                )}
+                {childLevels.length > 0 && (
+                  <ul className="drilldown-levels">
+                    {childLevels.map((l) => (
+                      <li key={l.id} style={{ paddingLeft: (l.depth - 1) * 16 }}>
+                        <button type="button" className="drilldown-tree__item" onClick={() => onOpenChild(l.id)}>
+                          {l.label}
+                        </button>
+                        {l.stale && <span className="drilldown-tag drilldown-tag--stale">Stale</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {suggestionCount === 0 ? (
                   <p className="analysis-detail__empty-drilldown">No follow-up analyses suggested for this one yet.</p>
                 ) : (
@@ -262,6 +395,7 @@ export default function AnalysisDetailModal({
                             <div className="analysis-detail__drilldown-text">
                               <span className="analysis-detail__drilldown-name">
                                 {d.name}
+                                <span className="analysis-detail__drilldown-ai-tag" title="Written by the AI from this analysis's result">AI idea</span>
                                 {d.triggered && <span className="analysis-detail__drilldown-explored-tag">Explored</span>}
                               </span>
                               <p className="analysis-detail__drilldown-desc">{d.description}</p>

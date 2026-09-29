@@ -209,7 +209,7 @@
 
 .planner-page__badge--type-feature { background: #f0ecff; color: #6b2fb3; }
 .planner-page__badge--type-analysis { background: #e8f7ee; color: #2a7a3b; }
-.planner-page__badge--type-feature-and-analysis { background: linear-gradient(90deg, #f0ecff 50%, #e8f7ee 50%); color: #4a3b8a; }
+.planner-page__badge--required { background: #e8f0ff; color: #1a6fb3; border: 1px solid #1a6fb3; }
 .planner-page__badge--type-configuration { background: #fbf0dc; color: #8a5a10; }
 
 .planner-page__badge--status-new { background: var(--color-bg); color: var(--color-text-muted); border: 1px solid var(--color-border); }
@@ -578,4 +578,46 @@
 .planner-page__spec-meta {
   font-size: 11.5px;
   color: var(--color-text-muted, #5b6770);
+}
+
+/* Dependencies: what an analysis reuses vs needs created, and why a card exists. */
+.planner-page__needed-by {
+  font-size: 12px;
+  color: #1a6fb3;
+  margin: -4px 0 8px;
+}
+
+.planner-page__deps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.planner-page__dep {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 5px;
+  width: fit-content;
+  line-height: 1.4;
+}
+
+.planner-page__dep--reuse { background: #e8f0ff; color: #1a6fb3; }
+.planner-page__dep--new { background: #fff4e0; color: #8a5a10; }
+.planner-page__dep--none { background: var(--color-bg); color: var(--color-text-muted); border: 1px solid var(--color-border); }
+
+.planner-page__decision-source {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  margin-top: 6px;
+}
+
+.planner-page__guardrail {
+  font-size: 12px;
+  margin-top: 6px;
+  padding: 5px 9px;
+  border-radius: 5px;
+  background: #fff4e0;
+  color: #8a5a10;
+  border: 1px solid #f0d49a;
 }

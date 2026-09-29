@@ -44,7 +44,16 @@ def _entries_block(entries: list[dict]) -> str:
         if not interpretation:
             continue
         name = entry.get("name") or "Analysis"
-        lines.append(f"- {name}: {interpretation}")
+        # Drill-down levels are labelled with their slide number and parent so
+        # the model reads them as a narrowing of that slide, not a separate topic.
+        number = entry.get("slide_number")
+        parent = entry.get("parent_slide_number")
+        label = f"Slide {number}" if number else ""
+        if parent:
+            label += f", drill-down of slide {parent}"
+            if entry.get("subtitle"):
+                label += f" ({entry['subtitle']})"
+        lines.append(f"- {f'[{label}] ' if label else ''}{name}: {interpretation}")
     return "\n".join(lines)
 
 

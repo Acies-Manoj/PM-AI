@@ -284,6 +284,7 @@ export interface ConfirmDrilldownBody {
   split?: boolean;
 }
 
+
 export type RequiredFeatureState = "satisfied" | "not_approved" | "not_computed" | "missing";
 
 /** One feature an analysis consumes and whether it is ready to use. */
@@ -766,9 +767,12 @@ export async function fetchDrilldownOptions(sessionId: string, entryId: string):
   return response.json();
 }
 
-/** Up to 3 AI-suggested next drill-downs, validated against the data. */
-export function proposeDrilldowns(sessionId: string, entryId: string): Promise<DrilldownProposal[]> {
-  return postDrilldown(`${sessionId}/entries/${entryId}/drilldown/propose`);
+/** 10-15 AI-suggested next drill-downs, validated against the data --
+ * cached on the entry after the first call, so opening an entry again costs
+ * nothing; pass `more: true` (the single "AI" button) to append a fresh,
+ * non-repeating batch. */
+export function proposeDrilldowns(sessionId: string, entryId: string, more = false): Promise<DrilldownProposal[]> {
+  return postDrilldown(`${sessionId}/entries/${entryId}/drilldown/propose${more ? "?more=true" : ""}`);
 }
 
 /** The PM's Confirm: builds and runs the next chain level. */

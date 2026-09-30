@@ -118,6 +118,7 @@ def _merge_entry(session: AuditSession, definition: dict) -> AnalysisRepositoryE
             "interpretation": result.interpretation,
             "error": result.error,
             "drilldown_suggestions": result.drilldown_suggestions,
+            "guided_proposals": result.guided_proposals,
             "computation_mode": result.computation_mode,
             "notes": result.notes,
         })
@@ -456,29 +457,36 @@ def _focus_pool(session: AuditSession, entry: dict, result: AnalysisResult, dime
 
 
 @router.post("/repository/{session_id}/entries/{entry_id}/drilldown/propose", response_model=list[DrilldownProposal])
-def propose_drilldowns(session_id: str, entry_id: str) -> list[DrilldownProposal]:
-    """Up to 3 AI-suggested next drill-downs (dimension, focus, top/bottom N,
-    metric), validated against the data. Always returns at least the
-    deterministic default when there is anything to drill into."""
+def propose_drilldowns(session_id: str, entry_id: str, more: bool = False) -> list[DrilldownProposal]:
+    """10-15 AI-suggested next drill-downs (dimension, focus, top/bottom N,
+    metric), validated against the data -- generated once and cached on the
+    entry's result; every later call (opening this entry again) returns the
+    same cached list with no LLM cost. Passing `more=true` (the single
+    "Suggest with AI" button, once a batch already exists) asks for an
+    additional batch that can't repeat what's cached, and appends it."""
     session = _get_session_or_404(session_id)
     entry = analysis_repository.get_entry(session_id, entry_id)
     result = session.analysis_results.get(entry_id)
     if entry is None or result is None or result.run_status != "done":
         raise HTTPException(status_code=409, detail="Run this analysis before drilling into it.")
+    cached = [p.model_dump() for p in result.guided_proposals]
+    if cached and not more:
+        return result.guided_proposals
     if _level_of(entry) >= analysis_drilldown.MAX_CHAIN_LEVEL:
-        return []
+        return result.guided_proposals
     dimension, where = _parent_scope(session, entry)
     if dimension is None:
-        return []
+        return result.guided_proposals
     pool_child = analysis_drilldown_agent.candidate_dimensions(session.df, {dimension} | {w["column"] for w in where})
     if not pool_child:
-        return []
+        return result.guided_proposals
     options, _ = _focus_pool(session, entry, result, dimension, where, pool_child[0])
-    proposals = analysis_drilldown_agent.propose(
+    new_proposals = analysis_drilldown_agent.propose(
         session.df, entry, dimension, where, [o["value"] for o in options],
-        result.result_table or [], result.interpretation,
+        result.result_table or [], result.interpretation, avoid=cached or None,
     )
-    return [DrilldownProposal(**p) for p in proposals]
+    result.guided_proposals = result.guided_proposals + [DrilldownProposal(**p) for p in new_proposals]
+    return result.guided_proposals
 
 
 def _build_level(session: AuditSession, dimension: str, metric: str, rank: dict, where: list[dict]) -> tuple[dict, str]:

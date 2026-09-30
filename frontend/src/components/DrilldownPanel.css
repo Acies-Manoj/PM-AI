@@ -23,6 +23,11 @@
   color: var(--carrier-blue);
 }
 
+.analysis-detail__suggest-more-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
 .drilldown-panel__label,
 .drilldown-field > span {
   display: block;
@@ -250,6 +255,16 @@
   gap: 8px;
 }
 
+/* More than ~5 suggestions: cap the list's own height instead of letting
+   the whole modal grow to fit 13-15 cards -- the scrollbar lives on this
+   panel, not the page. */
+.drilldown-proposals--scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
 .drilldown-proposal {
   display: flex;
   align-items: flex-start;
@@ -315,6 +330,7 @@
   font-size: 12px;
   font-weight: 700;
 }
+
 
 .drilldown-crumbs {
   display: flex;

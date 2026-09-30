@@ -455,6 +455,13 @@ class AnalysisRepositoryEntry(BaseModel):
     interpretation: str | None = None
     error: str | None = None
     drilldown_suggestions: list[AnalysisDrilldownSuggestion] = []
+    # Cached guided drill-down proposals (see analysis_drilldown_agent.propose)
+    # -- generated once, the first time the PM opens this entry's drill-down
+    # section, and reused on every later open. "Suggest with AI" appends a
+    # fresh batch on top rather than replacing it. Cleared on every re-run,
+    # same as drilldown_suggestions, since a changed result can change what's
+    # worth drilling into.
+    guided_proposals: list[DrilldownProposal] = []
     computation_mode: AnalysisComputationMode | None = None
     notes: list[str] = []
     # Set only on a filtered view (POST .../filter): the selections applied.
@@ -544,6 +551,7 @@ class AnalysisResult(BaseModel):
     interpretation: str | None = None
     error: str | None = None
     drilldown_suggestions: list[AnalysisDrilldownSuggestion] = []
+    guided_proposals: list[DrilldownProposal] = []
     computation_mode: AnalysisComputationMode | None = None
     notes: list[str] = []
     # The chart picked from the computation logic before this run computed

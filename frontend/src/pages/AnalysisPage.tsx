@@ -31,8 +31,6 @@ import {
   applyFeatures,
   selectRequiredFeature,
   suggestAnalysisEntries,
-  triggerDrilldown,
-  suggestMoreDrilldowns,
   uploadAnalysisDefinitions,
   AuditApiError,
   type AddCustomAnalysisBody,
@@ -48,6 +46,9 @@ import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
 import type { AuditReportsState, FilesState } from "../App";
 import "./AnalysisPage.css";
+
+// Stable empty Set reference for entries with nothing dismissed yet.
+const EMPTY_ID_SET: Set<string> = new Set();
 
 interface AnalysisPageProps {
   files: FilesState;
@@ -110,15 +111,11 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const [showAddForm, setShowAddForm] = useState<LoadingState>({});
   const [addingAnalysis, setAddingAnalysis] = useState<LoadingState>({});
   const [showSuggestionsModal, setShowSuggestionsModal] = useState<LoadingState>({});
-  const [triggeringDrilldownId, setTriggeringDrilldownId] = useState<string | null>(null);
-  // Explore / Suggest-more failures. The page-level error line sits behind the
-  // open modal, so these are handed to the modal to show next to the list.
-  const [drilldownError, setDrilldownError] = useState<string | null>(null);
-  const [suggestingMoreFor, setSuggestingMoreFor] = useState<string | null>(null);
-  // Which drilldown suggestions the PM has selected for each entry --
-  // frontend-only bookkeeping (see AnalysisDetailModal's Selected Drill-downs
-  // tab); a missing key means "not seeded yet" (see seedDrilldownSelection).
-  const [selectedDrilldowns, setSelectedDrilldowns] = useState<Record<string, Set<string>>>({});
+  // Ids the PM has explicitly hidden from an entry's Selected Drill-downs
+  // list -- frontend-only. "Selected" itself is derived straight from real
+  // repository data (triggered suggestions + existing chain levels), never
+  // hand-tracked, so it can't fall out of sync with what actually exists.
+  const [dismissedDrilldowns, setDismissedDrilldowns] = useState<Record<string, Set<string>>>({});
 
   const [overallReports, setOverallReports] = useState<OverallReportsState>({});
   const [overallLoading, setOverallLoading] = useState<LoadingState>({});
@@ -318,24 +315,16 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       .finally(() => setAddingAnalysis((prev) => ({ ...prev, [id]: false })));
   };
 
-  const handleTriggerDrilldown = (id: UploadSlotId, entryId: string, drilldownId: string) => {
-    const sessionId = auditReports[id]!.session_id;
-    setTriggeringDrilldownId(drilldownId);
-    setDrilldownError(null);
-    triggerDrilldown(sessionId, entryId, drilldownId)
-      .then((child) => refreshRepository(id, sessionId).then(() => setOpenEntry({ slotId: id, entryId: child.id })))
-      .catch((err) =>
-        setDrilldownError(err instanceof AuditApiError ? err.message : "Could not run that drill-down. Is the backend still running?")
-      )
-      .finally(() => setTriggeringDrilldownId(null));
-  };
-
   // Guided drill-down chain. These reject so the modal can show the error
   // next to the control that failed; each refetches the repository so new and
-  // stale levels appear.
+  // stale levels appear. Confirming also navigates straight into the new
+  // level, so its own suggestions (about drilling further from THIS level)
+  // are what the PM sees next, not the parent's.
   const confirmChainDrilldown = (id: UploadSlotId, entryId: string, body: ConfirmDrilldownBody): Promise<void> => {
     const sessionId = auditReports[id]!.session_id;
-    return confirmDrilldown(sessionId, entryId, body).then(() => refreshRepository(id, sessionId));
+    return confirmDrilldown(sessionId, entryId, body).then((child) =>
+      refreshRepository(id, sessionId).then(() => setOpenEntry({ slotId: id, entryId: child.id }))
+    );
   };
 
   const rerankChainLevel = (id: UploadSlotId, entryId: string, rank: DrilldownRank): Promise<void> => {
@@ -348,30 +337,17 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
     return refreshDrilldown(sessionId, entryId).then(() => refreshRepository(id, sessionId));
   };
 
-  const handleSuggestMoreDrilldowns = (id: UploadSlotId, entryId: string) => {
+  const proposeDrilldownsFor = (id: UploadSlotId, entryId: string, more: boolean) => {
     const sessionId = auditReports[id]!.session_id;
-    setSuggestingMoreFor(entryId);
-    setDrilldownError(null);
-    suggestMoreDrilldowns(sessionId, entryId)
-      .then(() => refreshRepository(id, sessionId))
-      .catch((err) =>
-        setDrilldownError(err instanceof AuditApiError ? err.message : "Could not get more drill-down suggestions.")
-      )
-      .finally(() => setSuggestingMoreFor(null));
+    return proposeDrilldowns(sessionId, entryId, more);
   };
 
-  // Frontend-only: which drilldown suggestions are "selected" for an entry.
-  // Seeded once per entry (already-triggered ones start selected) and toggled
-  // from the modal -- never sent to the backend.
-  const seedDrilldownSelection = (entryId: string, drilldownIds: string[]) => {
-    setSelectedDrilldowns((prev) => (prev[entryId] ? prev : { ...prev, [entryId]: new Set(drilldownIds) }));
-  };
-
-  const toggleDrilldownSelection = (entryId: string, drilldownId: string) => {
-    setSelectedDrilldowns((prev) => {
+  // Frontend-only: hide one drilldown from an entry's Selected list without
+  // deleting it -- never sent to the backend.
+  const dismissDrilldown = (entryId: string, id: string) => {
+    setDismissedDrilldowns((prev) => {
       const current = new Set(prev[entryId] ?? []);
-      if (current.has(drilldownId)) current.delete(drilldownId);
-      else current.add(drilldownId);
+      current.add(id);
       return { ...prev, [entryId]: current };
     });
   };
@@ -841,22 +817,16 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
             <AnalysisDetailModal
               entry={openEntryData}
               parentName={parentName}
-              selectedIds={selectedDrilldowns[openEntryData.id]}
-              onToggleSelect={(drilldownId) => toggleDrilldownSelection(openEntryData.id, drilldownId)}
-              onSeedSelection={(ids) => seedDrilldownSelection(openEntryData.id, ids)}
-              triggeringDrilldownId={triggeringDrilldownId}
+              dismissedIds={dismissedDrilldowns[openEntryData.id] ?? EMPTY_ID_SET}
+              onDismiss={(id) => dismissDrilldown(openEntryData.id, id)}
               running={!!runningIds[openEntryData.id]}
               onRetry={() => runEntry(openEntry.slotId, openEntryData)}
-              drilldownError={drilldownError}
-              suggestingMore={suggestingMoreFor === openEntryData.id}
-              onSuggestMore={() => handleSuggestMoreDrilldowns(openEntry.slotId, openEntry.entryId)}
               onClose={() => setOpenEntry(null)}
-              onTriggerDrilldown={(drilldownId) => handleTriggerDrilldown(openEntry.slotId, openEntry.entryId, drilldownId)}
               onOpenChild={(childEntryId) => setOpenEntry({ slotId: openEntry.slotId, entryId: childEntryId })}
               trail={ancestorTrail(openRepo, openEntryData)}
               childLevels={buildLevelTree(openRepo, openEntryData.id)}
               onFetchDrilldownOptions={() => fetchDrilldownOptions(auditReports[openEntry.slotId]!.session_id, openEntry.entryId)}
-              onProposeDrilldowns={() => proposeDrilldowns(auditReports[openEntry.slotId]!.session_id, openEntry.entryId)}
+              onProposeDrilldowns={(more) => proposeDrilldownsFor(openEntry.slotId, openEntry.entryId, more)}
               onConfirmDrilldown={(body) => confirmChainDrilldown(openEntry.slotId, openEntry.entryId, body)}
               onRerankLevel={(rank) => rerankChainLevel(openEntry.slotId, openEntry.entryId, rank)}
               onRefreshLevel={() => refreshChainLevel(openEntry.slotId, openEntry.entryId)}

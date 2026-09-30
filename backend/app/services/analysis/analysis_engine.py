@@ -63,9 +63,8 @@ def _run_template(
     plan = {"plan": plan_text or entry.get("formula") or analysis_templates.describe(spec)}
     # So the drill-down step won't suggest re-grouping by the column this level already uses.
     plan["group_by"] = [c for c in (template.get("group_by"), template.get("row_dimension")) if isinstance(c, str)]
-    columns_block = analysis_agent.describe_columns(df) if narrate else ""
     computation = analysis_agent.finish_computation(
-        entry, plan, None, rows, columns_block,
+        entry, plan, None, rows,
         chart_type=chart_type, roles=output.roles, narrate=narrate, computation_mode="template",
     )
     computation.template = template
@@ -101,7 +100,7 @@ def _replay_cached(session_id: str, entry: dict, df: pd.DataFrame, cached: dict,
         if not plausible:
             raise ValueError(reason)
         computation = analysis_agent.finish_computation(
-            entry, plan, cached["generated_code"], table, analysis_agent.describe_columns(df), **options,
+            entry, plan, cached["generated_code"], table, **options,
         )
         computation.filters = cached.get("filters")
         if options["chart_recommendation"] and not cached_chart:
@@ -299,5 +298,5 @@ def filter_analysis(
         return AnalysisComputation(plan_text=cached["plan_text"], generated_code=cached["generated_code"], error=reason)
     # chart_type must never be None here -- that would make finish_computation ask the LLM.
     return analysis_agent.finish_computation(
-        entry, {"plan": cached["plan_text"]}, cached["generated_code"], table, "", chart_type=chart_type or "bar", narrate=False,
+        entry, {"plan": cached["plan_text"]}, cached["generated_code"], table, chart_type=chart_type or "bar", narrate=False,
     )

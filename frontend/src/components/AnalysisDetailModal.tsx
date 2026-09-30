@@ -24,24 +24,14 @@ interface AnalysisDetailModalProps {
   /** Name of the analysis this one was drilled down from -- undefined for a
    * top-level (non-drilldown) entry. */
   parentName?: string;
-  /** The drilldown suggestion ids the PM has selected for this entry --
-   * frontend-only bookkeeping, undefined until seeded (see onSeedSelection). */
-  selectedIds: Set<string> | undefined;
-  onToggleSelect: (drilldownId: string) => void;
-  /** Called once, the first time this entry is opened with no selection
-   * recorded yet, so already-explored drilldowns start out selected. */
-  onSeedSelection: (drilldownIds: string[]) => void;
-  triggeringDrilldownId: string | null;
-  /** Last Explore / Suggest-more failure (e.g. the backend session expired). */
-  drilldownError?: string | null;
-  /** True while a "Suggest more drill-downs" request for this entry is running. */
-  suggestingMore: boolean;
-  onSuggestMore: () => void;
+  /** Ids the PM has explicitly hidden from the Selected Drill-downs list --
+   * frontend-only, doesn't delete anything, just a "remove from this view". */
+  dismissedIds: Set<string>;
+  onDismiss: (id: string) => void;
   /** True while this entry's own run is in flight; drives the Retry button. */
   running: boolean;
   onRetry: () => void;
   onClose: () => void;
-  onTriggerDrilldown: (drilldownId: string) => void;
   onOpenChild: (childEntryId: string) => void;
   /** Returns a filtered VIEW of this entry; the stored result is untouched. */
   onApplyFilters: (filters: AnalysisFilterSelections) => Promise<AnalysisRepositoryEntry>;
@@ -51,7 +41,8 @@ interface AnalysisDetailModalProps {
   childLevels: LevelNode[];
   /** Guided drill-down (see DrilldownPanel). Each rejects with an AuditApiError on failure. */
   onFetchDrilldownOptions: () => Promise<DrilldownOptions>;
-  onProposeDrilldowns: () => Promise<DrilldownProposal[]>;
+  onProposeDrilldowns: (more: boolean) => Promise<DrilldownProposal[]>;
+  /** Runs the picked drill-down and navigates to it -- see onOpenChild. */
   onConfirmDrilldown: (body: ConfirmDrilldownBody) => Promise<void>;
   /** Re-rank / refresh this chain level; the page refetches the repository afterwards. */
   onRerankLevel: (rank: DrilldownRank) => Promise<void>;
@@ -63,17 +54,11 @@ type ModalTab = "analysis" | "selected";
 export default function AnalysisDetailModal({
   entry,
   parentName,
-  selectedIds,
-  onToggleSelect,
-  onSeedSelection,
-  triggeringDrilldownId,
-  drilldownError,
-  suggestingMore,
-  onSuggestMore,
+  dismissedIds,
+  onDismiss,
   running,
   onRetry,
   onClose,
-  onTriggerDrilldown,
   onOpenChild,
   onApplyFilters,
   trail,
@@ -136,17 +121,14 @@ export default function AnalysisDetailModal({
     };
   }, [entry]);
 
-  useEffect(() => {
-    if (selectedIds === undefined) {
-      onSeedSelection(entry.drilldown_suggestions.filter((d) => d.triggered).map((d) => d.id));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.id, selectedIds]);
-
   const shown = view ?? entry;
   const canFilter = entry.run_status === "done" && entry.filters.length > 0;
-  const suggestionCount = entry.drilldown_suggestions.length;
-  const selectedCount = selectedIds?.size ?? 0;
+  // Selected = every existing child level (guided drill-downs, incl. every
+  // sibling from a split confirm) -- derived straight from real data every
+  // render, not hand-tracked, so it can't fall out of sync with what
+  // actually got created.
+  const selectedLevels = childLevels.filter((l) => !dismissedIds.has(l.id));
+  const selectedCount = selectedLevels.length;
 
   const chain = entry.chain;
   const runLevelAction = (action: () => Promise<void>) => {
@@ -342,34 +324,6 @@ export default function AnalysisDetailModal({
               )}
 
               <div className="analysis-detail__suggested-drilldowns">
-                <div className="analysis-detail__suggested-drilldowns-head">
-                  <h4 className="analysis-detail__suggested-drilldowns-title">Suggested Drill-downs</h4>
-                  {entry.run_status === "done" && (
-                    <button
-                      type="button"
-                      className="analysis-detail__suggest-more-btn"
-                      disabled={suggestingMore}
-                      onClick={onSuggestMore}
-                    >
-                      <IconSparkle />
-                      {suggestingMore ? "Finding more…" : "Suggest more"}
-                    </button>
-                  )}
-                </div>
-                {drillError && <p className="analysis-card__error">{drillError}</p>}
-                {drilldownError && <p className="analysis-card__error">{drilldownError}</p>}
-                {drillOptions && drillOptions.can_drill && (
-                  <DrilldownPanel
-                    key={entry.id}
-                    options={drillOptions}
-                    multiFocus={!!chain}
-                    onPropose={onProposeDrilldowns}
-                    onConfirm={onConfirmDrilldown}
-                  />
-                )}
-                {drillOptions && !drillOptions.can_drill && drillOptions.reason && (
-                  <p className="analysis-detail__empty-drilldown">{drillOptions.reason}</p>
-                )}
                 {childLevels.length > 0 && (
                   <ul className="drilldown-levels">
                     {childLevels.map((l) => (
@@ -382,42 +336,18 @@ export default function AnalysisDetailModal({
                     ))}
                   </ul>
                 )}
-                {suggestionCount === 0 ? (
-                  <p className="analysis-detail__empty-drilldown">No follow-up analyses suggested for this one yet.</p>
-                ) : (
-                  <ol className="analysis-detail__drilldown-list">
-                    {entry.drilldown_suggestions.map((d, i) => {
-                      const checked = selectedIds?.has(d.id) ?? false;
-                      return (
-                        <li key={d.id}>
-                          <div className={`analysis-detail__drilldown-item${checked ? " analysis-detail__drilldown-item--selected" : ""}`}>
-                            <span className="analysis-detail__drilldown-index">{i + 1}</span>
-                            <div className="analysis-detail__drilldown-text">
-                              <span className="analysis-detail__drilldown-name">
-                                {d.name}
-                                <span className="analysis-detail__drilldown-ai-tag" title="Written by the AI from this analysis's result">AI idea</span>
-                                {d.triggered && <span className="analysis-detail__drilldown-explored-tag">Explored</span>}
-                              </span>
-                              <p className="analysis-detail__drilldown-desc">{d.description}</p>
-                            </div>
-                            <button
-                              type="button"
-                              className="analysis-detail__drilldown-action-btn"
-                              disabled={triggeringDrilldownId === d.id}
-                              onClick={() => {
-                                if (!checked) onToggleSelect(d.id);
-                                if (d.triggered && d.child_entry_id) onOpenChild(d.child_entry_id);
-                                else onTriggerDrilldown(d.id);
-                              }}
-                            >
-                              {triggeringDrilldownId === d.id ? "Exploring…" : "Explore more"}
-                              <IconChevronRight />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
+
+                {drillError && <p className="analysis-card__error">{drillError}</p>}
+                {drillOptions && drillOptions.can_drill && (
+                  <DrilldownPanel
+                    key={entry.id}
+                    options={drillOptions}
+                    onPropose={onProposeDrilldowns}
+                    onConfirm={onConfirmDrilldown}
+                  />
+                )}
+                {drillOptions && !drillOptions.can_drill && drillOptions.reason && (
+                  <p className="analysis-detail__empty-drilldown">{drillOptions.reason}</p>
                 )}
               </div>
             </>
@@ -427,7 +357,7 @@ export default function AnalysisDetailModal({
                 <div className="analysis-detail__empty-drilldown-block">
                   <p className="analysis-detail__empty-drilldown">No drill-downs selected yet.</p>
                   <p className="analysis-detail__empty-drilldown-hint">
-                    Select a suggested drill-down from the Analysis tab to explore this analysis further.
+                    Confirm a guided drill-down from the Analysis tab -- it'll show up here.
                   </p>
                   <button type="button" className="analysis-detail__add-drilldown-btn" onClick={() => setModalTab("analysis")}>
                     + Add Drill-down
@@ -435,32 +365,25 @@ export default function AnalysisDetailModal({
                 </div>
               ) : (
                 <ol className="analysis-detail__drilldown-list">
-                  {entry.drilldown_suggestions
-                    .filter((d) => selectedIds?.has(d.id))
-                    .map((d) => (
-                      <li key={d.id}>
-                        <div className="analysis-detail__selected-item">
-                          <span className="analysis-detail__drilldown-name">{d.name}</span>
-                          <button
-                            type="button"
-                            className="analysis-detail__drilldown-action-btn"
-                            disabled={triggeringDrilldownId === d.id}
-                            onClick={() => (d.triggered && d.child_entry_id ? onOpenChild(d.child_entry_id) : onTriggerDrilldown(d.id))}
-                          >
-                            {triggeringDrilldownId === d.id ? "Exploring…" : d.triggered ? "View" : "Explore"}
-                            <IconChevronRight />
-                          </button>
-                          <button
-                            type="button"
-                            className="analysis-detail__remove-btn"
-                            aria-label={`Remove ${d.name} from selected drill-downs`}
-                            onClick={() => onToggleSelect(d.id)}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </li>
-                    ))}
+                  {selectedLevels.map((l) => (
+                    <li key={l.id}>
+                      <div className="analysis-detail__selected-item">
+                        <span className="analysis-detail__drilldown-name">{l.label}</span>
+                        <button type="button" className="analysis-detail__drilldown-action-btn" onClick={() => onOpenChild(l.id)}>
+                          View
+                          <IconChevronRight />
+                        </button>
+                        <button
+                          type="button"
+                          className="analysis-detail__remove-btn"
+                          aria-label={`Remove ${l.label} from selected drill-downs`}
+                          onClick={() => onDismiss(l.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </li>
+                  ))}
                 </ol>
               )}
             </div>

@@ -107,8 +107,26 @@ def with_required_features(entry: dict, resolved: list[dict]) -> dict:
     to use their columns) and their columns among the required inputs."""
     if not resolved:
         return entry
-    columns = list(entry.get("input_columns") or [])
-    columns += [r["output_column"] for r in resolved if r["output_column"] not in columns]
+    resolved_columns = {r["output_column"] for r in resolved}
+    resolved_names = [r["name"].lower() for r in resolved if r.get("name")]
+
+    def _is_stale_placeholder(col: str) -> bool:
+        # A Planner recommendation written before its feature existed can only
+        # name that feature descriptively in its raw `required_fields` (e.g.
+        # "Departure Delay" for what the feature itself later calls "Departure
+        # Delay Calculation" / output column "departure_delay_calculation").
+        # That placeholder text is never a real dataframe column, so once the
+        # feature resolves it must be dropped here -- otherwise it sits in
+        # input_columns forever, permanently failing run_analysis's missing-
+        # column check even though the feature it was standing in for is
+        # satisfied.
+        if col in resolved_columns:
+            return False
+        c = col.lower()
+        return any(c in n or n in c for n in resolved_names)
+
+    columns = [c for c in (entry.get("input_columns") or []) if not _is_stale_placeholder(c)]
+    columns += [c for c in resolved_columns if c not in columns]
     return {**entry, "required_features": resolved, "input_columns": columns}
 
 

@@ -603,19 +603,21 @@ class AnalysisComputation:
 
 
 def finish_computation(
-    entry: dict, plan: dict, code: str | None, table: list[dict], columns_block: str, *,
+    entry: dict, plan: dict, code: str | None, table: list[dict], *,
     chart_type: str | None = None, roles: ChartRoles | None = None, narrate: bool = True,
     computation_mode: str = "code", chart_recommendation: dict | None = None,
 ) -> AnalysisComputation:
     """The table succeeded (and passed the sanity check) -- draw it as the
     `chart_type` chosen BEFORE computing (see suggest_chart), then interpret
-    it and suggest drilldowns. There is no chart choice after the fact: if
-    no chart was chosen (the suggestion call failed), a bar chart is used and
-    build_chart degrades it to a table if the shape doesn't fit.
-    `narrate=False` skips interpretation and drilldowns, which is how a
-    filtered re-run stays LLM-free. A failure after the table is recorded as
-    `error` but the table/plan/code are still returned, so the cache write
-    isn't lost."""
+    it. There is no chart choice after the fact: if no chart was chosen (the
+    suggestion call failed), a bar chart is used and build_chart degrades it
+    to a table if the shape doesn't fit. Guided drill-down proposals are a
+    separate, on-demand call (see analysis_drilldown_agent.propose /
+    routers/analysis.py's /drilldown/propose) -- not generated here, so a
+    fresh run doesn't pay for suggestions the PM may never look at.
+    `narrate=False` skips interpretation, which is how a filtered re-run
+    stays LLM-free. A failure after the table is recorded as `error` but the
+    table/plan/code are still returned, so the cache write isn't lost."""
     table = _json_safe(table)
     computation = AnalysisComputation(
         plan_text=plan["plan"], generated_code=code, result_table=table,
@@ -637,10 +639,6 @@ def finish_computation(
     if narrate:
         try:
             computation.interpretation = interpret(entry, plan, sample, computation.chart_type)
-            computation.drilldown_suggestions = suggest_drilldowns(
-                entry, plan, sample, computation.interpretation, columns_block,
-                parent_chart_type=computation.chart_type,
-            )
         except Exception as exc:
             computation.error = computation.error or f"Computed the table but couldn't interpret it: {exc}"
     return computation
@@ -678,7 +676,7 @@ def _compute_with_fixed_plan(entry: dict, df: pd.DataFrame, columns_block: str, 
             table = ai_code_executor.run_generated_table_code(code, df)
             plausible, reason = is_plausible_table(table)
             if plausible:
-                return finish_computation(entry, plan, code, table, columns_block, **options)
+                return finish_computation(entry, plan, code, table, **options)
             last_feedback = reason
         except Exception as exc:
             last_feedback = str(exc)
@@ -712,7 +710,7 @@ def _compute_with_generated_plan(
             table = ai_code_executor.run_generated_table_code(code, df)
             plausible, reason = is_plausible_table(table)
             if plausible:
-                return finish_computation(entry, plan, code, table, columns_block, **options)
+                return finish_computation(entry, plan, code, table, **options)
             last_feedback = reason
         except Exception as exc:
             last_feedback = str(exc)

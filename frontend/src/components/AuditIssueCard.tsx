@@ -17,7 +17,6 @@ interface AuditIssueCardProps {
   // rows) but a later data-changing resolution now sits on top of it, so
   // reverting it out of order isn't safe -- the button stays visible but
   // disabled with an explanation, rather than reverting silently wrong.
-  revertLocked: boolean;
 }
 
 // Resolution text like "Dropped 10 column(s): A, B, C." splits into a short
@@ -35,7 +34,6 @@ export default function AuditIssueCard({
   onResolve,
   onRevert,
   resolving,
-  revertLocked,
 }: AuditIssueCardProps) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [showRowsModal, setShowRowsModal] = useState(false);
@@ -89,8 +87,7 @@ export default function AuditIssueCard({
             <button
               type="button"
               className="audit-issue__link audit-issue__revert-btn"
-              disabled={resolving || revertLocked}
-              title={revertLocked ? "Revert the most recent data change first" : undefined}
+              disabled={resolving}
               onClick={() => onRevert(issue.id)}
             >
               {resolving ? "Reverting…" : "Revert"}

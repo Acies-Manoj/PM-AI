@@ -170,7 +170,15 @@ def resolve_issue(session_id: str, body: ResolveRequest) -> AuditReport:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if is_mutating:
-        session.pre_mutation_snapshots[issue.id] = pre_mutation_df
+        if session.audit_baseline is None:
+            # The audited data before any change, without any feature columns
+            # (those are recomputed from it, never part of the baseline).
+            feature_cols = [f.output_column for f in session.features if f.output_column in pre_mutation_df.columns]
+            session.audit_baseline = pre_mutation_df.drop(columns=feature_cols)
+        session.audit_events.append({
+            "type": "decision", "issue_id": issue.id, "decision_id": body.decision_id,
+            "selected_items": list(body.selected_items) if body.selected_items else None,
+        })
         session.mutation_stack.append(issue.id)
 
     issue.status = "resolved"
@@ -186,19 +194,57 @@ def revert_issue(session_id: str, issue_id: str) -> AuditReport:
     if issue.status != "resolved":
         raise HTTPException(status_code=400, detail="This issue has not been resolved yet.")
 
-    if issue_id in session.pre_mutation_snapshots:
-        if not session.mutation_stack or session.mutation_stack[-1] != issue_id:
-            raise HTTPException(
-                status_code=400,
-                detail="This isn't the most recent data change -- revert that one first.",
-            )
-        session.df = session.pre_mutation_snapshots.pop(issue_id)
-        session.mutation_stack.pop()
-
     issue.status = "pending"
     issue.resolution = None
 
+    if issue_id in session.mutation_stack:
+        # Any change can be undone, whatever was applied after it: drop its
+        # event and rebuild the data from the baseline without it.
+        session.mutation_stack.remove(issue_id)
+        session.audit_events = [
+            e for e in session.audit_events if not (e["type"] == "decision" and e["issue_id"] == issue_id)
+        ]
+        _rebuild_audit_df(session)
+        _reset_downstream(session)
+
     return _to_report(session)
+
+
+def _rebuild_audit_df(session: AuditSession) -> None:
+    """Replays the remaining audit decisions (and inline edits), in their
+    original order, on the data as it was before the first change."""
+    from app.services.audit.outlier_detectors import update_trip_value as apply_trip_value_edit
+
+    df = session.audit_baseline.copy()
+    issues = {i.id: i for i in session.issues}
+    for event in session.audit_events:
+        if event["type"] == "decision":
+            issue = issues[event["issue_id"]]
+            try:
+                df, text = data_audit.apply_decision(df, issue, event["decision_id"], event.get("selected_items"))
+            except ValueError:
+                continue
+            issue.resolution = text  # counts may differ now that an earlier change is gone
+        else:
+            try:
+                df = apply_trip_value_edit(df, event["serial"], event["trip_id"], event["field"], event["value"])
+            except ValueError:
+                continue  # the trip's rows were removed by a decision that is still applied
+    session.df = df
+    if not session.mutation_stack:
+        # Nothing left to undo; inline edits made since are already in `df`.
+        session.audit_baseline = None
+        session.audit_events = []
+
+
+def _reset_downstream(session: AuditSession) -> None:
+    """The audited data changed, so features and analyses built on the old data
+    are stale: clear them and they recompute when the PM opens those steps."""
+    session.pre_feature_df = None
+    session.features = []
+    session.feature_skipped_notes = []
+    session.analysis_results.clear()
+    session.overall_analysis = None
 
 
 @router.get("/{session_id}/download")
@@ -373,6 +419,11 @@ def edit_trip_value(session_id: str, body: UpdateTripValueRequest):
         session.df = apply_trip_value_edit(session.df, body.serial, body.trip_id, body.field, body.value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if session.audit_baseline is not None:
+        # Logged so reverting an earlier audit decision replays this edit too.
+        session.audit_events.append({
+            "type": "edit", "serial": body.serial, "trip_id": body.trip_id, "field": body.field, "value": body.value,
+        })
 
     if session.pre_feature_df is not None:
         try:

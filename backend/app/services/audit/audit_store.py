@@ -21,14 +21,16 @@ class AuditSession:
     features: list[FeatureResult] = field(default_factory=list)
     feature_skipped_notes: list[str] = field(default_factory=list)
     # Undo support for resolved issues that actually mutated `df` (dropped
-    # columns / removed rows). `mutation_stack` is a LIFO of issue ids -- only
-    # the most recent one is safe to revert without re-deriving every
-    # decision after it, since row/column removal isn't commutative once a
-    # later decision's mask was computed against the mutated frame.
-    # "Keep as-is" resolutions never touch `df` so they're excluded and can
-    # be reverted in any order.
+    # columns / removed rows). Any of them can be reverted, in any order:
+    # `audit_baseline` is the data before the FIRST change and `audit_events`
+    # is every change since, in order (audit decisions and the PM's inline
+    # value edits). Reverting one drops its event and REPLAYS the rest from the
+    # baseline, so every later decision is re-derived as if the reverted one had
+    # never happened. `mutation_stack` lists the applied decisions' issue ids,
+    # oldest first. "Keep as-is" resolutions never touch `df`.
     mutation_stack: list[str] = field(default_factory=list)
-    pre_mutation_snapshots: dict[str, pd.DataFrame] = field(default_factory=dict)
+    audit_baseline: pd.DataFrame | None = None
+    audit_events: list[dict] = field(default_factory=list)
     # Snapshot of `df` taken the first time features are computed, i.e. the
     # fully-audited data before any feature columns were appended. Every
     # subsequent feature computation (e.g. accepting another AI suggestion)

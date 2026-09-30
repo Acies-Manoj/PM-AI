@@ -355,11 +355,6 @@ export default function AuditReport({
                     onResolve={onResolve}
                     onRevert={onRevert}
                     resolving={resolvingIssueId === issue.id}
-                    revertLocked={
-                      issue.status === "resolved" &&
-                      !(issue.resolution ?? "").startsWith("Kept") &&
-                      issue.id !== report.revertible_issue_id
-                    }
                   />
                 ))
               ) : columnQuery ? (

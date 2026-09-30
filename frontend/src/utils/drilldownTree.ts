@@ -5,6 +5,35 @@ export interface LevelNode {
   label: string;
   depth: number;
   stale: boolean;
+  /** What this drill-down analyses, e.g. "Destination × Origin · Trips" -- the
+   * same for every slide made from one drill-down, whichever value it covers. */
+  analysis: string;
+  /** The value this slide covers, e.g. a carrier ("" for a free-text drill-down). */
+  focus: string;
+  /** The X-axis columns of this drill-down, e.g. "Origin × Destination" ("" for a free-text one). */
+  axes: string;
+  /** What it measures, e.g. "Trips" or "Avg Mean Value". */
+  measure: string;
+  /** Level number in the chain (the analysis you started from is level 1). */
+  level: number;
+  /** Values from the first drill-down down to this one, e.g. ["MSC", "Kiwi"]. */
+  path: string[];
+}
+
+/** The X-axis columns and measure of a guided level ("" / "" for a free-text drill-down). */
+export function axesAndMeasure(entry: AnalysisRepositoryEntry): { axes: string; measure: string } {
+  const chain = entry.chain;
+  if (!chain) return { axes: "", measure: "" };
+  const axes = (chain.dimensions?.length ? chain.dimensions : [chain.dimension]).join(" × ");
+  const measure =
+    chain.metric === "mean" && chain.metric_column ? `Avg ${chain.metric_column}` : chain.metric === "pct_in_spec" ? "% in spec" : "Trips";
+  return { axes, measure };
+}
+
+/** "Destination × Origin · Trips" for a guided level; the plain name otherwise. */
+export function analysisLabel(entry: AnalysisRepositoryEntry): string {
+  const { axes, measure } = axesAndMeasure(entry);
+  return axes ? `${axes} · ${measure}` : entry.name;
 }
 
 /** "Level 2 · Table Grapes" for a guided chain level; the plain name for a
@@ -17,13 +46,25 @@ export function levelLabel(entry: AnalysisRepositoryEntry): string {
  * sit together under it. */
 export function buildLevelTree(entries: AnalysisRepositoryEntry[], rootId: string): LevelNode[] {
   const out: LevelNode[] = [];
-  const walk = (parentId: string, depth: number) => {
+  const walk = (parentId: string, depth: number, prefix: string[]) => {
     for (const e of entries.filter((c) => c.parent_id === parentId && c.status === "approved")) {
-      out.push({ id: e.id, label: levelLabel(e), depth, stale: !!e.chain?.stale });
-      walk(e.id, depth + 1);
+      const focus = e.chain?.focus_label ?? "";
+      const path = [...prefix, focus || e.name];
+      out.push({
+        id: e.id,
+        label: levelLabel(e),
+        depth,
+        stale: !!e.chain?.stale,
+        analysis: analysisLabel(e),
+        ...axesAndMeasure(e),
+        focus,
+        level: e.chain?.level ?? depth + 1,
+        path,
+      });
+      walk(e.id, depth + 1, path);
     }
   };
-  walk(rootId, 1);
+  walk(rootId, 1, []);
   return out;
 }
 

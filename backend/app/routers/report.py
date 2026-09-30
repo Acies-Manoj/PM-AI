@@ -59,11 +59,17 @@ def _drilldown_subtitle(chain: dict) -> str:
         focus = values[0] if values else (chain.get("focus_label") or "")
 
     rank = chain.get("rank") or {}
-    mode = "Bottom" if rank.get("mode") == "bottom" else "Top"
+    dims = " x ".join(chain.get("dimensions") or [chain.get("dimension") or ""])
     by = "% in spec" if rank.get("by") == "pct_in_spec" else "trips"
-    rank_text = f"{mode} {rank.get('n', 3)} {chain.get('dimension') or ''} by {by}".replace("  ", " ")
+    if rank.get("mode", "all") == "all":
+        rank_text = f"{dims} by {by}"
+    else:
+        rank_text = f"{'Bottom' if rank.get('mode') == 'bottom' else 'Top'} {rank.get('n', 3)} {dims} by {by}"
+    rank_text = rank_text.replace("  ", " ")
     if chain.get("metric") == "pct_in_spec" and rank.get("by") != "pct_in_spec":
         rank_text += ", with % in spec"
+    elif chain.get("metric") == "mean" and chain.get("metric_column"):
+        rank_text += f", with avg {chain['metric_column']}"
 
     text = f"{focus} - {rank_text}" if focus else rank_text
     if len(text) > MAX_SUBTITLE_CHARS:

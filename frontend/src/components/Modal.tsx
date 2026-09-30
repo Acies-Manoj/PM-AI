@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import "./Modal.css";
 
 interface ModalProps {
@@ -6,9 +6,16 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   headerExtra?: ReactNode;
+  /** When this changes the body scrolls back to the top (e.g. the modal now shows a different item). */
+  resetScrollKey?: string;
 }
 
-export default function Modal({ title, onClose, children, headerExtra }: ModalProps) {
+export default function Modal({ title, onClose, children, headerExtra, resetScrollKey }: ModalProps) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bodyRef.current?.scrollTo({ top: 0 });
+  }, [resetScrollKey]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -29,7 +36,9 @@ export default function Modal({ title, onClose, children, headerExtra }: ModalPr
             </button>
           </div>
         </div>
-        <div className="modal__body">{children}</div>
+        <div className="modal__body" ref={bodyRef}>
+          {children}
+        </div>
       </div>
     </div>
   );

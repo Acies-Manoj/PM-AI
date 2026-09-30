@@ -25,7 +25,6 @@ import {
   fetchDrilldownOptions,
   proposeDrilldowns,
   confirmDrilldown,
-  rerankDrilldown,
   refreshDrilldown,
   runAnalysisEntry,
   applyFeatures,
@@ -38,7 +37,6 @@ import {
   type AnalysisRepositoryEntry,
   type AnalysisSource,
   type ConfirmDrilldownBody,
-  type DrilldownRank,
   type FeatureReport,
   type OverallAnalysisReport,
 } from "../api/audit";
@@ -122,6 +120,8 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const [overallError, setOverallError] = useState<ErrorsState>({});
 
   const [openEntry, setOpenEntry] = useState<{ slotId: UploadSlotId; entryId: string } | null>(null);
+  // Bumped after each guided Confirm so the open modal switches to its Selected Drill-downs tab.
+  const [openSelectedSignal, setOpenSelectedSignal] = useState(0);
 
   // Toolbar state -- search/sort/filter/pagination, per audited slot.
   const [search, setSearch] = useState<Partial<Record<UploadSlotId, string>>>({});
@@ -322,14 +322,11 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   // are what the PM sees next, not the parent's.
   const confirmChainDrilldown = (id: UploadSlotId, entryId: string, body: ConfirmDrilldownBody): Promise<void> => {
     const sessionId = auditReports[id]!.session_id;
-    return confirmDrilldown(sessionId, entryId, body).then((child) =>
-      refreshRepository(id, sessionId).then(() => setOpenEntry({ slotId: id, entryId: child.id }))
-    );
-  };
-
-  const rerankChainLevel = (id: UploadSlotId, entryId: string, rank: DrilldownRank): Promise<void> => {
-    const sessionId = auditReports[id]!.session_id;
-    return rerankDrilldown(sessionId, entryId, rank).then(() => refreshRepository(id, sessionId));
+    // Stay on the analysis being drilled and show its Selected Drill-downs tab, where
+    // every level just created (one per value, when several were ticked) is listed.
+    return confirmDrilldown(sessionId, entryId, body)
+      .then(() => refreshRepository(id, sessionId))
+      .then(() => setOpenSelectedSignal((n) => n + 1));
   };
 
   const refreshChainLevel = (id: UploadSlotId, entryId: string): Promise<void> => {
@@ -828,8 +825,8 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
               onFetchDrilldownOptions={() => fetchDrilldownOptions(auditReports[openEntry.slotId]!.session_id, openEntry.entryId)}
               onProposeDrilldowns={(more) => proposeDrilldownsFor(openEntry.slotId, openEntry.entryId, more)}
               onConfirmDrilldown={(body) => confirmChainDrilldown(openEntry.slotId, openEntry.entryId, body)}
-              onRerankLevel={(rank) => rerankChainLevel(openEntry.slotId, openEntry.entryId, rank)}
               onRefreshLevel={() => refreshChainLevel(openEntry.slotId, openEntry.entryId)}
+              openSelectedSignal={openSelectedSignal}
               onApplyFilters={(filters: AnalysisFilterSelections) =>
                 filterAnalysisEntry(auditReports[openEntry.slotId]!.session_id, openEntry.entryId, filters)
               }

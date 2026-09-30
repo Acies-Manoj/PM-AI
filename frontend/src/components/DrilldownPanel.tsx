@@ -1,73 +1,112 @@
 import { useEffect, useState } from "react";
-import type { ConfirmDrilldownBody, DrilldownMetric, DrilldownOptions, DrilldownProposal, DrilldownRank } from "../api/audit";
+import type { ConfirmDrilldownBody, DrilldownMetric, DrilldownOptions, DrilldownProposal } from "../api/audit";
 import { AuditApiError } from "../api/audit";
 import { IconSparkle } from "./icons";
 import "./DrilldownPanel.css";
 
-const METRIC_LABELS: Record<DrilldownMetric, string> = { count: "Trips", pct_in_spec: "% in spec" };
+const METRIC_LABELS: Record<DrilldownMetric, string> = { count: "Trips", pct_in_spec: "% in spec", mean: "Average" };
+const MODE_LABELS = { all: "All", top: "Top", bottom: "Bottom" } as const;
 
-/** Compact Top/Bottom + N + rank-by control -- used on its own in a chain
- * level's header to re-rank that level. */
-export function DrilldownRankControl({
-  rank,
-  metrics,
-  disabled,
-  onChange,
+function proposalTitle(p: DrilldownProposal): string {
+  const dims = (p.child_dimensions?.length ? p.child_dimensions : [p.child_dimension]).join(" × ");
+  const metric = p.metric === "mean" && p.metric_column ? `Avg ${p.metric_column}` : METRIC_LABELS[p.metric];
+  const limit = p.rank.mode === "all" ? "All" : `${MODE_LABELS[p.rank.mode]} ${p.rank.n}`;
+  return `${dims} · ${metric} · ${limit}`;
+}
+
+const MAX_SLIDES = 6;
+
+function proposalKey(p: DrilldownProposal): string {
+  const dims = p.child_dimensions?.length ? p.child_dimensions : [p.child_dimension];
+  return `${dims.join("|")}~${p.metric}~${p.metric_column ?? ""}`;
+}
+
+/** One card per analysis: proposals that differ only in their focus value are merged. */
+function mergeProposals(proposals: DrilldownProposal[]): DrilldownProposal[] {
+  const seen = new Map<string, DrilldownProposal>();
+  for (const p of proposals) if (!seen.has(proposalKey(p))) seen.set(proposalKey(p), p);
+  return [...seen.values()];
+}
+
+/** A tick-box list of the values from the main chart (e.g. every carrier). */
+function FocusChips({
+  options,
+  selected,
+  onToggle,
 }: {
-  rank: DrilldownRank;
-  metrics: DrilldownMetric[];
-  disabled?: boolean;
-  onChange: (rank: DrilldownRank) => void;
+  options: DrilldownOptions;
+  selected: string[];
+  onToggle: (value: string) => void;
 }) {
-  const byOptions: DrilldownMetric[] = metrics.includes("pct_in_spec") ? ["count", "pct_in_spec"] : ["count"];
   return (
-    <div className="drilldown-rank" role="group" aria-label="Rank">
-      <div className="drilldown-seg">
-        {(["top", "bottom"] as const).map((mode) => (
+    <div className="drilldown-focus">
+      {options.focus_options.map((o) => {
+        const on = selected.includes(o.value);
+        return (
           <button
-            key={mode}
+            key={o.value}
             type="button"
-            disabled={disabled}
-            className={`drilldown-seg__btn${rank.mode === mode ? " drilldown-seg__btn--active" : ""}`}
-            onClick={() => rank.mode !== mode && onChange({ ...rank, mode })}
+            role="checkbox"
+            aria-checked={on}
+            disabled={!on && selected.length >= MAX_SLIDES}
+            className={`drilldown-focus__item${on ? " drilldown-focus__item--on" : ""}`}
+            onClick={() => onToggle(o.value)}
           >
-            {mode === "top" ? "Top" : "Bottom"}
+            <span className="drilldown-focus__value">{o.value}</span>
+            <span className="drilldown-focus__meta">{o.rows.toLocaleString()} trips</span>
           </button>
-        ))}
+        );
+      })}
+    </div>
+  );
+}
+
+function toggleValue(prev: string[], value: string): string[] {
+  return prev.includes(value) ? prev.filter((v) => v !== value) : prev.length < MAX_SLIDES ? [...prev, value] : prev;
+}
+
+/** One suggested analysis. The values of the main chart are listed right on the
+ * card; ticking several runs the same analysis once for each, on separate slides. */
+function ProposalCard({
+  proposal,
+  options,
+  busy,
+  disabled,
+  onRun,
+}: {
+  proposal: DrilldownProposal;
+  options: DrilldownOptions;
+  busy: boolean;
+  disabled: boolean;
+  onRun: (focus: string[]) => void;
+}) {
+  const [focus, setFocus] = useState<string[]>(proposal.focus_values.slice(0, 1));
+  const label = options.focus_dimension ?? "value";
+  return (
+    <div className="drilldown-proposal drilldown-proposal--stacked">
+      <div className="drilldown-proposal__body">
+        <span className="drilldown-proposal__title">
+          {proposalTitle(proposal)}
+          <span className="drilldown-tag drilldown-tag--vars">
+            {(proposal.child_dimensions?.length || 1) + 1}-variable chart
+          </span>
+        </span>
+        <p className="drilldown-proposal__reason">{proposal.reason}</p>
+        {options.focus_options.length > 0 && (
+          <>
+            <span className="drilldown-panel__label">Apply to {label} (tick one or more)</span>
+            <FocusChips options={options} selected={focus} onToggle={(v) => setFocus((prev) => toggleValue(prev, v))} />
+          </>
+        )}
       </div>
-      <div className="drilldown-stepper">
-        <button
-          type="button"
-          aria-label="Fewer"
-          disabled={disabled || rank.n <= 1}
-          onClick={() => onChange({ ...rank, n: rank.n - 1 })}
-        >
-          -
-        </button>
-        <span className="drilldown-stepper__value">{rank.n}</span>
-        <button
-          type="button"
-          aria-label="More"
-          disabled={disabled || rank.n >= 10}
-          onClick={() => onChange({ ...rank, n: rank.n + 1 })}
-        >
-          +
-        </button>
-      </div>
-      <label className="drilldown-field drilldown-field--inline">
-        <span>by</span>
-        <select
-          value={rank.by}
-          disabled={disabled}
-          onChange={(e) => onChange({ ...rank, by: e.target.value as DrilldownMetric })}
-        >
-          {byOptions.map((m) => (
-            <option key={m} value={m}>
-              {METRIC_LABELS[m]}
-            </option>
-          ))}
-        </select>
-      </label>
+      <button
+        type="button"
+        className="drilldown-btn drilldown-btn--primary"
+        disabled={disabled || focus.length === 0}
+        onClick={() => onRun(focus)}
+      >
+        {busy ? "Opening…" : focus.length > 1 ? `Drill down (${focus.length} slides)` : "Drill down"}
+      </button>
     </div>
   );
 }
@@ -91,6 +130,8 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
   const [proposing, setProposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingIndex, setConfirmingIndex] = useState<number | null>(null);
+  // Already-cached duplicates of one analysis (same columns + measure, different focus) become one card.
+  const cards = proposals ? mergeProposals(proposals) : null;
 
   const propose = (more: boolean) => {
     setProposing(true);
@@ -109,10 +150,19 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const select = (p: DrilldownProposal, i: number) => {
+  const select = (p: DrilldownProposal, focus: string[], i: number) => {
     setConfirmingIndex(i);
     setError(null);
-    onConfirm({ focus_values: p.focus_values, child_dimension: p.child_dimension, metric: p.metric, rank: p.rank, split: false })
+    onConfirm({
+      focus_values: focus,
+      child_dimension: p.child_dimension,
+      child_dimensions: p.child_dimensions?.length ? p.child_dimensions : [p.child_dimension],
+      metric: p.metric,
+      metric_column: p.metric_column ?? null,
+      rank: p.rank,
+      // Several values selected = the same analysis once per value, each on its own slide.
+      split: focus.length > 1,
+    })
       .catch((err) => setError(err instanceof AuditApiError ? err.message : "Could not run that drill-down."))
       .finally(() => setConfirmingIndex(null));
   };
@@ -132,32 +182,18 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
       {error && <p className="analysis-card__error">{error}</p>}
       {proposing && !proposals && <p className="drilldown-panel__hint">Finding drill-downs…</p>}
 
-      {proposals && (
-        <div className={`drilldown-proposals${proposals.length > 5 ? " drilldown-proposals--scroll" : ""}`}>
-          {proposals.length === 0 && <p className="drilldown-panel__hint">No drill-downs available.</p>}
-          {proposals.map((p, i) => (
-            <div className="drilldown-proposal" key={i}>
-              <div className="drilldown-proposal__body">
-                <span className="drilldown-proposal__title">
-                  {p.child_dimension} · {METRIC_LABELS[p.metric]} · {p.rank.mode === "top" ? "Top" : "Bottom"} {p.rank.n}
-                </span>
-                {p.focus_values.length > 0 && (
-                  <span className="drilldown-proposal__focus">
-                    {options.focus_dimension ? `${options.focus_dimension}: ` : ""}
-                    {p.focus_values.join(", ")}
-                  </span>
-                )}
-                <p className="drilldown-proposal__reason">{p.reason}</p>
-              </div>
-              <button
-                type="button"
-                className="drilldown-btn drilldown-btn--primary"
-                disabled={confirmingIndex !== null}
-                onClick={() => select(p, i)}
-              >
-                {confirmingIndex === i ? "Opening…" : "Drill down"}
-              </button>
-            </div>
+      {cards && (
+        <div className={`drilldown-proposals${cards.length > 5 ? " drilldown-proposals--scroll" : ""}`}>
+          {cards.length === 0 && <p className="drilldown-panel__hint">No drill-downs available.</p>}
+          {cards.map((p, i) => (
+            <ProposalCard
+              key={proposalKey(p)}
+              proposal={p}
+              options={options}
+              busy={confirmingIndex === i}
+              disabled={confirmingIndex !== null}
+              onRun={(focus) => select(p, focus, i)}
+            />
           ))}
         </div>
       )}

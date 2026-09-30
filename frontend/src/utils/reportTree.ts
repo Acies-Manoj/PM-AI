@@ -17,8 +17,13 @@ export function drilldownSubtitle(chain: DrilldownChain): string {
     focus = values[0] ?? chain.focus_label ?? "";
   }
   const by = chain.rank.by === "pct_in_spec" ? "% in spec" : "trips";
-  let rank = `${chain.rank.mode === "bottom" ? "Bottom" : "Top"} ${chain.rank.n} ${chain.dimension} by ${by}`;
+  const dims = (chain.dimensions?.length ? chain.dimensions : [chain.dimension]).join(" x ");
+  let rank =
+    chain.rank.mode === "all"
+      ? `${dims} by ${by}`
+      : `${chain.rank.mode === "bottom" ? "Bottom" : "Top"} ${chain.rank.n} ${dims} by ${by}`;
   if (chain.metric === "pct_in_spec" && chain.rank.by !== "pct_in_spec") rank += ", with % in spec";
+  else if (chain.metric === "mean" && chain.metric_column) rank += `, with avg ${chain.metric_column}`;
   const text = focus ? `${focus} - ${rank}` : rank;
   return text.length > MAX_SUBTITLE_CHARS ? `${text.slice(0, MAX_SUBTITLE_CHARS - 1).trimEnd()}…` : text;
 }

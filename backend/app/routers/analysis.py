@@ -91,6 +91,37 @@ def get_analysis_definitions() -> AnalysisDefinitionsSummary:
     )
 
 
+# A drill-down level offers every column that can be selected as a filter -- the
+# same pool as the X-axis columns -- capped only so the bar stays usable.
+MAX_LEVEL_FILTERS = 30
+_LEVEL_FILTER_CACHE: dict[tuple, list[dict]] = {}
+
+
+def _level_filter_defs(session_id: str, session: AuditSession) -> list[dict]:
+    """Filter columns for a drill-down level: Product, Origin, Carrier, Mode,
+    engineered features and every other usable categorical column. Never
+    trimmed to fit the chart -- a level's own X-axis columns, and the value it
+    is narrowed to, stay filterable."""
+    key = (session_id, id(session.df), hash(tuple(session.df.columns)))
+    if key not in _LEVEL_FILTER_CACHE:
+        if len(_LEVEL_FILTER_CACHE) > 32:
+            _LEVEL_FILTER_CACHE.clear()
+        columns = analysis_drilldown_agent.candidate_dimensions(session.df, set(), _feature_columns(session_id, session))
+        defs = analysis_filters.build_defs(
+            [{"column": c, "reason": "Narrow this drill-down"} for c in columns], session.df, limit=MAX_LEVEL_FILTERS,
+        )
+        _LEVEL_FILTER_CACHE[key] = [d.model_dump() for d in defs]
+    return _LEVEL_FILTER_CACHE[key]
+
+
+def _level_scope(session: AuditSession, definition: dict):
+    """The rows a level covers, so its filter lists only values that exist there."""
+    try:
+        return analysis_drilldown._apply(session.df, (definition.get("chain") or {}).get("where") or [])
+    except analysis_templates.TemplateError:
+        return session.df
+
+
 def _merge_entry(session: AuditSession, definition: dict) -> AnalysisRepositoryEntry:
     """Merges a repository definition with its in-memory run result (if
     "Run" has ever been clicked for it) into the full response shape. Filter
@@ -104,8 +135,13 @@ def _merge_entry(session: AuditSession, definition: dict) -> AnalysisRepositoryE
     merged["template_summary"] = analysis_templates.summarize(definition.get("template"))
     # A custom entry already has its own saved filters; every other source
     # only has them once a run has discovered them (see analysis_engine).
-    filter_defs = definition.get("filters") or (result.filters if result else None) or []
-    merged["filters"] = analysis_filters.options(session.df, filter_defs)
+    if definition.get("chain"):
+        merged["filters"] = analysis_filters.options(
+            _level_scope(session, definition), _level_filter_defs(session.session_id, session),
+        )
+    else:
+        filter_defs = definition.get("filters") or (result.filters if result else None) or []
+        merged["filters"] = analysis_filters.options(session.df, filter_defs)
     if result:
         merged.update({
             "run_status": result.run_status,
@@ -296,6 +332,8 @@ def filter_entry(session_id: str, entry_id: str, body: FilterAnalysisRequest) ->
     if base is None or base.run_status != "done":
         raise HTTPException(status_code=409, detail="Run this analysis before filtering it.")
 
+    if entry.get("chain"):
+        entry = {**entry, "filters": _level_filter_defs(session_id, session)}
     applied = analysis_filters.active(body.filters, entry.get("filters") or [])
     if not applied:
         return _merge_entry(session, entry)
@@ -380,6 +418,22 @@ def _result_labels(result: AnalysisResult | None) -> list[str]:
     return [str(r[col]) for r in result.result_table if r.get(col) is not None]
 
 
+def _chain_dims(chain: dict) -> list[str]:
+    """Every X-axis column of a chain level (older levels only stored `dimension`)."""
+    return list(chain.get("dimensions") or [chain["dimension"]])
+
+
+def _pinned(entry: dict, dimension: str, where: list[dict]) -> set[str]:
+    """Columns a next drill-down can no longer use as an X axis: the ones this
+    level already shows or filters on."""
+    dims = set(_chain_dims(entry["chain"])) if entry.get("chain") else set()
+    return {dimension} | dims | {w["column"] for w in where}
+
+
+def _feature_columns(session_id: str, session: AuditSession) -> list[str]:
+    return [f["output_column"] for f in analysis_dependencies.available_features(session_id, session.df)]
+
+
 def _level_of(entry: dict) -> int:
     return (entry.get("chain") or {}).get("level", 1)
 
@@ -419,8 +473,8 @@ def drilldown_options(session_id: str, entry_id: str) -> DrilldownOptions:
     dimension, where = _parent_scope(session, entry)
     if dimension is None:
         return DrilldownOptions(**base, can_drill=False, reason="This analysis isn't grouped by a single column, so there is nothing to drill into.")
-    pinned = {dimension} | {w["column"] for w in where}
-    candidates = analysis_drilldown_agent.candidate_dimensions(session.df, pinned)
+    pinned = _pinned(entry, dimension, where)
+    candidates = analysis_drilldown_agent.candidate_dimensions(session.df, pinned, _feature_columns(session_id, session))
     child = analysis_drilldown.next_dimension(dimension, session.df)
     if child not in candidates:
         child = candidates[0] if candidates else None
@@ -432,7 +486,8 @@ def drilldown_options(session_id: str, entry_id: str) -> DrilldownOptions:
     next_where = where + ([analysis_drilldown.focus_condition(dimension, default_focus)] if default_focus else [])
     return DrilldownOptions(
         **base, can_drill=bool(options), focus_dimension=dimension, child_dimension=child,
-        candidate_dimensions=candidates, focus_options=options, default_focus=default_focus,
+        candidate_dimensions=candidates, numeric_columns=analysis_drilldown.numeric_columns(session.df),
+        focus_options=options, default_focus=default_focus,
         default_rank=DrilldownRank(**analysis_drilldown.default_rank_for(session.df, next_where, child)),
     )
 
@@ -477,21 +532,27 @@ def propose_drilldowns(session_id: str, entry_id: str, more: bool = False) -> li
     dimension, where = _parent_scope(session, entry)
     if dimension is None:
         return result.guided_proposals
-    pool_child = analysis_drilldown_agent.candidate_dimensions(session.df, {dimension} | {w["column"] for w in where})
+    pinned = _pinned(entry, dimension, where)
+    features = _feature_columns(session_id, session)
+    pool_child = analysis_drilldown_agent.candidate_dimensions(session.df, pinned, features)
     if not pool_child:
         return result.guided_proposals
     options, _ = _focus_pool(session, entry, result, dimension, where, pool_child[0])
     new_proposals = analysis_drilldown_agent.propose(
         session.df, entry, dimension, where, [o["value"] for o in options],
         result.result_table or [], result.interpretation, avoid=cached or None,
+        feature_columns=features, pinned=pinned,
     )
     result.guided_proposals = result.guided_proposals + [DrilldownProposal(**p) for p in new_proposals]
     return result.guided_proposals
 
 
-def _build_level(session: AuditSession, dimension: str, metric: str, rank: dict, where: list[dict]) -> tuple[dict, str]:
+def _build_level(
+    session: AuditSession, dimensions: list[str] | str, metric: str, rank: dict, where: list[dict],
+    metric_column: str | None = None,
+) -> tuple[dict, str]:
     try:
-        return analysis_drilldown.build_template(dimension, metric, rank, where, session.df)
+        return analysis_drilldown.build_template(dimensions, metric, rank, where, session.df, metric_column)
     except analysis_templates.TemplateError as exc:
         raise HTTPException(status_code=422, detail=f"Can't build this drill-down: {exc}") from exc
 
@@ -516,17 +577,22 @@ def confirm_drilldown(session_id: str, entry_id: str, body: ConfirmDrilldownRequ
         raise HTTPException(status_code=422, detail=f"Drill-downs stop at level {analysis_drilldown.MAX_CHAIN_LEVEL}.")
 
     dimension, where = _parent_scope(session, parent)
-    child = body.child_dimension or (analysis_drilldown.next_dimension(dimension, session.df) if dimension else None)
-    pinned = ({dimension} | {w["column"] for w in where}) if dimension else set()
-    if dimension is None or child is None or child not in session.df.columns or child in pinned:
+    default_child = analysis_drilldown.next_dimension(dimension, session.df) if dimension else None
+    children = list(dict.fromkeys(body.child_dimensions or [body.child_dimension or default_child]))
+    pinned = _pinned(parent, dimension, where) if dimension else set()
+    if dimension is None or not children or any(c is None or c not in session.df.columns or c in pinned for c in children):
         raise HTTPException(status_code=422, detail="Couldn't work out which level to drill into.")
+    if len(children) > 5:
+        raise HTTPException(status_code=422, detail="Pick at most 5 X-axis columns.")
+    if body.metric == "mean" and (not body.metric_column or body.metric_column not in analysis_drilldown.numeric_columns(session.df)):
+        raise HTTPException(status_code=422, detail="Pick a numeric column to average.")
     if body.metric == "pct_in_spec" and analysis_drilldown.find_in_spec_column(session.df) is None:
         raise HTTPException(status_code=422, detail="No '% in spec' column exists yet -- compute that feature first.")
 
     values = list(dict.fromkeys(v for v in body.focus_values if v))
     rank = body.rank.model_dump()
     common = dict(session=session, session_id=session_id, parent=parent, dimension=dimension, where=where,
-                  child=child, metric=body.metric, rank=rank, level=level)
+                  children=children, metric=body.metric, metric_column=body.metric_column, rank=rank, level=level)
 
     if body.split and len(values) > 1:
         if len(values) > MAX_SPLIT_SLIDES:
@@ -544,29 +610,28 @@ def confirm_drilldown(session_id: str, entry_id: str, body: ConfirmDrilldownRequ
 
 
 def _create_level(
-    *, session: AuditSession, session_id: str, parent: dict, dimension: str, where: list[dict], child: str,
-    metric: str, rank: dict, level: int, values: list[str], split: bool,
+    *, session: AuditSession, session_id: str, parent: dict, dimension: str, where: list[dict], children: list[str],
+    metric: str, metric_column: str | None, rank: dict, level: int, values: list[str], split: bool,
 ) -> tuple[dict, bool]:
     """Creates one chain level for `values` (not yet run), or returns the
     identical level if it already exists. Returns (entry, was_created)."""
     new_where = where + [analysis_drilldown.focus_condition(dimension, values)]
-    template, chart_type = _build_level(session, child, metric, rank, new_where)
+    child = children[0]
+    template, chart_type = _build_level(session, children, metric, rank, new_where, metric_column)
     label = _focus_label(values)
     chain = {
         "chain_id": (parent.get("chain") or {}).get("chain_id") or f"chain_{parent['id']}",
-        "level": level, "dimension": child, "metric": metric, "rank": rank, "where": new_where,
+        "level": level, "dimension": child, "dimensions": children, "metric": metric, "metric_column": metric_column,
+        "rank": rank, "where": new_where,
         "focus_dimension": dimension, "focus_values": values, "focus_label": label, "split": split, "stale": False,
     }
     for existing in analysis_repository.get_repository(session_id):
         c = existing.get("chain")
-        if existing.get("parent_id") == parent["id"] and c and c["where"] == new_where and c["dimension"] == child:
+        if existing.get("parent_id") == parent["id"] and c and c["where"] == new_where and _chain_dims(c) == children:
             return existing, False
 
-    exclude = {child} | {w["column"] for w in new_where}
-    filters = analysis_designer.finalize_custom(
-        session.df, None, None, "", [], analysis_drilldown.chart_filters(session.df, exclude),
-    )[2]
-    name = analysis_drilldown.level_name(child, rank, label, metric)
+    filters = _level_filter_defs(session_id, session)
+    name = analysis_drilldown.level_name(children, rank, label, metric, metric_column)
     entry = analysis_repository.add_chain_entry(
         session_id, parent["id"], name=name, description=f"{name} (drill-down from {parent['name']}).",
         template=template, chart_type=chart_type, filters=filters, chain=chain,
@@ -587,8 +652,8 @@ def rerank_drilldown(session_id: str, entry_id: str, body: DrilldownRank) -> Ana
     if body.by == "pct_in_spec" and analysis_drilldown.find_in_spec_column(session.df) is None:
         raise HTTPException(status_code=422, detail="No '% in spec' column exists yet -- compute that feature first.")
     rank = body.model_dump()
-    template, chart_type = _build_level(session, chain["dimension"], chain["metric"], rank, chain["where"])
-    name = analysis_drilldown.level_name(chain["dimension"], rank, chain["focus_label"], chain["metric"])
+    template, chart_type = _build_level(session, _chain_dims(chain), chain["metric"], rank, chain["where"], chain.get("metric_column"))
+    name = analysis_drilldown.level_name(_chain_dims(chain), rank, chain["focus_label"], chain["metric"], chain.get("metric_column"))
     updated = analysis_repository.update_entry(session_id, entry_id, {
         "template": template, "name": name, "chain": {**chain, "rank": rank, "stale": False},
         "chart_recommendation": {"chart_type": chart_type, "reason": "Chosen for this drill-down level.", "alternatives": []},
@@ -625,8 +690,8 @@ def refresh_drilldown(session_id: str, entry_id: str) -> AnalysisRepositoryEntry
         parent_dim, parent_where = _parent_scope(session, parent)
         where = parent_where + [analysis_drilldown.focus_condition(parent_dim, labels)]
         chain = {**chain, "where": where, "focus_values": labels, "focus_label": _focus_label(labels)}
-    template, chart_type = _build_level(session, chain["dimension"], chain["metric"], chain["rank"], chain["where"])
-    name = analysis_drilldown.level_name(chain["dimension"], chain["rank"], chain["focus_label"], chain["metric"])
+    template, chart_type = _build_level(session, _chain_dims(chain), chain["metric"], chain["rank"], chain["where"], chain.get("metric_column"))
+    name = analysis_drilldown.level_name(_chain_dims(chain), chain["rank"], chain["focus_label"], chain["metric"], chain.get("metric_column"))
     updated = analysis_repository.update_entry(session_id, entry_id, {
         "template": template, "name": name, "chain": {**chain, "stale": False},
         "chart_recommendation": {"chart_type": chart_type, "reason": "Chosen for this drill-down level.", "alternatives": []},

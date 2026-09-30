@@ -47,6 +47,8 @@ _AGG_LABELS = {
 }
 _PERIOD_CODES = {"day": "D", "week": "W", "month": "M", "quarter": "Q", "year": "Y"}
 _MAX_SCATTER_POINTS = 500
+# Most groups a multi-column drill-down keeps ("all" still stops here so a chart stays readable).
+MAX_MULTI_ROWS = 200
 
 
 class TemplateError(ValueError):
@@ -136,6 +138,24 @@ class GroupAggregate(_Base):
     min_rows: int = Field(default=1, ge=1)
 
 
+class MultiGroupAggregate(_Base):
+    """Two to five grouping columns at once (e.g. Carrier x Origin x Destination),
+    with 1-4 metrics. The last column splits the chart into series; the earlier
+    ones are joined into the X label."""
+    template_id: Literal["multi_group"]
+    dimensions: list[str] = Field(min_length=1, max_length=5)
+    metrics: list[Metric] = Field(min_length=1, max_length=4)
+    sort: Literal["desc", "asc", "label"] = "desc"
+    top_n: int | None = Field(default=None, ge=1, le=MAX_MULTI_ROWS)
+    min_rows: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def _distinct_dimensions(self):
+        if len(set(self.dimensions)) != len(self.dimensions):
+            raise ValueError("dimensions must all be different columns")
+        return self
+
+
 class TopNRanking(_Base):
     template_id: Literal["top_n_ranking"]
     group_by: str
@@ -220,7 +240,7 @@ class OverallKpis(_Base):
 
 TemplateSpec = Annotated[
     Union[
-        GroupAggregate, TopNRanking, ShareOfTotal, CrossTab, TimeTrend, RateByGroup,
+        GroupAggregate, MultiGroupAggregate, TopNRanking, ShareOfTotal, CrossTab, TimeTrend, RateByGroup,
         RateOverTime, Distribution, NumericRelationship, OverallKpis,
     ],
     Field(discriminator="template_id"),
@@ -245,6 +265,12 @@ CATALOG: dict[str, TemplateInfo] = {
         "One dimension with one to four metrics, e.g. shipment count and average temperature by carrier.",
         '{"template_id": "group_aggregate", "group_by": "Carrier", "metrics": [{"agg": "count"}, {"agg": "mean", "column": "Avg Temp"}], "sort": "desc", "top_n": null}',
         "bar", ("bar", "grouped_bar", "combo", "pie", "line", "table"),
+    ),
+    "multi_group": TemplateInfo(
+        "Multi-column group & aggregate",
+        "Only when the request names TWO to FIVE grouping columns together, e.g. shipment count and % in spec by carrier, origin and destination.",
+        '{"template_id": "multi_group", "dimensions": ["Carrier", "Origin", "Destination"], "metrics": [{"agg": "count"}], "sort": "desc", "top_n": null}',
+        "grouped_bar", ("grouped_bar", "bar", "heatmap", "table"),
     ),
     "top_n_ranking": TemplateInfo(
         "Top / bottom N ranking",
@@ -345,7 +371,8 @@ def _conditions_of(spec) -> list[Condition]:
 
 def _dimension_columns(spec) -> list[str]:
     names = ("group_by", "row_dimension", "column_dimension", "series_by")
-    return [getattr(spec, n) for n in names if getattr(spec, n, None)]
+    found = [getattr(spec, n) for n in names if getattr(spec, n, None)]
+    return found + list(getattr(spec, "dimensions", None) or [])
 
 
 def _check_condition(cond: Condition, df: pd.DataFrame) -> None:
@@ -448,6 +475,13 @@ def explain_steps(spec) -> list[str]:
     if t in ("group_aggregate", "top_n_ranking", "share_of_total"):
         steps.append(f"Group the rows by {spec.group_by}.{blank_note}")
         steps.append("For each group, compute " + "; ".join(_metric_phrase(m) for m in _metrics_of(spec)) + ".")
+    if t == "multi_group":
+        steps.append(f"Group the rows by {' x '.join(spec.dimensions)}.{blank_note}")
+        steps.append("For each combination, compute " + "; ".join(_metric_phrase(m) for m in spec.metrics) + ".")
+        first = spec.metrics[0].output_label()
+        order = {"desc": f"highest {first} first", "asc": f"lowest {first} first", "label": "alphabetically"}[spec.sort]
+        floor = f" among combinations with at least {spec.min_rows} rows" if spec.min_rows > 1 else ""
+        steps.append(f"Sort {order}{floor} and keep the first {spec.top_n or 100} combinations.")
     if t == "group_aggregate":
         first = spec.metrics[0].output_label()
         order = {"desc": f"highest {first} first", "asc": f"lowest {first} first", "label": f"{spec.group_by} alphabetically"}[spec.sort]
@@ -614,6 +648,36 @@ def _run_group_aggregate(spec: GroupAggregate, df: pd.DataFrame) -> TemplateOutp
     if len(labels) < 2:
         allowed = tuple(c for c in allowed if c != "combo")
     return TemplateOutput(out, ChartRoles(x=spec.group_by, y=labels), default, allowed)
+
+
+def _run_multi_group(spec: MultiGroupAggregate, df: pd.DataFrame) -> TemplateOutput:
+    keys = {d: as_labels(df[d]) for d in spec.dimensions}
+    out = _grouped(df, keys, spec.metrics)
+    if spec.min_rows > 1:
+        sizes = pd.DataFrame(keys, index=df.index).groupby(list(keys), sort=False, dropna=False).size().rename("__n").reset_index()
+        out = out.merge(sizes, on=list(keys), how="left")
+        out = out[out["__n"] >= spec.min_rows].drop(columns="__n")
+        if out.empty:
+            raise TemplateError(f"No combination has at least {spec.min_rows} rows.")
+    first = spec.metrics[0].output_label()
+    out = _sort_and_limit(out, first, spec.sort, spec.top_n or 100, spec.dimensions[0])
+    labels = [m.output_label() for m in spec.metrics]
+    dims = list(spec.dimensions)
+    if len(dims) == 1:
+        roles, default = ChartRoles(x=dims[0], y=labels), ("grouped_bar" if len(labels) > 1 else "bar")
+    elif len(dims) == 2:
+        roles, default = ChartRoles(x=dims[0], y=labels[:1], series=dims[1]), "grouped_bar"
+    else:
+        # Earlier columns are joined into one X label; the last splits the series.
+        x_name = " / ".join(dims[:-1])
+        out = out.copy()
+        out.insert(0, x_name, out[dims[:-1]].astype(str).agg(" / ".join, axis=1))
+        roles = ChartRoles(x=x_name, y=labels[:1], series=dims[-1])
+        default = "grouped_bar"
+    allowed = CATALOG[spec.template_id].allowed_charts
+    if len(dims) != 2:
+        allowed = tuple(c for c in allowed if c != "heatmap")
+    return TemplateOutput(out, roles, default, allowed)
 
 
 def _run_top_n(spec: TopNRanking, df: pd.DataFrame) -> TemplateOutput:
@@ -789,6 +853,7 @@ def _run_overall_kpis(spec: OverallKpis, df: pd.DataFrame) -> TemplateOutput:
 
 _RUNNERS = {
     "group_aggregate": _run_group_aggregate,
+    "multi_group": _run_multi_group,
     "top_n_ranking": _run_top_n,
     "share_of_total": _run_share,
     "cross_tab": _run_cross_tab,

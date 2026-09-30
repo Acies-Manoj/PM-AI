@@ -56,7 +56,7 @@ def kind_for(series: pd.Series) -> FilterKind | None:
     return "categorical"
 
 
-def build_defs(candidates: list[dict], df: pd.DataFrame) -> list[FilterDef]:
+def build_defs(candidates: list[dict], df: pd.DataFrame, limit: int = MAX_FILTERS) -> list[FilterDef]:
     """Turns the LLM's proposed filter columns into validated FilterDefs:
     unknown columns and unusable (high-cardinality) ones are dropped."""
     available = set(df.columns.astype(str))
@@ -72,7 +72,7 @@ def build_defs(candidates: list[dict], df: pd.DataFrame) -> list[FilterDef]:
         reason = c.get("reason") if isinstance(c.get("reason"), str) else ""
         defs.append(FilterDef(column=column, kind=kind, reason=reason.strip()))
         seen.add(column)
-        if len(defs) == MAX_FILTERS:
+        if len(defs) == limit:
             break
     return defs
 

@@ -30,8 +30,6 @@ DEFAULT_N_CAP = 5
 CUMULATIVE_SHARE = 0.7
 # Preferred drill order; only columns present in the data are used.
 HIERARCHY = ["Product", "Origin", "Carrier"]
-# Columns worth offering as chart filters on a drill-down level.
-FILTER_CANDIDATES = ["Product", "Origin", "Carrier", "Mode Of Transportation", "Is Alarmed", "Destination"]
 
 
 def hierarchy(df: pd.DataFrame) -> list[str]:
@@ -101,15 +99,16 @@ def focus_options(df: pd.DataFrame, dimension: str, child_dimension: str, limit:
 
 
 def default_rank_for(df: pd.DataFrame, where: list[dict], dimension: str, metric: str = "count") -> dict:
-    """Default top-N for a level, sized from the real distribution."""
+    """Default rank for a level: every group ("all"). `n` is only the
+    suggested size if the PM switches to Top/Bottom, sized from the data."""
     try:
         subset = _apply(df, where)
     except analysis_templates.TemplateError:
-        return {"mode": "top", "n": 3, "by": "count"}
+        return {"mode": "all", "n": 3, "by": "count"}
     if dimension not in subset.columns:
-        return {"mode": "top", "n": 3, "by": "count"}
+        return {"mode": "all", "n": 3, "by": "count"}
     counts = as_labels(subset[dimension]).value_counts()
-    return {"mode": "top", "n": default_n(counts), "by": "count"}
+    return {"mode": "all", "n": default_n(counts), "by": "count"}
 
 
 def _apply(df: pd.DataFrame, where: list[dict]) -> pd.DataFrame:
@@ -124,43 +123,72 @@ def focus_condition(dimension: str, values: list[str]) -> dict:
     return {"column": dimension, "op": "in", "value": list(values)}
 
 
-def build_template(dimension: str, metric: str, rank: dict, where: list[dict], df: pd.DataFrame) -> tuple[dict, str]:
-    """The group_aggregate spec for one level, and the chart it should use.
-    The RANK metric is always first (the template sorts on it); when the PM
-    wants % in spec it is shown next to trip count either way."""
+def numeric_columns(df: pd.DataFrame) -> list[str]:
+    """Columns that can be averaged as a drill-down metric: numeric, and not an
+    identifier (nearly one distinct value per row). Engineered features included."""
+    out = []
+    for col in df.columns:
+        if not pd.api.types.is_numeric_dtype(df[col]) or pd.api.types.is_bool_dtype(df[col]):
+            continue
+        if "limit" in str(col).lower():  # spec limits are settings, not measurements
+            continue
+        values = df[col].dropna()
+        if values.empty:
+            continue
+        # Integer columns that are nearly one-per-row are identifiers (Trip ID,
+        # Serial Number); continuous decimals like a % in spec are real measures.
+        if pd.api.types.is_integer_dtype(df[col]) and values.nunique() > 0.9 * len(df) and values.nunique() > 50:
+            continue
+        out.append(col)
+    return out[:80]
+
+
+def build_template(
+    dimensions: list[str] | str, metric: str, rank: dict, where: list[dict], df: pd.DataFrame,
+    metric_column: str | None = None,
+) -> tuple[dict, str]:
+    """The spec for one level (1-5 X-axis columns), and the chart it should use.
+    The RANK metric is always first (the template sorts on it). Rank mode "all"
+    keeps every group, up to the chart cap."""
+    dims = [dimensions] if isinstance(dimensions, str) else list(dimensions)
     in_spec = find_in_spec_column(df)
     count_metric = {"agg": "count", "label": "Trips"}
-    metrics = [count_metric]
+    extra = None
     if in_spec and (metric == "pct_in_spec" or rank.get("by") == "pct_in_spec"):
-        spec_metric = {"agg": "mean", "column": in_spec, "label": "% in spec"}
-        metrics = [spec_metric, count_metric] if rank.get("by") == "pct_in_spec" else [count_metric, spec_metric]
-    template = {
-        "template_id": "group_aggregate",
-        "group_by": dimension,
+        extra = {"agg": "mean", "column": in_spec, "label": "% in spec"}
+    elif metric == "mean" and metric_column:
+        extra = {"agg": "mean", "column": metric_column, "label": f"Avg {metric_column}"}
+    metrics = [count_metric] if extra is None else ([extra, count_metric] if rank.get("by") == "pct_in_spec" else [count_metric, extra])
+    mode = rank.get("mode", "all")
+    limit = None if mode == "all" else int(rank.get("n", 3))
+    common = {
         "metrics": metrics,
-        "sort": "desc" if rank.get("mode", "top") == "top" else "asc",
-        "top_n": int(rank.get("n", 3)),
+        "sort": "asc" if mode == "bottom" else "desc",
+        "top_n": limit if limit is not None else (100 if len(dims) == 1 else None),
         "min_rows": MIN_TRIPS_FOR_RATE_RANK if rank.get("by") == "pct_in_spec" else 1,
         "where": where,
     }
-    chart = "combo" if len(metrics) > 1 else "bar"
+    if len(dims) == 1:
+        template = {"template_id": "group_aggregate", "group_by": dims[0], **common}
+    else:
+        template = {"template_id": "multi_group", "dimensions": dims, **common}
+    chart = "combo" if len(dims) == 1 and len(metrics) > 1 else ("bar" if len(dims) == 1 else "grouped_bar")
     return analysis_templates.to_dict(analysis_templates.validate(template, df)), chart
 
 
-def level_name(dimension: str, rank: dict, focus_label: str, metric: str) -> str:
-    word = "Top" if rank.get("mode", "top") == "top" else "Bottom"
+def level_name(dimension: str | list[str], rank: dict, focus_label: str, metric: str, metric_column: str | None = None) -> str:
+    dims = " x ".join([dimension] if isinstance(dimension, str) else dimension)
     by = "% in spec" if rank.get("by") == "pct_in_spec" else "trips"
-    extra = ", with % in spec" if metric == "pct_in_spec" and rank.get("by") != "pct_in_spec" else ""
-    return f"{focus_label}: {word} {rank.get('n', 3)} {dimension} by {by}{extra}"
-
-
-def chart_filters(df: pd.DataFrame, exclude: set[str]) -> list[dict]:
-    """Filter columns for a level's graph: the other dimensions, minus the
-    ones already pinned by the drill-down itself."""
-    return [
-        {"column": c, "reason": "Narrow this drill-down"}
-        for c in FILTER_CANDIDATES if c in df.columns and c not in exclude
-    ]
+    if metric == "mean" and metric_column:
+        extra = f", with avg {metric_column}"
+    elif metric == "pct_in_spec" and rank.get("by") != "pct_in_spec":
+        extra = ", with % in spec"
+    else:
+        extra = ""
+    if rank.get("mode", "all") == "all":
+        return f"{focus_label}: {dims} by {by}{extra}"
+    word = "Top" if rank.get("mode") == "top" else "Bottom"
+    return f"{focus_label}: {word} {rank.get('n', 3)} {dims} by {by}{extra}"
 
 
 def new_chain_id() -> str:

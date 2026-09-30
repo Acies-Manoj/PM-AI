@@ -9,8 +9,10 @@ comes back, the caller falls back to the deterministic default.
 """
 from __future__ import annotations
 
+import itertools
 import json
 import logging
+import re
 
 import pandas as pd
 
@@ -22,14 +24,22 @@ logger = logging.getLogger(__name__)
 
 MAX_PROPOSALS = 15
 # Columns worth drilling into: categorical with a manageable number of values.
-_MIN_VALUES, _MAX_VALUES = 2, 80
+_MIN_VALUES, _MAX_VALUES = 2, 200
+_MAX_PROPOSAL_DIMENSIONS = 4
+# Of a batch, at least this many should be multi-column (3+ variable) and 2-column (3-variable) charts.
+_WANT_WIDE, _WANT_MID = 3, 3
+# Identifiers and free text make useless X axes (one bar per row).
+_NOT_AN_AXIS = re.compile(r"\b(id|serial|number|note|notes|comment|comments|cell|phone|email|e-mail|limit)\b", re.IGNORECASE)
+_MAX_UNIQUE_SHARE = 0.5
 
 _SYSTEM = """You are the drill-down step of a supply-chain analytics assistant. The analyst is looking \\
 at a chart grouped by one dimension and wants to drill into the values that matter. Propose 10 to 15 \\
 NEXT drill-downs -- a genuinely useful, non-repetitive SET, not just as many as you can invent.
 
-A drill-down = pick which VALUES of the current dimension to focus on, pick a DIFFERENT dimension to \\
-break them down by, and pick how many groups to show (top or bottom N).
+A drill-down = pick which VALUES of the current dimension to focus on, then pick ONE TO FOUR \\
+different columns to break them down by (the X axis). Use ALL the columns you are given, including \\
+engineered features (computed columns), not just the obvious ones. Show every group -- do not limit to a \\
+top or bottom N.
 
 To reach 10-15 REAL ideas (not the same idea restated), vary at least one of these across your \\
 proposals: the child_dimension, the metric, the rank direction (top vs bottom), and which focus values \\
@@ -38,33 +48,60 @@ same one repeatedly. Two proposals are only worth both keeping if they'd actuall
 question for the analyst -- don't pad the list with near-duplicates just to hit the count.
 
 Rules:
+- Each proposal must be a DIFFERENT ANALYSIS (different columns and/or measure). Never repeat the same \\
+analysis for another focus value -- the analyst picks which values to apply an analysis to themselves, so \\
+focus_values is only the single most interesting value to start from.
+- Vary the MEASURE, not just the columns: no more than a third of the proposals may be plain "count". Where \
+they exist, use "pct_in_spec" and "mean" of performance columns (Mean Value, Max Value, Min Value, Standard \
+Deviation, hours out of spec, engineered features such as % In Spec) to answer quality and performance \
+questions. Never average a spec-limit column (Limit Low / Ideal / High) or an identifier.
 - Prefer focusing on values that are wide (span many groups) or dominate the volume.
-- child_dimension MUST be one of the listed candidate dimensions.
+- child_dimensions is a list of 1 to 4 columns and each MUST be one of the listed candidate dimensions.
+- Mix the CHART SIZES. A chart's variables = its X-axis columns + the measure. Of your 10-15 proposals: \\
+about a third use 1 column (a 2-variable chart), about a third use 2 columns (a 3-variable chart), and at \\
+least 3 use 3 or 4 columns (a 4- or 5-variable chart). Pick combinations that answer a real question (e.g. \\
+carrier AND destination AND month) and prefer columns with few distinct values for the extra columns so \\
+the chart stays readable.
 - focus_values MUST be chosen from the listed focus values, exactly as written.
-- metric is "pct_in_spec" only when the analyst cares about quality/compliance/spec AND it is available; \\
-otherwise "count".
-- rank.by is "count" (busiest groups) or "pct_in_spec" (best/worst quality; only if available).
-- rank.mode is "top" or "bottom"; rank.n is 2 to 5, sized to the shape of the data.
+- metric is "count" (trips), "pct_in_spec" (only if available and the analyst cares about quality/compliance), \\
+or "mean" of one of the listed numeric_columns (set metric_column to its exact name).
+- rank.by is "count" or "pct_in_spec" (only if available) -- it only decides the sort order.
+- Do NOT set a top/bottom limit; always use rank.mode "all".
 - Each proposal needs a one-sentence reason in plain business language.
 - If a list of ideas to avoid is given, none of your proposals may repeat or closely rephrase one of them.
 
 Return ONLY JSON:
-{"proposals": [{"child_dimension": "...", "focus_values": ["..."], "metric": "count|pct_in_spec", \\
-"rank": {"mode": "top|bottom", "n": 3, "by": "count|pct_in_spec"}, "reason": "..."}]}"""
+{"proposals": [{"child_dimensions": ["..."], "focus_values": ["..."], "metric": "count|pct_in_spec|mean", \\
+"metric_column": "numeric column, only when metric is mean", \\
+"rank": {"mode": "all", "by": "count|pct_in_spec"}, "reason": "..."}]}"""
 
 
-def candidate_dimensions(df: pd.DataFrame, exclude: set[str]) -> list[str]:
-    """Columns usable as the next level: the hierarchy's steps first, then any
-    other categorical column, never one the chain has already pinned."""
+def _usable(df: pd.DataFrame, col: str) -> bool:
+    """A column that makes a readable X axis: categorical-ish, not a date/time
+    (every timestamp would be its own group), not near-unique like an id."""
+    series = df[col]
+    if pd.api.types.is_datetime64_any_dtype(series) or _NOT_AN_AXIS.search(str(col)):
+        return False
+    try:
+        n = as_labels(series).nunique()
+    except Exception:
+        return False
+    if n > _MAX_UNIQUE_SHARE * max(len(series), 1) and n > 20:
+        return False  # nearly one value per row: an identifier, not a category
+    if pd.api.types.is_float_dtype(series):
+        return _MIN_VALUES <= n <= 20
+    return _MIN_VALUES <= n <= _MAX_VALUES
+
+
+def candidate_dimensions(df: pd.DataFrame, exclude: set[str], feature_columns: list[str] | tuple = ()) -> list[str]:
+    """Every column usable as an X axis for the next level: the hierarchy's
+    steps first, then the engineered feature columns, then all the rest --
+    never one the chain has already pinned."""
     ordered = [c for c in dd.hierarchy(df) if c not in exclude]
-    for col in df.columns:
-        if col in exclude or col in ordered:
-            continue
-        try:
-            n = as_labels(df[col]).nunique()
-        except Exception:
-            continue
-        if _MIN_VALUES <= n <= _MAX_VALUES and not pd.api.types.is_float_dtype(df[col]):
+    for group in (list(feature_columns), list(df.columns)):
+        for col in group:
+            if col in exclude or col in ordered or col not in df.columns or not _usable(df, col):
+                continue
             ordered.append(col)
     return ordered
 
@@ -76,6 +113,8 @@ def _default_proposal(df: pd.DataFrame, dimension: str, where: list[dict], focus
     scope = where + [dd.focus_condition(dimension, focus)]
     return [{
         "child_dimension": child,
+        "child_dimensions": [child],
+        "metric_column": None,
         "focus_values": focus,
         "metric": "pct_in_spec" if dd.find_in_spec_column(df) else "count",
         "rank": dd.default_rank_for(df, scope, child),
@@ -84,33 +123,84 @@ def _default_proposal(df: pd.DataFrame, dimension: str, where: list[dict], focus
     }]
 
 
-def _validated(raw: dict, df: pd.DataFrame, children: list[str], allowed_focus: list[str]) -> dict | None:
-    child = raw.get("child_dimension")
-    if child not in children:
+def _validated(raw: dict, df: pd.DataFrame, children: list[str], allowed_focus: list[str], numeric: list[str]) -> dict | None:
+    raw_dims = raw.get("child_dimensions")
+    if not isinstance(raw_dims, list) or not raw_dims:
+        raw_dims = [raw.get("child_dimension")]
+    dims = [d for d in dict.fromkeys(raw_dims) if d in children][:_MAX_PROPOSAL_DIMENSIONS]
+    if not dims:
         return None
     focus = [v for v in (raw.get("focus_values") or []) if v in allowed_focus]
     if not focus:
         return None
-    metric = raw.get("metric") if raw.get("metric") in ("count", "pct_in_spec") else "count"
+    have_spec = dd.find_in_spec_column(df) is not None
+    metric = raw.get("metric") if raw.get("metric") in ("count", "pct_in_spec", "mean") else "count"
+    metric_column = raw.get("metric_column") if raw.get("metric_column") in numeric else None
+    if metric == "mean" and not metric_column:
+        metric = "count"
+    if metric == "pct_in_spec" and not have_spec:
+        metric = "count"
     rank = raw.get("rank") if isinstance(raw.get("rank"), dict) else {}
     by = rank.get("by") if rank.get("by") in ("count", "pct_in_spec") else "count"
-    have_spec = dd.find_in_spec_column(df) is not None
     if not have_spec:
-        metric, by = "count", "count"
-    try:
-        n = max(1, min(int(rank.get("n", 3)), 10))
-    except (TypeError, ValueError):
-        n = 3
+        by = "count"
     return {
-        "child_dimension": child, "focus_values": focus, "metric": metric,
-        "rank": {"mode": "bottom" if rank.get("mode") == "bottom" else "top", "n": n, "by": by},
+        "child_dimension": dims[0], "child_dimensions": dims, "focus_values": focus, "metric": metric,
+        "metric_column": metric_column if metric == "mean" else None,
+        # Every group is shown; the PM can still switch a level to Top/Bottom N afterwards.
+        "rank": {"mode": "all", "n": 5, "by": by},
         "reason": str(raw.get("reason") or "").strip(), "source": "ai",
     }
+
+
+def _shape(proposals: list[dict]) -> tuple[int, int]:
+    """(how many use 3+ X-axis columns, how many use exactly 2)."""
+    wide = sum(1 for p in proposals if len(p["child_dimensions"]) >= 3)
+    mid = sum(1 for p in proposals if len(p["child_dimensions"]) == 2)
+    return wide, mid
+
+
+def _synthesize(
+    facts: list[dict], children: list[str], have_spec: bool, numeric: list[str], focus: list[str],
+    seen: set, need_wide: int, need_mid: int, analysis_key,
+) -> list[dict]:
+    """Deterministic multi-column ideas built from the lowest-cardinality
+    columns -- used only when the model didn't supply enough 2-, 3- and
+    4-column combinations."""
+    names = [f["dimension"] for f in sorted(facts, key=lambda f: f["distinct_values"]) if f["distinct_values"] <= 40] or children
+    measures = [("count", None)]
+    if have_spec:
+        measures.append(("pct_in_spec", None))
+    if numeric:
+        measures.append(("mean", numeric[0]))
+    out: list[dict] = []
+    sizes = [2] * need_mid + [3, 4] * (need_wide // 2 + 1)
+    sizes = sizes[: need_mid + need_wide]
+    n = 0
+    for size in sizes:
+        if len(names) < size:
+            continue
+        for combo in itertools.combinations(names[: max(size + 4, 8)], size):
+            metric, column = measures[n % len(measures)]
+            item = {
+                "child_dimension": combo[0], "child_dimensions": list(combo), "focus_values": focus[:1], "metric": metric,
+                "metric_column": column, "rank": {"mode": "all", "n": 5, "by": "count"},
+                "reason": f"See how {', '.join(combo[:-1])} and {combo[-1]} combine for {focus[0] if focus else 'this selection'}.",
+                "source": "default",
+            }
+            if analysis_key(item) in seen:
+                continue
+            seen.add(analysis_key(item))
+            out.append(item)
+            n += 1
+            break
+    return out
 
 
 def propose(
     df: pd.DataFrame, entry: dict, dimension: str, where: list[dict], allowed_focus: list[str],
     result_table: list[dict], interpretation: str | None, avoid: list[dict] | None = None,
+    feature_columns: list[str] | tuple = (), pinned: set[str] | None = None,
 ) -> list[dict]:
     """Up to MAX_PROPOSALS validated proposals for drilling into `entry` in
     ONE call, falling back to one deterministic default when the model is
@@ -118,19 +208,24 @@ def propose(
     a "suggest more" request) is both told to the model and used to hard-
     filter its response, so a repeat can't sneak through even if the model
     ignores the instruction."""
-    exclude = {dimension} | {w["column"] for w in where}
-    children = candidate_dimensions(df, exclude)
+    exclude = {dimension} | {w["column"] for w in where} | set(pinned or ())
+    children = candidate_dimensions(df, exclude, feature_columns)
+    numeric = dd.numeric_columns(df)
     default_focus = allowed_focus[:1] if not entry.get("chain") else allowed_focus
     fallback = _default_proposal(df, dimension, where, default_focus, children)
     if not children or not allowed_focus:
         return fallback
 
-    avoid_keys = {(a["child_dimension"], tuple(a["focus_values"])) for a in (avoid or [])}
+    def analysis_key(item: dict) -> tuple:
+        return (tuple(item.get("child_dimensions") or [item["child_dimension"]]), item.get("metric"), item.get("metric_column"))
+
+    avoid_keys = {analysis_key(a) for a in (avoid or [])}
 
     scope = dd._apply(df, where) if where else df
     facts = []
-    for child in children[:10]:
-        facts.append({"dimension": child, "distinct_values": int(as_labels(scope[child]).nunique())})
+    for child in children[:25]:
+        facts.append({"dimension": child, "distinct_values": int(as_labels(scope[child]).nunique()),
+                      "engineered_feature": child in set(feature_columns)})
     focus_facts = dd.focus_options(scope, dimension, children[0], limit=15)
     focus_facts = [f for f in focus_facts if f["value"] in allowed_focus] or [{"value": v} for v in allowed_focus[:15]]
     user = json.dumps({
@@ -140,6 +235,7 @@ def propose(
         "focus_values": focus_facts,
         "candidate_dimensions": facts,
         "in_spec_available": dd.find_in_spec_column(df) is not None,
+        "numeric_columns": numeric[:25],
         "chart_sample": result_table[:10],
         "interpretation": interpretation or "",
         "ideas_to_avoid_repeating": [a.get("reason") or a.get("child_dimension") for a in (avoid or [])],
@@ -159,11 +255,50 @@ def propose(
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict):
             continue
-        ok = _validated(item, df, children, allowed_focus)
-        key = (ok["child_dimension"], tuple(ok["focus_values"])) if ok else None
+        ok = _validated(item, df, children, allowed_focus, numeric)
+        key = analysis_key(ok) if ok else None
         if ok and key not in seen:
             seen.add(key)
             proposals.append(ok)
         if len(proposals) == MAX_PROPOSALS:
             break
+
+    # The model tends to default to one X-axis column. Make sure there are also
+    # 2-column (3-variable) and 3-4-column (4-5-variable) charts: ask once more,
+    # then fill any remaining gap from the lowest-cardinality columns.
+    wide, mid = _shape(proposals)
+    need_wide, need_mid = max(0, _WANT_WIDE - wide), max(0, _WANT_MID - mid)
+    if proposals and (need_wide or need_mid) and len(children) >= 2:
+        try:
+            extra_prompt = json.loads(user)
+            extra_prompt["also_needed"] = {
+                "instruction": "Return ONLY additional proposals with the column counts below; do not repeat the ones already given.",
+                "with_3_or_4_columns": need_wide,
+                "with_exactly_2_columns": need_mid,
+                "already_have": [{"columns": p["child_dimensions"], "metric": p["metric"]} for p in proposals],
+            }
+            raw = analysis_agent.call_llm(
+                _SYSTEM, json.dumps(extra_prompt, default=str), json_mode=True, temperature=0.5,
+                call_name="drilldown_agent_wide", model=DRILLDOWN_AGENT_MODEL,
+            )
+            more_items = json.loads(analysis_agent.strip_json_fence(raw)).get("proposals", [])
+        except Exception as exc:
+            logger.info("wide drilldown proposals failed, synthesising: %s", exc)
+            more_items = []
+        for item in more_items if isinstance(more_items, list) else []:
+            ok = _validated(item, df, children, allowed_focus, numeric) if isinstance(item, dict) else None
+            if ok and len(ok["child_dimensions"]) >= 2 and analysis_key(ok) not in seen:
+                seen.add(analysis_key(ok))
+                proposals.append(ok)
+        wide, mid = _shape(proposals)
+        need_wide, need_mid = max(0, _WANT_WIDE - wide), max(0, _WANT_MID - mid)
+        if need_wide or need_mid:
+            proposals += _synthesize(
+                facts, children, dd.find_in_spec_column(df) is not None, numeric, default_focus or allowed_focus,
+                seen, need_wide, need_mid, analysis_key,
+            )
+        # Room for the multi-column ones: drop trailing single-column ideas first.
+        while len(proposals) > MAX_PROPOSALS:
+            drop = next((i for i in range(len(proposals) - 1, -1, -1) if len(proposals[i]["child_dimensions"]) == 1), None)
+            proposals.pop(drop if drop is not None else -1)
     return proposals or (fallback if not avoid else [])

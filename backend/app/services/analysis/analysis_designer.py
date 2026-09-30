@@ -161,7 +161,10 @@ def reconcile_chart(chart: dict, allowed: tuple[str, ...], default: str, notes: 
     recommendation if it fits, otherwise switch to the template's default."""
     chart = dict(chart)
     if chart["chart_type"] not in allowed:
-        notes.append(f"A {chart['chart_type']} chart doesn't fit this table's shape, so {default} is used instead.")
+        notes.append(
+            f"A {chart['chart_type'].replace('_', ' ')} chart doesn't suit this table, so a "
+            f"{default.replace('_', ' ')} chart is shown instead."
+        )
         chart["alternatives"] = [{"chart_type": chart["chart_type"], "reason": chart["reason"]}] + chart["alternatives"]
         chart["chart_type"], chart["reason"] = default, "Best fit for this template's result table."
     chart["alternatives"] = [a for a in chart["alternatives"] if a["chart_type"] in allowed][:MAX_ALTERNATIVES]

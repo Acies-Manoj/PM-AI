@@ -5,15 +5,14 @@ import type {
   ConfirmDrilldownBody,
   DrilldownOptions,
   DrilldownProposal,
-  DrilldownRank,
 } from "../api/audit";
 import { AuditApiError } from "../api/audit";
 import Modal from "./Modal";
 import AnalysisChart from "./AnalysisChart";
 import AnalysisFilterBar from "./AnalysisFilterBar";
-import DrilldownPanel, { DrilldownRankControl } from "./DrilldownPanel";
+import DrilldownPanel from "./DrilldownPanel";
 import type { LevelNode } from "../utils/drilldownTree";
-import { IconChevronLeft, IconChevronRight, IconLayers, IconSparkle } from "./icons";
+import { IconChevronLeft, IconLayers, IconSparkle } from "./icons";
 import { CHART_LABELS } from "../utils/analysisLabels";
 import "./AnalysisCard.css";
 import "./AnalysisDetailModal.css";
@@ -45,8 +44,9 @@ interface AnalysisDetailModalProps {
   /** Runs the picked drill-down and navigates to it -- see onOpenChild. */
   onConfirmDrilldown: (body: ConfirmDrilldownBody) => Promise<void>;
   /** Re-rank / refresh this chain level; the page refetches the repository afterwards. */
-  onRerankLevel: (rank: DrilldownRank) => Promise<void>;
   onRefreshLevel: () => Promise<void>;
+  /** Increments after a guided drill-down is confirmed; switches to the Selected Drill-downs tab. */
+  openSelectedSignal?: number;
 }
 
 type ModalTab = "analysis" | "selected";
@@ -66,8 +66,8 @@ export default function AnalysisDetailModal({
   onFetchDrilldownOptions,
   onProposeDrilldowns,
   onConfirmDrilldown,
-  onRerankLevel,
   onRefreshLevel,
+  openSelectedSignal = 0,
 }: AnalysisDetailModalProps) {
   // The filtered view, if filters are applied. Reset whenever the stored
   // entry changes (a re-run, or navigating to another entry).
@@ -93,6 +93,11 @@ export default function AnalysisDetailModal({
     setFiltering(false);
     setModalTab("analysis");
   }, [entry]);
+
+  // Declared after the reset above so it wins when both fire in the same render.
+  useEffect(() => {
+    if (openSelectedSignal > 0) setModalTab("selected");
+  }, [openSelectedSignal]);
 
   // Options belong to one entry; drop them when navigating to another.
   useEffect(() => {
@@ -128,7 +133,23 @@ export default function AnalysisDetailModal({
   // render, not hand-tracked, so it can't fall out of sync with what
   // actually got created.
   const selectedLevels = childLevels.filter((l) => !dismissedIds.has(l.id));
-  const selectedCount = selectedLevels.length;
+  // A plain list of every drill-down beneath this analysis, sectioned by level
+  // (2, 3, 4...). One row per DRILL-DOWN (an analysis) with the values it was run
+  // for -- not one row per slide, which repeats the same carrier names.
+  const levelSections: { level: number; groups: { analysis: string; levels: LevelNode[] }[] }[] = [];
+  for (const l of selectedLevels) {
+    let section = levelSections.find((x) => x.level === l.level);
+    if (!section) {
+      section = { level: l.level, groups: [] };
+      levelSections.push(section);
+    }
+    const group = section.groups.find((g) => g.analysis === l.analysis);
+    if (group) group.levels.push(l);
+    else section.groups.push({ analysis: l.analysis, levels: [l] });
+  }
+  levelSections.sort((x, y) => x.level - y.level);
+  // The tab badge counts drill-downs (analyses), not slides.
+  const selectedCount = levelSections.reduce((n, sec) => n + sec.groups.length, 0);
 
   const chain = entry.chain;
   const runLevelAction = (action: () => Promise<void>) => {
@@ -163,7 +184,7 @@ export default function AnalysisDetailModal({
   };
 
   return (
-    <Modal title={entry.name} onClose={onClose}>
+    <Modal title={entry.name} onClose={onClose} resetScrollKey={`${entry.id}:${modalTab}`}>
       {entry.parent_id && parentName && (
         <button type="button" className="analysis-detail__back-btn" onClick={() => onOpenChild(entry.parent_id!)}>
           <IconChevronLeft /> Back to {parentName}
@@ -188,12 +209,6 @@ export default function AnalysisDetailModal({
           <div className="drilldown-level">
             <span className="drilldown-level__chip">{`Level ${chain.level} · ${chain.focus_label || entry.name}`}</span>
             {chain.stale && <span className="drilldown-tag drilldown-tag--stale">Stale</span>}
-            <DrilldownRankControl
-              rank={chain.rank}
-              metrics={drillOptions?.metrics ?? ["count"]}
-              disabled={levelBusy}
-              onChange={(rank) => runLevelAction(() => onRerankLevel(rank))}
-            />
           </div>
           {chain.stale && (
             <div className="drilldown-stale" role="status">
@@ -324,19 +339,6 @@ export default function AnalysisDetailModal({
               )}
 
               <div className="analysis-detail__suggested-drilldowns">
-                {childLevels.length > 0 && (
-                  <ul className="drilldown-levels">
-                    {childLevels.map((l) => (
-                      <li key={l.id} style={{ paddingLeft: (l.depth - 1) * 16 }}>
-                        <button type="button" className="drilldown-tree__item" onClick={() => onOpenChild(l.id)}>
-                          {l.label}
-                        </button>
-                        {l.stale && <span className="drilldown-tag drilldown-tag--stale">Stale</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
                 {drillError && <p className="analysis-card__error">{drillError}</p>}
                 {drillOptions && drillOptions.can_drill && (
                   <DrilldownPanel
@@ -364,27 +366,56 @@ export default function AnalysisDetailModal({
                   </button>
                 </div>
               ) : (
-                <ol className="analysis-detail__drilldown-list">
-                  {selectedLevels.map((l) => (
-                    <li key={l.id}>
-                      <div className="analysis-detail__selected-item">
-                        <span className="analysis-detail__drilldown-name">{l.label}</span>
-                        <button type="button" className="analysis-detail__drilldown-action-btn" onClick={() => onOpenChild(l.id)}>
-                          View
-                          <IconChevronRight />
-                        </button>
-                        <button
-                          type="button"
-                          className="analysis-detail__remove-btn"
-                          aria-label={`Remove ${l.label} from selected drill-downs`}
-                          onClick={() => onDismiss(l.id)}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </li>
+                <div className="analysis-detail__levels">
+                  {levelSections.map((section) => (
+                    <section key={section.level} className="analysis-detail__level-section">
+                      <h5 className="analysis-detail__level-heading">Level {section.level}</h5>
+                      <ol className="analysis-detail__drilldown-list">
+                        {section.groups.map((g, i) => (
+                          <li key={g.analysis}>
+                            <div className="analysis-detail__selected-group">
+                              <div className="analysis-detail__selected-group-head">
+                                <span className="analysis-detail__drilldown-index">{i + 1}</span>
+                                <span className="analysis-detail__drilldown-name">
+                                  <span className="analysis-detail__group-parent">{entry.name}</span>
+                                  {g.levels[0].axes ? (
+                                    <>
+                                      {" › "}
+                                      <span className="analysis-detail__group-axes">X axis: {g.levels[0].axes}</span> · {g.levels[0].measure}
+                                    </>
+                                  ) : (
+                                    <> › {g.analysis}</>
+                                  )}
+                                </span>
+                                <span className="analysis-detail__selected-group-count">
+                                  {g.levels.length} slide{g.levels.length === 1 ? "" : "s"}
+                                </span>
+                              </div>
+                              <div className="analysis-detail__selected-group-chips">
+                                {g.levels.map((l) => (
+                                  <span className="analysis-detail__selected-chip" key={l.id}>
+                                    <button type="button" onClick={() => onOpenChild(l.id)} title={`Open ${l.label}`}>
+                                      {l.path.join(" › ")}
+                                    </button>
+                                    {l.stale && <span className="drilldown-tag drilldown-tag--stale">Stale</span>}
+                                    <button
+                                      type="button"
+                                      className="analysis-detail__selected-chip-remove"
+                                      aria-label={`Remove ${l.path.join(" › ")} from selected drill-downs`}
+                                      onClick={() => onDismiss(l.id)}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
                   ))}
-                </ol>
+                </div>
               )}
             </div>
           )}

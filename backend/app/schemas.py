@@ -275,8 +275,9 @@ class AnalysisDrilldownSuggestion(BaseModel):
 class DrilldownRank(BaseModel):
     """How a guided drill-down step picks its groups: the top or bottom `n`
     by `by` (trip count, or % in spec)."""
-    mode: Literal["top", "bottom"] = "top"
-    n: int = Field(default=3, ge=1, le=10)
+    # "all" keeps every group (up to the chart cap); "top"/"bottom" keep only n.
+    mode: Literal["all", "top", "bottom"] = "all"
+    n: int = Field(default=5, ge=1, le=10)
     by: Literal["count", "pct_in_spec"] = "count"
 
 
@@ -286,7 +287,11 @@ class DrilldownChain(BaseModel):
     chain_id: str
     level: int
     dimension: str
-    metric: Literal["count", "pct_in_spec"] = "count"
+    # Every X-axis column of this level (1-5); `dimension` is the first one.
+    dimensions: list[str] = []
+    metric: Literal["count", "pct_in_spec", "mean"] = "count"
+    # The numeric column averaged when metric == "mean".
+    metric_column: str | None = None
     rank: DrilldownRank = DrilldownRank()
     # Row pre-filter this level inherits from its ancestors plus the focus the
     # PM confirmed, as analysis_templates conditions.
@@ -318,6 +323,9 @@ class DrilldownOptions(BaseModel):
     child_dimension: str | None = None
     # Every column that could be the next level (the hierarchy's next step first).
     candidate_dimensions: list[str] = []
+    # Numeric columns (engineered features included) that can be averaged as the metric.
+    numeric_columns: list[str] = []
+    max_dimensions: int = 5
     # Root analyses: candidate focus values (e.g. products) with how many child
     # groups (origins) each has. Chain levels: their own top/bottom groups.
     focus_options: list[DrilldownFocusOption] = []
@@ -329,7 +337,10 @@ class DrilldownOptions(BaseModel):
 class DrilldownProposal(BaseModel):
     """One suggested next drill-down, ready to confirm as-is."""
     child_dimension: str
-    metric: Literal["count", "pct_in_spec"] = "count"
+    # All X-axis columns of the proposal (1-3); child_dimension is the first.
+    child_dimensions: list[str] = []
+    metric: Literal["count", "pct_in_spec", "mean"] = "count"
+    metric_column: str | None = None
     rank: DrilldownRank = DrilldownRank()
     focus_values: list[str]
     reason: str = ""
@@ -339,7 +350,10 @@ class DrilldownProposal(BaseModel):
 class ConfirmDrilldownRequest(BaseModel):
     focus_values: list[str] = Field(min_length=1, max_length=30)
     child_dimension: str | None = None
-    metric: Literal["count", "pct_in_spec"] = "count"
+    # 1-5 X-axis columns; wins over child_dimension when given.
+    child_dimensions: list[str] | None = Field(default=None, max_length=5)
+    metric: Literal["count", "pct_in_spec", "mean"] = "count"
+    metric_column: str | None = None
     rank: DrilldownRank = DrilldownRank()
     # One slide (sibling level) per focus value instead of one combined level.
     split: bool = False

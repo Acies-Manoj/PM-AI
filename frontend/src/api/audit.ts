@@ -219,12 +219,14 @@ export interface AnalysisDraft {
 }
 
 export interface DrilldownRank {
-  mode: "top" | "bottom";
+  // "all" keeps every group (up to the chart cap); top/bottom keep only n.
+  mode: "all" | "top" | "bottom";
   n: number;
   by: "count" | "pct_in_spec";
 }
 
-export type DrilldownMetric = "count" | "pct_in_spec";
+// "mean" averages a numeric column (`metric_column`), features included.
+export type DrilldownMetric = "count" | "pct_in_spec" | "mean";
 
 /** Marks an entry as one level of a guided drill-down chain (level 1 is the
  * original analysis, which has no `chain`). */
@@ -232,7 +234,10 @@ export interface DrilldownChain {
   chain_id: string;
   level: number;
   dimension: string;
+  // Every X-axis column of this level (1-5); `dimension` is the first.
+  dimensions?: string[];
   metric: DrilldownMetric;
+  metric_column?: string | null;
   rank: DrilldownRank;
   where: Record<string, unknown>[];
   focus_dimension: string | null;
@@ -260,6 +265,9 @@ export interface DrilldownOptions {
   focus_dimension: string | null;
   child_dimension: string | null;
   candidate_dimensions: string[];
+  // Numeric columns (engineered features included) that can be averaged.
+  numeric_columns: string[];
+  max_dimensions: number;
   focus_options: DrilldownFocusOption[];
   default_focus: string[];
   default_rank: DrilldownRank;
@@ -268,7 +276,10 @@ export interface DrilldownOptions {
 
 export interface DrilldownProposal {
   child_dimension: string;
+  // All X-axis columns of the proposal (1-3); `child_dimension` is the first.
+  child_dimensions?: string[];
   metric: DrilldownMetric;
+  metric_column?: string | null;
   rank: DrilldownRank;
   focus_values: string[];
   reason: string;
@@ -278,7 +289,10 @@ export interface DrilldownProposal {
 export interface ConfirmDrilldownBody {
   focus_values: string[];
   child_dimension?: string | null;
+  // 1-5 X-axis columns; wins over child_dimension when given.
+  child_dimensions?: string[] | null;
   metric: DrilldownMetric;
+  metric_column?: string | null;
   rank: DrilldownRank;
   // One slide (sibling level) per focus value instead of one combined level.
   split?: boolean;

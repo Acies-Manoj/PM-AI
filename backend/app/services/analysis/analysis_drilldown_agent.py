@@ -17,7 +17,7 @@ import re
 
 import pandas as pd
 
-from app.config import DRILLDOWN_AGENT_MODEL
+from app.config import DRILLDOWN_AGENT_MODEL, model_for
 from app.services.analysis import analysis_agent, analysis_drilldown as dd
 from app.services.analysis.analysis_columns import as_labels
 
@@ -282,7 +282,7 @@ def propose(
     }, default=str)
     try:
         raw = analysis_agent.call_llm(
-            _SYSTEM, user, json_mode=True, temperature=0.4, call_name="drilldown_agent", model=DRILLDOWN_AGENT_MODEL,
+            _SYSTEM, user, json_mode=True, temperature=0.4, call_name="drilldown_agent", model=model_for("drilldown_agent", DRILLDOWN_AGENT_MODEL),
             max_tokens=12000,
         )
         payload = json.loads(analysis_agent.strip_json_fence(raw))
@@ -321,7 +321,7 @@ def propose(
             }
             raw = analysis_agent.call_llm(
                 _SYSTEM, json.dumps(extra_prompt, default=str), json_mode=True, temperature=0.5,
-                call_name="drilldown_agent_more", model=DRILLDOWN_AGENT_MODEL, max_tokens=8000,
+                call_name="drilldown_agent_more", model=model_for("drilldown_agent_more", DRILLDOWN_AGENT_MODEL), max_tokens=8000,
             )
             more_items = json.loads(analysis_agent.strip_json_fence(raw)).get("proposals", [])
         except Exception as exc:

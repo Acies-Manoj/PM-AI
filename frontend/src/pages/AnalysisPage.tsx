@@ -1,3 +1,5 @@
+import ThinkingLoader, { Spinner } from "../components/ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
@@ -476,7 +478,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           <div className="analysis-page__empty">
             <p>
               {Object.values(featureCheckLoading).some(Boolean)
-                ? "Checking whether feature engineering has run…"
+                ? <ThinkingLoader variant="inline" messages={["Checking whether feature engineering has run…"]} />
                 : "No features have been computed yet -- an analysis can group by engineered columns (like Country of Origin or % In Spec), so finish the Features step first."}
             </p>
             <button type="button" className="analysis-page__btn analysis-page__btn--primary" onClick={() => navigate("/features")}>
@@ -502,7 +504,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           subtitle="The Analysis Agent drafts a formula, writes the code, picks a chart, and interprets the result for each analysis below -- predefined, planner-approved, custom, and AI-suggested -- automatically, as soon as each one is added."
         />
 
-        {defsLoading && <div className="analysis-page__loading">Reading analysis definitions from {files.analysisProfile!.name}…</div>}
+        {defsLoading && <ThinkingLoader variant="inline" messages={[`Reading ${files.analysisProfile!.name}…`]} />}
         {defsError && <p className="analysis-page__error">{defsError}</p>}
         {!hasAnalysisProfileFile && (
           <p className="analysis-page__hint">
@@ -568,7 +570,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                 <span className="analysis-page__filename">{files[id]!.name}</span>
               </div>
 
-              {repoLoading[id] && <div className="analysis-page__loading">Loading the analysis repository…</div>}
+              {repoLoading[id] && <ThinkingLoader messages={LOADING.analysisRepository} />}
               {repoError[id] && <p className="analysis-page__error">{repoError[id]}</p>}
 
               <div className="analysis-page__stat-row">
@@ -726,7 +728,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                     }}
                   >
                     {suggestLoading[id]
-                      ? "Thinking…"
+                      ? <><Spinner />Thinking…</>
                       : pendingSuggestions.length > 0
                         ? `View Suggestions (${pendingSuggestions.length})`
                         : "Suggest Analyses"}
@@ -762,7 +764,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                       disabled={suggestLoading[id]}
                       onClick={() => runSuggest(id)}
                     >
-                      {suggestLoading[id] ? "Thinking…" : "Suggest More"}
+                      {suggestLoading[id] ? <><Spinner />Thinking…</> : "Suggest More"}
                     </button>
                   }
                 >

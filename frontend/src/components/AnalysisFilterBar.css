@@ -186,3 +186,23 @@
   font-weight: 600;
   color: var(--accent-amber);
 }
+
+.analysis-filter__close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.analysis-filter__close:hover {
+  background: var(--carrier-blue-tint);
+  color: var(--carrier-blue);
+}

@@ -1,3 +1,5 @@
+import ThinkingLoader, { Spinner } from "./ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import type { AnalysisRepositoryEntry } from "../api/audit";
 import { sourceTag } from "../utils/analysisSourceTag";
 import { IconBarChart, IconChevronRight, IconShieldCheck } from "./icons";
@@ -104,7 +106,7 @@ export default function AnalysisCard({
                       disabled={!!featureBusy}
                       onClick={() => onComputeFeatures?.()}
                     >
-                      {featureBusy === "compute" ? "Computing…" : "Compute features"}
+                      {featureBusy === "compute" ? <><Spinner />Computing…</> : "Compute features"}
                     </button>
                   )}
                 </li>
@@ -116,10 +118,14 @@ export default function AnalysisCard({
       )}
 
       {entry.run_status === "not_run" && !failed && (
-        <p className="analysis-card__status" role="status">
-          {running ? <span className="analysis-card__spinner" aria-hidden="true" /> : <span className="analysis-card__status-dot" />}
-          {running ? "Computing…" : blocked ? blockedMessage : "Queued"}
-        </p>
+        running ? (
+          <ThinkingLoader variant="inline" messages={LOADING.analysisRun} />
+        ) : (
+          <p className="analysis-card__status" role="status">
+            <span className="analysis-card__status-dot" />
+            {blocked ? blockedMessage : "Queued"}
+          </p>
+        )
       )}
 
       {failed && (

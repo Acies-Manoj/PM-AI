@@ -4,9 +4,11 @@ Public surface is unchanged — `chat_text` and `chat_json` — so every
 existing caller (audit_agent, feature_suggester, etc.) continues to work
 without modification.
 """
+
+import re
 from openai import OpenAI
 
-from app.config import LLM_MODEL, OPENROUTER_API_KEY
+from app.config import DEFAULT_MAX_TOKENS, LLM_MODEL, OPENROUTER_API_KEY, model_for
 from app.services.common import token_usage
 
 _client: OpenAI | None = None
@@ -32,14 +34,16 @@ def get_client() -> OpenAI:
 def chat_text(
     system_prompt: str,
     user_prompt: str,
-    model: str = LLM_MODEL,
+    model: str | None = None,
     temperature: float = 0.3,
     call_name: str = "unnamed_chat_text",
 ) -> str:
     """Single-shot call returning plain prose."""
+    model = model or model_for(call_name, LLM_MODEL)
     client = get_client()
     response = client.chat.completions.create(
         model=model,
+        max_tokens=DEFAULT_MAX_TOKENS,
         temperature=temperature,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -50,10 +54,18 @@ def chat_text(
     return response.choices[0].message.content or ""
 
 
+
+def strip_json_fence(text: str) -> str:
+    """Models such as Claude often wrap JSON in ```json fences; return the bare JSON."""
+    t = (text or "").strip()
+    m = re.match(r"^```[a-zA-Z]*\s*(.*?)\s*```$", t, re.DOTALL)
+    return m.group(1).strip() if m else t
+
+
 def chat_json(
     system_prompt: str,
     user_prompt: str,
-    model: str = LLM_MODEL,
+    model: str | None = None,
     temperature: float = 0.4,
     call_name: str = "unnamed_chat_json",
 ) -> str:
@@ -62,10 +74,12 @@ def chat_json(
     Uses json_object response_format when the model supports it;
     falls back to plain completion if the model rejects the parameter.
     """
+    model = model or model_for(call_name, LLM_MODEL)
     client = get_client()
     try:
         response = client.chat.completions.create(
             model=model,
+            max_tokens=DEFAULT_MAX_TOKENS,
             temperature=temperature,
             response_format={"type": "json_object"},
             messages=[
@@ -77,6 +91,7 @@ def chat_json(
         # Some models don't support response_format — retry without it
         response = client.chat.completions.create(
             model=model,
+            max_tokens=DEFAULT_MAX_TOKENS,
             temperature=temperature,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -84,4 +99,4 @@ def chat_json(
             ],
         )
     token_usage.record(call_name, model, response)
-    return response.choices[0].message.content or "{}"
+    return strip_json_fence(response.choices[0].message.content or "{}")

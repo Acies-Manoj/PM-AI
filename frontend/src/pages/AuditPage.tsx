@@ -1,3 +1,5 @@
+import ThinkingLoader from "../components/ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
@@ -217,7 +219,7 @@ export default function AuditPage({
                   ) : (
                     <>
                       {auditLoading[id] && (
-                        <div className="audit-page__audit-loading">Data audit agent is reviewing this file…</div>
+                        <ThinkingLoader messages={LOADING.audit} hint="The audit agent is reviewing this file." intervalMs={3500} showElapsed />
                       )}
 
                       {auditErrors[id] && <p className="audit-page__audit-error">{auditErrors[id]}</p>}
@@ -250,7 +252,7 @@ export default function AuditPage({
               ) : (
                 <>
                   {auditLoading[id] && (
-                    <div className="audit-page__audit-loading">Data audit agent is reviewing this file…</div>
+                    <ThinkingLoader messages={LOADING.audit} hint="The audit agent is reviewing this file." intervalMs={3500} showElapsed />
                   )}
 
                   {auditErrors[id] && <p className="audit-page__audit-error">{auditErrors[id]}</p>}

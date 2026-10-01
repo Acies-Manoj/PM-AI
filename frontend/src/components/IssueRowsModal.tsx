@@ -1,3 +1,5 @@
+import ThinkingLoader from "./ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useState } from "react";
 import { fetchIssueRows, AuditApiError } from "../api/audit";
 import "./IssueRowsModal.css";
@@ -66,7 +68,7 @@ export default function IssueRowsModal({ title, sessionId, issueId, onClose }: I
           </button>
         </div>
 
-        {loading && <div className="issue-rows-modal__status">Loading affected rows…</div>}
+        {loading && <ThinkingLoader variant="inline" messages={LOADING.rows} />}
         {error && <div className="issue-rows-modal__status issue-rows-modal__status--error">{error}</div>}
 
         {data && (

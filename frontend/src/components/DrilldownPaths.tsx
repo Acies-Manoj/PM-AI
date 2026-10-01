@@ -1,3 +1,5 @@
+import ThinkingLoader, { Spinner } from "./ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useCallback, useEffect, useState } from "react";
 import type { DrilldownPath, DrilldownPathEntry, DrilldownPathStep } from "../api/audit";
 import { AuditApiError } from "../api/audit";
@@ -73,17 +75,20 @@ export default function DrilldownPaths({ onFetch, onSuggest, onAccept, onReject,
         </div>
         <button type="button" className="analysis-detail__suggest-more-btn" disabled={suggesting} onClick={suggest}>
           <IconSparkle />
-          {suggesting ? "Planning…" : paths && paths.length > 0 ? "Suggest another" : "Suggest a path"}
+          {suggesting ? <><Spinner />Planning…</> : paths && paths.length > 0 ? "Suggest another" : "Suggest a path"}
         </button>
       </div>
 
       {suggesting && (
-        <p className="drilldown-paths__working" role="status">
-          Designing the path and running each step. This takes about 30 seconds…
-        </p>
+        <ThinkingLoader
+          messages={LOADING.path}
+          hint="Designing the path, then running and charting every step. This takes about 30 seconds."
+          intervalMs={4500}
+          showElapsed
+        />
       )}
       {error && <p className="analysis-card__error">{error}</p>}
-      {paths === null && !error && <p className="drilldown-paths__hint">Loading…</p>}
+      {paths === null && !error && <ThinkingLoader variant="inline" messages={LOADING.paths} />}
       {paths !== null && paths.length === 0 && !suggesting && !error && (
         <p className="drilldown-paths__empty">No paths yet. Press "Suggest a path" to get one.</p>
       )}
@@ -150,7 +155,7 @@ function PathCard({
               Reject
             </button>
             <button type="button" className="drilldown-btn drilldown-btn--primary" disabled={busy || !path.ready} onClick={onAccept}>
-              {busy ? "Working…" : "Accept this path"}
+              {busy ? <><Spinner />Working…</> : "Accept this path"}
             </button>
           </>
         ) : (

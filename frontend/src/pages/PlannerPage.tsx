@@ -1,3 +1,5 @@
+import ThinkingLoader, { Spinner } from "../components/ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
@@ -16,6 +18,13 @@ type PlannerTab = "features" | "analyses";
 // "feature_and_analysis" recommendation (old saved sessions) still produces an
 // entry on BOTH the Features and Analysis pages when accepted, so it stays in
 // both tabs.
+// A feature is a calculation: it is only listed once it has a formula. (The backend already
+// drops features without one and ranking / top-bottom ideas; this also covers older results.)
+function hasFormula(rec: PlannerRecommendation): boolean {
+  if (rec.type !== "feature") return true;
+  return Boolean((rec.feature_formula_expression ?? rec.generated_feature_formula ?? "").trim());
+}
+
 function getTabs(type: PlannerRecommendationType): PlannerTab[] {
   if (type === "feature_and_analysis") return ["features", "analyses"];
   if (type === "analysis") return ["analyses"];
@@ -99,7 +108,7 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
     setDecisions((prev) => {
       const next = { ...prev };
       result.recommendations.forEach((r, i) => {
-        if (getTabs(r.type).includes(tab)) next[i] = value;
+        if (getTabs(r.type).includes(tab) && hasFormula(r)) next[i] = value;
       });
       return next;
     });
@@ -181,10 +190,12 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
         />
 
         {loading && (
-          <div className="planner-page__loading">
-            <span className="planner-page__spinner" />
-            Planner is reading your brief and dataset…
-          </div>
+          <ThinkingLoader
+            messages={LOADING.planner}
+            hint="The Planner reads your brief against your data. This usually takes 20 to 40 seconds."
+            intervalMs={4000}
+            showElapsed
+          />
         )}
 
         {error && <div className="planner-page__error">{error}</div>}
@@ -194,8 +205,8 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
             <div className="planner-page__tabs">
               <div className="planner-page__tabs-left">
                 {(["features", "analyses"] as PlannerTab[]).map((tab) => {
-                  const count = recs.filter((r) => getTabs(r.type).includes(tab)).length;
-                  const acceptedCount = recs.filter((r, i) => getTabs(r.type).includes(tab) && decisions[i] === "accepted").length;
+                  const count = recs.filter((r) => getTabs(r.type).includes(tab) && hasFormula(r)).length;
+                  const acceptedCount = recs.filter((r, i) => getTabs(r.type).includes(tab) && hasFormula(r) && decisions[i] === "accepted").length;
                   return (
                     <button
                       key={tab}
@@ -212,7 +223,7 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
                   );
                 })}
               </div>
-              {recs.filter((r) => getTabs(r.type).includes(activeTab)).length > 0 && (
+              {recs.filter((r) => getTabs(r.type).includes(activeTab) && hasFormula(r)).length > 0 && (
                 <div className="planner-page__bulk-btns">
                   <button
                     type="button"
@@ -235,7 +246,7 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
             <div className="planner-page__list">
               {recs
                 .map((rec, i) => ({ rec, i }))
-                .filter(({ rec }) => getTabs(rec.type).includes(activeTab))
+                .filter(({ rec }) => getTabs(rec.type).includes(activeTab) && hasFormula(rec))
                 .map(({ rec, i }) => (
                   <RecommendationCard
                     key={i}
@@ -247,7 +258,7 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
                     dependencyWarning={dependencyWarningFor(rec, decisions[i] ?? "pending", recs, decisions)}
                   />
                 ))}
-              {recs.filter((r) => getTabs(r.type).includes(activeTab)).length === 0 && (
+              {recs.filter((r) => getTabs(r.type).includes(activeTab) && hasFormula(r)).length === 0 && (
                 <div className="planner-page__empty-tab">
                   {activeTab === "features" && recs.some((r) => r.type === "analysis")
                     ? "No new features needed - the analyses reuse existing features or customer KPIs, or use the existing columns directly. Check the Analysis tab for the details."
@@ -268,7 +279,7 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
                 disabled={moreLoading || !result}
               >
                 {moreLoading ? (
-                  <><span className="planner-page__spinner" />Generating more suggestions…</>
+                  <><Spinner />Generating more suggestions…</>
                 ) : (
                   "Generate more suggestions"
                 )}

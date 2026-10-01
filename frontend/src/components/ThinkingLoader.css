@@ -1,0 +1,232 @@
+.thinking {
+  color: var(--carrier-blue);
+}
+
+/* -- block: a panel for page / section waits ------------------------------ */
+
+.thinking--block {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 22px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--carrier-blue-tint) 0%, var(--color-surface) 70%);
+}
+
+.thinking__orb {
+  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+}
+
+.thinking__core {
+  position: absolute;
+  inset: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--carrier-blue);
+  color: #fff;
+  animation: thinking-breathe 2.4s ease-in-out infinite;
+}
+
+.thinking__core svg {
+  width: 15px;
+  height: 15px;
+}
+
+.thinking__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--carrier-light-blue);
+  opacity: 0;
+  animation: thinking-ripple 2.4s ease-out infinite;
+}
+
+.thinking__ring--late {
+  animation-delay: 1.2s;
+}
+
+.thinking__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.thinking__line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--carrier-blue);
+}
+
+.thinking__hint {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.thinking__bar {
+  display: block;
+  position: relative;
+  height: 4px;
+  margin-top: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(26, 43, 107, 0.1);
+}
+
+.thinking__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--carrier-light-blue), transparent);
+  animation: thinking-shimmer 1.7s ease-in-out infinite;
+}
+
+/* -- inline: one line inside a card or status row ------------------------- */
+
+.thinking--inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* -- shared pieces ---------------------------------------------------------- */
+
+.thinking__phrase {
+  animation: thinking-rise 0.4s ease both;
+}
+
+.thinking__dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 4px;
+}
+
+.thinking__dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: thinking-dot 1.2s ease-in-out infinite;
+}
+
+.thinking__dots i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.thinking__dots i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+.thinking__elapsed {
+  margin-left: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.thinking__spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: thinking-spin 0.75s linear infinite;
+}
+
+@keyframes thinking-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes thinking-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes thinking-rise {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes thinking-ripple {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+
+@keyframes thinking-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+@keyframes thinking-shimmer {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking__core,
+  .thinking__ring,
+  .thinking__bar::after,
+  .thinking__dots i,
+  .thinking__phrase {
+    animation: none;
+  }
+
+  .thinking__ring {
+    display: none;
+  }
+
+  .thinking__dots i {
+    opacity: 0.6;
+  }
+
+  .thinking__spinner {
+    animation-duration: 1.6s;
+  }
+}

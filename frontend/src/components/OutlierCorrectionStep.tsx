@@ -1,3 +1,5 @@
+import ThinkingLoader from "./ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
 import type { OutliersResponse } from "../api/audit";
 import { downloadFlaggedOutliersUrl, fetchOutliers } from "../api/audit";
@@ -72,7 +74,7 @@ export default function OutlierCorrectionStep({
   }, [flaggedCount]);
 
   if (loading) {
-    return <p className="outlier-tab__loading">Checking for duration and temperature outliers…</p>;
+    return <ThinkingLoader messages={LOADING.outliers} />;
   }
   if (error) {
     return (

@@ -48,3 +48,79 @@ CORS_ORIGINS = [
     "http://localhost:5174",
     "http://localhost:5175",
 ]
+
+
+# =====================================================================================
+# MODEL PER LLM CALL
+#
+# Every LLM call has a name (its `call_name`, also what backend/data/token_usage.jsonl
+# records). MODEL_BY_CALL gives each call its own model, so the heavy-reasoning calls can
+# use a stronger model than the cheap, high-volume ones.
+#
+# Going back:
+#   * the model each call used BEFORE this table is in the comment on its line, and
+#   * USE_PER_CALL_MODELS=0 (env) ignores this whole table and falls back to the older
+#     per-agent settings above (LLM_MODEL, OPENROUTER_MODEL, FEATURE_AGENT_MODEL,
+#     ANALYSIS_AGENT_MODEL, DRILLDOWN_AGENT_MODEL, PLANNER_AGENT_MODEL).
+# Trying one call: set MODEL_<CALL NAME IN CAPITALS> in .env, e.g.
+#   MODEL_ANALYSIS_AGENT_INTERPRET=anthropic/claude-sonnet-4.5
+# Names below are OpenRouter slugs. (To call AWS Bedrock directly instead, the app needs a
+# Bedrock client; the Bedrock model ids differ, e.g. anthropic.claude-sonnet-4-5-...)
+# =====================================================================================
+# Longest answer any LLM call may produce. OpenRouter RESERVES credit for the full
+# max_tokens of a call, and Claude models default to a very large one (64,000), so a call
+# with no limit can be refused with "402: requires more credits" even though the real
+# answer is tiny. Every call sets a limit; raise this only if answers get cut off.
+DEFAULT_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "6000"))
+
+USE_PER_CALL_MODELS = os.getenv("USE_PER_CALL_MODELS", "1") != "0"
+
+SONNET_45 = "anthropic/claude-sonnet-4.5"
+SONNET_46 = "anthropic/claude-sonnet-4.6"
+HAIKU_45 = "anthropic/claude-haiku-4.5"
+NOVA_PRO = "amazon/nova-pro-v1"
+
+MODEL_BY_CALL: dict[str, str] = {
+    # -- Planner and drill-down path design: reasoning that decides what gets built ----------
+    "planner_agent": SONNET_45,                      # before: openai/gpt-4o-mini
+    "drilldown_path": SONNET_45,                     # before: anthropic/claude-sonnet-4 (new call)
+
+    # -- Feature agent: think = designs the formula, write_code = pandas, validate = checks ---
+    "feature_agent_think": SONNET_45,                # before: openai/gpt-4o-mini | first pick: anthropic/claude-haiku-4.5
+    "feature_agent_write_code": HAIKU_45,            # before: openai/gpt-4o-mini
+    "feature_agent_validate": HAIKU_45,              # before: openai/gpt-4o-mini
+    "feature_suggester": HAIKU_45,                   # before: openai/gpt-4o-mini | first pick: amazon/nova-pro-v1
+
+    # -- Analysis agent ----------------------------------------------------------------------
+    "analysis_agent_think": SONNET_45,               # before: openai/gpt-4o-mini | first pick: anthropic/claude-haiku-4.5
+    "analysis_agent_write_code": HAIKU_45,           # before: openai/gpt-4o-mini
+    "analysis_agent_chart_suggestion": HAIKU_45,     # before: openai/gpt-4o-mini
+    "analysis_agent_interpret": HAIKU_45,            # before: openai/gpt-4o-mini (runs once per chart)
+    "analysis_agent_drilldown": HAIKU_45,            # before: openai/gpt-4o-mini (follow-up ideas, new in this table)
+
+    # -- Analysis designer (custom analyses, template matching) ------------------------------
+    "analysis_designer_template_match": SONNET_46,   # before: openai/gpt-4o-mini
+    "analysis_designer_chart": HAIKU_45,             # before: openai/gpt-4o-mini
+    "analysis_suggester": HAIKU_45,                  # before: openai/gpt-4o-mini | first pick: amazon/nova-pro-v1
+
+    # -- Drill-down suggestions --------------------------------------------------------------
+    "drilldown_agent": HAIKU_45,                     # before: openai/gpt-4o-mini | first pick: amazon/nova-pro-v1
+    "drilldown_agent_more": HAIKU_45,                # before: openai/gpt-4o-mini (was named drilldown_agent_wide) | first pick: amazon/nova-pro-v1
+
+    # -- Summaries -----------------------------------------------------------------------------
+    "audit_agent": NOVA_PRO,                         # before: google/gemini-2.5-flash-lite
+    "overall_analysis_agent": NOVA_PRO,              # before: google/gemini-2.5-flash-lite
+    "report_final_summary_agent": HAIKU_45,          # before: google/gemini-2.5-flash-lite | first pick: amazon/nova-pro-v1
+}
+
+
+def model_for(call_name: str, legacy: str) -> str:
+    """The model for one LLM call: an env override (MODEL_<CALL_NAME>) wins, then the
+    table above, then `legacy` -- the older per-agent setting -- for calls not in the
+    table or when USE_PER_CALL_MODELS=0 (but an env override still applies)."""
+    override = os.getenv("MODEL_" + call_name.upper())
+    if override:
+        return override
+    if USE_PER_CALL_MODELS and call_name in MODEL_BY_CALL:
+        return MODEL_BY_CALL[call_name]
+    return legacy

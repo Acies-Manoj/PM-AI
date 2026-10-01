@@ -17,7 +17,7 @@ from collections.abc import Iterable
 import pandas as pd
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from app.config import OPENROUTER_MODEL
+from app.config import DEFAULT_MAX_TOKENS, OPENROUTER_MODEL, model_for
 from app.services.analysis.analysis_columns import column_catalog
 from app.services.analysis.analysis_repository import _normalize_name
 from app.services.common import token_usage
@@ -178,7 +178,8 @@ def suggest_analyses(df: pd.DataFrame, existing_entries: Iterable[dict] = (), fe
     candidates = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         response = client.chat.completions.create(
-            model=OPENROUTER_MODEL,
+            model=model_for("analysis_suggester", OPENROUTER_MODEL),
+            max_tokens=DEFAULT_MAX_TOKENS,
             temperature=0.4,
             response_format={"type": "json_object"},
             messages=[
@@ -186,7 +187,7 @@ def suggest_analyses(df: pd.DataFrame, existing_entries: Iterable[dict] = (), fe
                 {"role": "user", "content": user_prompt},
             ],
         )
-        token_usage.record("analysis_suggester", OPENROUTER_MODEL, response)
+        token_usage.record("analysis_suggester", model_for("analysis_suggester", OPENROUTER_MODEL), response)
         candidates = _parse_candidates(response.choices[0].message.content or "")
         if candidates is not None:
             break

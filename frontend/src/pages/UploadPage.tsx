@@ -1,3 +1,4 @@
+import { Spinner } from "../components/ThinkingLoader";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
@@ -166,7 +167,7 @@ export default function UploadPage({
               disabled={uploading || samplesLoading}
               title="Fills every slot with a bundled example file, so you can skip hunting one down each time you try the app."
             >
-              {samplesLoading ? "Loading samples…" : "Add all samples"}
+              {samplesLoading ? <><Spinner />Loading samples…</> : "Add all samples"}
             </button>
             <button type="button" className="upload-page__btn upload-page__btn--secondary" onClick={onClearAll} disabled={uploading}>
               Clear All
@@ -177,7 +178,7 @@ export default function UploadPage({
               onClick={handleContinue}
               disabled={uploading}
             >
-              {uploading ? "Uploading…" : "Upload & Continue"}
+              {uploading ? <><Spinner />Uploading…</> : "Upload & Continue"}
             </button>
           </div>
         </div>

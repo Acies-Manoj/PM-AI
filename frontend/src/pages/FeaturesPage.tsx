@@ -1,3 +1,5 @@
+import ThinkingLoader, { Spinner } from "../components/ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
@@ -228,7 +230,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
           subtitle="The Feature Agent computes every approved feature below -- predefined, planner-approved, custom, and AI-suggested -- by planning, writing, and validating pandas code for each one."
         />
 
-        {defsLoading && <div className="features-page__loading">Reading feature definitions from {files.customerKpis!.name}…</div>}
+        {defsLoading && <ThinkingLoader variant="inline" messages={[`Reading ${files.customerKpis!.name}…`]} />}
         {defsError && <p className="features-page__error">{defsError}</p>}
         {!hasKpiFile && (
           <p className="features-page__hint">
@@ -274,7 +276,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                 >
                   <IconSparkle />{" "}
                   {suggestLoading[id]
-                    ? "Thinking…"
+                    ? <><Spinner />Thinking…</>
                     : pendingSuggestions.length > 0
                       ? `View Suggestions (${pendingSuggestions.length})`
                       : "Suggest Features"}
@@ -293,7 +295,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                         disabled={suggestLoading[id]}
                         onClick={() => runSuggest(id)}
                       >
-                        {suggestLoading[id] ? "Thinking…" : "Suggest More"}
+                        {suggestLoading[id] ? <><Spinner />Thinking…</> : "Suggest More"}
                       </button>
                     }
                   >
@@ -364,7 +366,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                 <span className="features-page__filename">{files[id]!.name}</span>
               </div>
 
-              {loading[id] && <div className="features-page__loading">Feature Agent is computing features…</div>}
+              {loading[id] && <ThinkingLoader messages={LOADING.features} hint="The Feature Agent plans and calculates each new column." intervalMs={3500} showElapsed />}
               {errors[id] && <p className="features-page__error">{errors[id]}</p>}
 
               {report && (
@@ -459,7 +461,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                     </a>
                   </div>
 
-                  {previewOpen[id] && (preview ? <DataPreviewTable preview={preview} /> : <div className="features-page__loading">Loading preview…</div>)}
+                  {previewOpen[id] && (preview ? <DataPreviewTable preview={preview} /> : <ThinkingLoader variant="inline" messages={LOADING.preview} />)}
                 </>
               )}
             </section>

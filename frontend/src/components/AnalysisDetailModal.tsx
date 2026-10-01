@@ -1,3 +1,5 @@
+import ThinkingLoader from "./ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
 import type {
   AnalysisFilterSelections,
@@ -241,7 +243,7 @@ export default function AnalysisDetailModal({
           </button>
         </div>
       )}
-      {entry.run_status === "not_run" && running && <p className="analysis-card__status" role="status">Computing…</p>}
+      {entry.run_status === "not_run" && running && <ThinkingLoader messages={LOADING.analysisRun} showElapsed />}
 
       {entry.run_status === "done" && (
         <div className="analysis-detail__meta-row">

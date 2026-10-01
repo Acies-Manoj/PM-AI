@@ -1,3 +1,5 @@
+import ThinkingLoader from "./ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import type { OverallAnalysisReport } from "../api/audit";
 import { IconSparkle } from "./icons";
 import "./OverallAnalysisCard.css";
@@ -27,11 +29,14 @@ export default function OverallAnalysisCard({ report, loading, error, waitingFor
         </h3>
       </div>
 
-      {status && (
-        <p className="overall-analysis-card__status" role="status">
-          {loading && <span className="overall-analysis-card__spinner" aria-hidden="true" />}
-          {status}
-        </p>
+      {loading ? (
+        <ThinkingLoader variant="inline" messages={report ? ["Updating the summary with the latest analyses…"] : LOADING.summary} />
+      ) : (
+        status && (
+          <p className="overall-analysis-card__status" role="status">
+            {status}
+          </p>
+        )
       )}
 
       {error && !loading && (

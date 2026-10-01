@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from app.config import DATA_DIR, DRILLDOWN_AGENT_MODEL
+from app.config import DATA_DIR, DRILLDOWN_AGENT_MODEL, model_for
 from app.services.analysis import analysis_agent, analysis_drilldown as dd, analysis_semantics
 from app.services.analysis.analysis_columns import as_labels
 
@@ -235,7 +235,7 @@ def plan(
     try:
         raw = analysis_agent.call_llm(
             _SYSTEM.replace("{max_steps}", str(max_steps)).replace("{max_charts}", str(MAX_PATH_CHARTS)), user,
-            json_mode=True, temperature=0.3, call_name="drilldown_path", model=DRILLDOWN_AGENT_MODEL, max_tokens=4000,
+            json_mode=True, temperature=0.3, call_name="drilldown_path", model=model_for("drilldown_path", DRILLDOWN_AGENT_MODEL), max_tokens=4000,
         )
         payload = json.loads(analysis_agent.strip_json_fence(raw))
         steps = _clean_steps(payload.get("steps"), usable, aggs, have_spec, set(used0), max_steps)

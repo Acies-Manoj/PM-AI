@@ -35,6 +35,7 @@ function summaryOf(filter: AnalysisFilter, sel: AnalysisFilterSelection | undefi
   if (isEmpty(sel)) return "All";
   if (filter.kind === "categorical") {
     const values = sel!.values ?? [];
+    if (values.length > 0 && values.length >= (filter.values?.length ?? Infinity)) return "All";
     return values.length === 1 ? values[0] : `${values.length} selected`;
   }
   if (filter.kind === "numeric_range") {
@@ -62,11 +63,18 @@ function CategoricalOptions({
   const chosen = new Set(selection?.values ?? []);
   const all = filter.values ?? [];
   const visible = all.filter((v) => v.toLowerCase().includes(query.toLowerCase()));
+  // "All" means every value is ticked: nothing chosen is the same thing as everything chosen.
+  const everything = chosen.size === 0 || (all.length > 0 && chosen.size >= all.length);
   const toggle = (value: string) => {
-    const next = new Set(chosen);
-    if (next.has(value)) next.delete(value);
-    else next.add(value);
-    onChange({ values: [...next] });
+    const next = new Set(everything ? all : chosen);
+    if (next.has(value)) {
+      if (next.size === 1) return; // at least one value stays ticked
+      next.delete(value);
+    } else {
+      next.add(value);
+    }
+    // Every value ticked again is no restriction at all.
+    onChange(next.size >= all.length ? {} : { values: [...next] });
   };
 
   return (
@@ -85,7 +93,7 @@ function CategoricalOptions({
         {!query && (
           <li>
             <label>
-              <input type="checkbox" checked={chosen.size === 0} onChange={() => onChange({})} />
+              <input type="checkbox" checked={everything} onChange={() => onChange({})} />
               All
             </label>
           </li>
@@ -93,7 +101,7 @@ function CategoricalOptions({
         {visible.map((value) => (
           <li key={value}>
             <label>
-              <input type="checkbox" checked={chosen.has(value)} onChange={() => toggle(value)} />
+              <input type="checkbox" checked={everything || chosen.has(value)} onChange={() => toggle(value)} />
               {value}
             </label>
           </li>
@@ -179,7 +187,7 @@ export default function AnalysisFilterBar({ filters, busy, onChange }: AnalysisF
   // popover and not the modal around it (the modal also listens for Escape).
   useEffect(() => {
     if (!openColumn) return;
-    const onMouseDown = (e: MouseEvent) => {
+    const onMouseDown = (e: Event) => {
       if (!barRef.current?.contains(e.target as Node)) setOpenColumn(null);
     };
     const onKeyDown = (e: KeyboardEvent) => {
@@ -187,10 +195,12 @@ export default function AnalysisFilterBar({ filters, busy, onChange }: AnalysisF
       e.stopPropagation();
       setOpenColumn(null);
     };
-    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("mousedown", onMouseDown, true);
+    document.addEventListener("touchstart", onMouseDown, true);
     window.addEventListener("keydown", onKeyDown, true);
     return () => {
-      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("mousedown", onMouseDown, true);
+      document.removeEventListener("touchstart", onMouseDown, true);
       window.removeEventListener("keydown", onKeyDown, true);
     };
   }, [openColumn]);
@@ -233,6 +243,9 @@ export default function AnalysisFilterBar({ filters, busy, onChange }: AnalysisF
             </button>
             {open && (
               <div className="analysis-filter__popover" role="dialog" aria-label={`Filter by ${f.column}`}>
+                <button type="button" className="analysis-filter__close" aria-label="Close filter" onClick={() => setOpenColumn(null)}>
+                  ×
+                </button>
                 {f.kind === "categorical" ? (
                   <CategoricalOptions filter={f} selection={sel} onChange={(next) => setOne(f.column, next)} />
                 ) : (

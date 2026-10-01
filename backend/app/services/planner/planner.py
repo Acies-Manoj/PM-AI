@@ -9,7 +9,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from app.config import DATA_DIR, OPENROUTER_API_KEY, PLANNER_AGENT_MODEL
+from app.config import DATA_DIR, OPENROUTER_API_KEY, PLANNER_AGENT_MODEL, model_for
 from app.services.analysis import analysis_agent
 from app.services.common import token_usage
 from app.services.features import feature_agent
@@ -268,7 +268,7 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     user_prompt = _build_user_prompt(final_brief, columns_block, catalog_block, additional_context)
 
     response = client.chat.completions.create(
-        model=PLANNER_AGENT_MODEL,
+        model=model_for("planner_agent", PLANNER_AGENT_MODEL),
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -276,7 +276,7 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
         temperature=0.2,
         max_tokens=4096,
     )
-    token_usage.record("planner_agent", PLANNER_AGENT_MODEL, response)
+    token_usage.record("planner_agent", model_for("planner_agent", PLANNER_AGENT_MODEL), response)
 
     raw = response.choices[0].message.content or ""
 
@@ -309,6 +309,7 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     result["recommendations"] = planner_dependencies.normalize(result["recommendations"], context)
     _flag_empty_columns(result["recommendations"], col_data.get("columns", {}), row_count)
     _attach_generated_formulas(result["recommendations"], columns_block)
+    _prune_features(result["recommendations"])
     _sync_feature_columns(result["recommendations"], set(col_data.get("columns", {})))
 
     # Cache the raw planner output so /save can attach decisions to it
@@ -317,6 +318,37 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     )
 
     return result
+
+
+_ANALYSIS_LOGIC = re.compile(
+    r"\b(top|bottom|rank(?:ing|ed)?|sort(?:ing|ed)?|highest|lowest|compar(?:e|ison|ing)|chart|graph|narrative|insight)\b",
+    re.IGNORECASE,
+)
+
+
+def _prune_features(recommendations: list[dict]) -> None:
+    """A feature is a reusable calculation. Drop any feature recommendation that
+    has no formula, or whose name or formula is really analysis logic (ranking,
+    top/bottom N, sorting, comparison) -- those belong to an analysis. An analysis
+    that listed a dropped feature as a new dependency simply stops requiring it."""
+    dropped: set[str] = set()
+    for rec in list(recommendations):
+        if rec.get("type") != "feature":
+            continue
+        formula = (rec.get("feature_formula_expression") or rec.get("generated_feature_formula") or "").strip()
+        if not formula or _ANALYSIS_LOGIC.search(rec.get("name", "")) or _ANALYSIS_LOGIC.search(formula):
+            recommendations.remove(rec)
+            dropped.add(planner_dependencies.slug(rec["name"]))
+    if not dropped:
+        return
+    for rec in recommendations:
+        if rec.get("type") != "analysis":
+            continue
+        rec["feature_dependencies"] = [
+            d for d in rec.get("feature_dependencies") or []
+            if not (d.get("action") == "create_new" and planner_dependencies.slug(d.get("feature_name", "")) in dropped)
+        ]
+        rec["feature_required"] = bool(rec["feature_dependencies"])
 
 
 EMPTY_COLUMN_SHARE = 0.9

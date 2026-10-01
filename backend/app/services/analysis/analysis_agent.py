@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 from openai import OpenAI
 
-from app.config import ANALYSIS_AGENT_MODEL, DRILLDOWN_AGENT_MODEL, OPENROUTER_API_KEY
+from app.config import ANALYSIS_AGENT_MODEL, DEFAULT_MAX_TOKENS, DRILLDOWN_AGENT_MODEL, OPENROUTER_API_KEY, model_for
 from app.services.analysis import analysis_charts
 from app.services.analysis.analysis_charts import ChartRoles
 from app.services.analysis.analysis_columns import column_catalog
@@ -67,7 +67,7 @@ def call_llm(
     model: str | None = None, max_tokens: int | None = None,
 ) -> str:
     client = _get_client()
-    model = model or ANALYSIS_AGENT_MODEL
+    model = model or model_for(call_name, ANALYSIS_AGENT_MODEL)
     kwargs: dict = {
         "model": model,
         "temperature": temperature,
@@ -76,8 +76,7 @@ def call_llm(
             {"role": "user", "content": user_prompt},
         ],
     }
-    if max_tokens:
-        kwargs["max_tokens"] = max_tokens
+    kwargs["max_tokens"] = max_tokens or DEFAULT_MAX_TOKENS
     if json_mode:
         try:
             response = client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
@@ -512,7 +511,7 @@ def suggest_drilldowns(
             )
         raw = call_llm(
             _DRILLDOWN_SYSTEM, prompt, json_mode=True, temperature=0.5, call_name="analysis_agent_drilldown",
-            model=DRILLDOWN_AGENT_MODEL,
+            model=model_for("analysis_agent_drilldown", DRILLDOWN_AGENT_MODEL),
         )
         payload = json.loads(strip_json_fence(raw))
         candidates = payload.get("drilldowns", [])

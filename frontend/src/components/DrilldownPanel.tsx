@@ -1,3 +1,5 @@
+import ThinkingLoader, { Spinner } from "./ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useState } from "react";
 import type { ConfirmDrilldownBody, DrilldownMetric, DrilldownOptions, DrilldownProposal } from "../api/audit";
 import { AuditApiError } from "../api/audit";
@@ -184,12 +186,12 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
         </h5>
         <button type="button" className="analysis-detail__suggest-more-btn" disabled={proposing} onClick={() => propose(true)}>
           <IconSparkle />
-          {proposing ? "Thinking…" : "AI"}
+          {proposing ? <><Spinner />Thinking…</> : "AI"}
         </button>
       </div>
 
       {error && <p className="analysis-card__error">{error}</p>}
-      {proposing && !proposals && <p className="drilldown-panel__hint">Finding drill-downs…</p>}
+      {proposing && !proposals && <ThinkingLoader messages={LOADING.proposals} showElapsed />}
 
       {cards && (
         <div className={`drilldown-proposals${cards.length > 5 ? " drilldown-proposals--scroll" : ""}`}>

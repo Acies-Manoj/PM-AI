@@ -1,3 +1,5 @@
+import ThinkingLoader from "../components/ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
@@ -283,7 +285,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           <div className="report-page__empty">
             <p>
               {stillChecking
-                ? "Checking whether any analyses have been run…"
+                ? <ThinkingLoader variant="inline" messages={["Checking whether any analyses have been run…"]} />
                 : "No analyses have been run yet -- go run some on the Analysis page first, since the report is built from whichever of them finished successfully."}
             </p>
             <button type="button" className="report-page__btn report-page__btn--primary" onClick={() => navigate("/analysis")}>
@@ -305,6 +307,11 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           icon={<IconClipboard />}
           title="Report"
           subtitle="Pick which completed analyses go into the downloadable report, drag to reorder, preview each slide, then export it as a .pptx."
+          action={
+            <button type="button" className="report-page__btn report-page__btn--secondary report-page__nav-btn" onClick={() => navigate("/analysis")}>
+              <IconChevronLeft /> Back to Analysis
+            </button>
+          }
         />
 
         <div className="report-page__language-picker">
@@ -446,7 +453,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
                     </button>
                   </div>
                 ) : summaryLoading[id] && !summaryBullets[id] ? (
-                  <p className="report-page__summary-status">Writing the final summary…</p>
+                  <ThinkingLoader messages={LOADING.reportSummary} />
                 ) : summaryBullets[id] ? (
                   <ul className="report-page__summary-bullets">
                     {summaryBullets[id]!.map((bullet, i) => (

@@ -25,7 +25,8 @@ from collections.abc import Iterable
 import pandas as pd
 from openai import OpenAI
 
-from app.config import OPENROUTER_API_KEY, OPENROUTER_MODEL
+from app.services.common.groq_client import strip_json_fence
+from app.config import DEFAULT_MAX_TOKENS, OPENROUTER_API_KEY, OPENROUTER_MODEL, model_for
 from app.services.common import token_usage
 from app.services.planner import planner_dependencies
 
@@ -112,7 +113,8 @@ def suggest_features(df: pd.DataFrame, existing_entries: Iterable[dict] = ()) ->
         "Propose the features now."
     )
     response = client.chat.completions.create(
-        model=OPENROUTER_MODEL,
+        model=model_for("feature_suggester", OPENROUTER_MODEL),
+        max_tokens=DEFAULT_MAX_TOKENS,
         temperature=0.4,
         response_format={"type": "json_object"},
         messages=[
@@ -120,9 +122,9 @@ def suggest_features(df: pd.DataFrame, existing_entries: Iterable[dict] = ()) ->
             {"role": "user", "content": user_prompt},
         ],
     )
-    token_usage.record("feature_suggester", OPENROUTER_MODEL, response)
+    token_usage.record("feature_suggester", model_for("feature_suggester", OPENROUTER_MODEL), response)
     raw = response.choices[0].message.content or "{}"
-    payload = json.loads(raw)
+    payload = json.loads(strip_json_fence(raw))
     candidates = payload.get("suggestions", [])
     if not isinstance(candidates, list):
         return []

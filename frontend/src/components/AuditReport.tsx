@@ -1,3 +1,5 @@
+import ThinkingLoader from "./ThinkingLoader";
+import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuditIssue, AuditReport as AuditReportData, OutliersResponse } from "../api/audit";
 import { fetchOutliers } from "../api/audit";
@@ -324,7 +326,7 @@ export default function AuditReport({
             <AuditSummaryPanel report={report} />
           ) : activeTab === "segment" ? (
             outlierLoading ? (
-              <p className="outlier-tab__loading">Analyzing segment lengths…</p>
+              <ThinkingLoader messages={LOADING.segmentOutliers} />
             ) : outlierError ? (
               <div className="outlier-tab__error">
                 Could not load outlier data: {outlierError}
@@ -335,7 +337,7 @@ export default function AuditReport({
             ) : null
           ) : activeTab === "temperature" ? (
             outlierLoading ? (
-              <p className="outlier-tab__loading">Analyzing temperature data…</p>
+              <ThinkingLoader messages={LOADING.temperatureOutliers} />
             ) : outlierError ? (
               <div className="outlier-tab__error">
                 Could not load outlier data: {outlierError}

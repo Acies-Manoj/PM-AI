@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import pandas as pd
 from openai import OpenAI
 
-from app.config import FEATURE_AGENT_MODEL, OPENROUTER_API_KEY
+from app.config import DEFAULT_MAX_TOKENS, FEATURE_AGENT_MODEL, OPENROUTER_API_KEY, model_for
 from app.services.common import ai_code_executor, token_usage
 
 MAX_ATTEMPTS = 3
@@ -48,8 +48,10 @@ def _call(
     system_prompt: str, user_prompt: str, *, json_mode: bool, temperature: float, call_name: str
 ) -> str:
     client = _get_client()
+    model = model_for(call_name, FEATURE_AGENT_MODEL)
     kwargs: dict = {
-        "model": FEATURE_AGENT_MODEL,
+        "model": model,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "temperature": temperature,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -63,7 +65,7 @@ def _call(
             response = client.chat.completions.create(**kwargs)
     else:
         response = client.chat.completions.create(**kwargs)
-    token_usage.record(call_name, FEATURE_AGENT_MODEL, response)
+    token_usage.record(call_name, model, response)
     return response.choices[0].message.content or ""
 
 

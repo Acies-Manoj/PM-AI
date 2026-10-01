@@ -1,3 +1,4 @@
+import { Spinner } from "./ThinkingLoader";
 import { useRef, useState } from "react";
 import type { AddCustomAnalysisBody, AnalysisChartType, AnalysisDraft } from "../api/audit";
 import { AuditApiError } from "../api/audit";
@@ -138,7 +139,7 @@ export default function AddAnalysisForm({ columns, busy, onDraft, onAdd, onCance
         disabled={drafting || busy}
         onClick={() => requestDraft()}
       >
-        {drafting ? "Working out the logic…" : draft ? "Regenerate from description" : "Generate computation logic"}
+        {drafting ? <><Spinner />Working out the logic…</> : draft ? "Regenerate from description" : "Generate computation logic"}
       </button>
 
       {descriptionStale && (

@@ -1,0 +1,9 @@
+venv
+**/__pycache__
+*.pyc
+.env
+*.log
+out*.txt
+label_counts.txt
+data/sessions
+data/token_usage.jsonl

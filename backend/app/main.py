@@ -10,7 +10,7 @@ app = FastAPI(title="Cold Chain Data Audit API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=["*"],
     # Vite's dev server auto-increments past a taken port (5173 -> 5174 ->
     # ...) every time an old instance is still holding one, which drifts
     # past CORS_ORIGINS' fixed list after a few restarts. Matching any
@@ -18,7 +18,6 @@ app.add_middleware(
     # -- this app has no cookie-based auth for the regex's broader match to
     # put at risk, and it's dev-only in intent (the deployed frontend origin
     # should still be added to CORS_ORIGINS explicitly for production).
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

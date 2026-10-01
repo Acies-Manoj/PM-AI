@@ -584,7 +584,7 @@ def confirm_drilldown(session_id: str, entry_id: str, body: ConfirmDrilldownRequ
         raise HTTPException(status_code=422, detail="Couldn't work out which level to drill into.")
     if len(children) > 5:
         raise HTTPException(status_code=422, detail="Pick at most 5 X-axis columns.")
-    if body.metric == "mean" and (not body.metric_column or body.metric_column not in analysis_drilldown.numeric_columns(session.df)):
+    if body.metric in analysis_drilldown.AGG_LABELS and (not body.metric_column or body.metric_column not in analysis_drilldown.numeric_columns(session.df)):
         raise HTTPException(status_code=422, detail="Pick a numeric column to average.")
     if body.metric == "pct_in_spec" and analysis_drilldown.find_in_spec_column(session.df) is None:
         raise HTTPException(status_code=422, detail="No '% in spec' column exists yet -- compute that feature first.")
@@ -612,6 +612,7 @@ def confirm_drilldown(session_id: str, entry_id: str, body: ConfirmDrilldownRequ
 def _create_level(
     *, session: AuditSession, session_id: str, parent: dict, dimension: str, where: list[dict], children: list[str],
     metric: str, metric_column: str | None, rank: dict, level: int, values: list[str], split: bool,
+    status: str = "approved",
 ) -> tuple[dict, bool]:
     """Creates one chain level for `values` (not yet run), or returns the
     identical level if it already exists. Returns (entry, was_created)."""
@@ -627,14 +628,16 @@ def _create_level(
     }
     for existing in analysis_repository.get_repository(session_id):
         c = existing.get("chain")
-        if existing.get("parent_id") == parent["id"] and c and c["where"] == new_where and _chain_dims(c) == children:
+        # Only an accepted level is reused: a pending or rejected one belongs to a suggested path.
+        if (existing.get("status") == "approved" and existing.get("parent_id") == parent["id"] and c
+                and c["where"] == new_where and _chain_dims(c) == children):
             return existing, False
 
     filters = _level_filter_defs(session_id, session)
     name = analysis_drilldown.level_name(children, rank, label, metric, metric_column)
     entry = analysis_repository.add_chain_entry(
         session_id, parent["id"], name=name, description=f"{name} (drill-down from {parent['name']}).",
-        template=template, chart_type=chart_type, filters=filters, chain=chain,
+        template=template, chart_type=chart_type, filters=filters, chain=chain, status=status,
     )
     return entry, True
 
@@ -707,7 +710,8 @@ def get_overall_analysis(session_id: str) -> OverallAnalysisReport:
     done_entries = [
         _merge_entry(session, d).model_dump()
         for d in definitions
-        if session.analysis_results.get(d["id"], None) and session.analysis_results[d["id"]].run_status == "done"
+        if d.get("status") == "approved"
+        and session.analysis_results.get(d["id"], None) and session.analysis_results[d["id"]].run_status == "done"
     ]
     highlights = overall_analysis.build_highlights(len(session.df), session.features, done_entries)
     try:

@@ -136,11 +136,14 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
       setLoading((prev) => ({ ...prev, [id]: true }));
       fetchAnalysisRepository(sessionId)
         .then((res) => {
-          setRepositories((prev) => ({ ...prev, [id]: res.entries }));
-          const byId = new Map(res.entries.map((e) => [e.id, e]));
+          // Only accepted analyses and drill-downs: a suggested path's pending levels (and rejected
+          // ones) are never offered for the report.
+          const entries = res.entries.filter((e) => e.status === "approved");
+          setRepositories((prev) => ({ ...prev, [id]: entries }));
+          const byId = new Map(entries.map((e) => [e.id, e]));
           setSelected((prev) => {
             const next = { ...prev };
-            for (const entry of res.entries) {
+            for (const entry of entries) {
               // Stale drill-down levels are never included by default.
               if (entry.run_status === "done" && !(entry.id in next)) next[entry.id] = !isStaleEntry(entry, byId);
             }

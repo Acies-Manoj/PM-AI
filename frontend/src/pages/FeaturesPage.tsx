@@ -403,7 +403,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                                     <code className="features-page__summary-col">{f.output_column}</code>
                                     {requiredFor(f.id).length > 0 && (
                                       <span className="features-page__required-tag" title={requiredFor(f.id).join(", ")}>
-                                        Required for analysis: {requiredFor(f.id).join(", ")}
+                                        Required for analysis{requiredFor(f.id).length > 1 ? ` (${requiredFor(f.id).length})` : ""}
                                       </span>
                                     )}
                                   </button>

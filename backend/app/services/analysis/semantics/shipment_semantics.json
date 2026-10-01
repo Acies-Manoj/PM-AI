@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "dataset": "Cold-chain shipment export from a temperature-logger platform (SensiWatch / ColdStream style): fresh produce shipped from growers and ports to retail distribution centres, each trip fitted with a temperature logger.",
+  "grain": "One row per trip per product. 'Trips' are counted as rows (count of Trip ID). A trip carrying several products appears on several rows, so distinct Trip IDs are slightly fewer than rows. Every row also carries the logger's summary for the whole journey (temperature statistics and hours spent in each temperature zone).",
+  "supply_chain": "Product comes from an Origin (a grower, packer or port), is moved by a Carrier along a lane Origin -> Destination, and arrives at a Destination (a retailer distribution centre). Quality is judged by the logged temperature against the product's limits.",
+  "columns": {
+    "Product": {"kind": "dimension", "meaning": "The fruit or vegetable on the trip (Table Grapes, Cherries, Apricots, Nectarines ...). It decides the temperature limits that apply.", "groupable": true},
+    "Origin": {"kind": "dimension", "meaning": "The grower, packer or port the goods were collected from. Many origins per product; each origin belongs to exactly one country (see Country of Origin).", "groupable": true},
+    "Destination": {"kind": "dimension", "meaning": "The retailer distribution centre or depot the goods were delivered to (EDEKA regional centres, GHB, NETTO ...).", "groupable": true},
+    "Carrier": {"kind": "dimension", "meaning": "The transport company (haulier or shipping line) that moved the goods. Sea carriers (MSC, MAERSK ...) behave very differently from road hauliers.", "groupable": true},
+    "Mode Of Transportation": {"kind": "dimension", "meaning": "How the goods travelled: Road, Ocean or Rail. About a third of rows are blank (not recorded).", "groupable": true},
+    "Is Alarmed": {"kind": "dimension", "meaning": "Yes/No: whether the logger raised a temperature alarm on the trip.", "groupable": true},
+
+    "Trip ID": {"kind": "identifier", "meaning": "Identifier of the shipment. Counting its rows gives the number of trips.", "groupable": false},
+    "Serial Number": {"kind": "identifier", "meaning": "Identifier of the temperature logger used on the trip.", "groupable": false},
+    "Order Number": {"kind": "identifier", "meaning": "Customer order reference. Partly filled.", "groupable": false},
+    "PO Number": {"kind": "identifier", "meaning": "Purchase order reference. Mostly blank.", "groupable": false},
+    "Internal Trip ID": {"kind": "identifier", "meaning": "A partner's own trip reference. Mostly blank.", "groupable": false},
+    "Trailer ID": {"kind": "identifier", "meaning": "Truck and trailer registration. Partly filled.", "groupable": false},
+    "Shipment Created By": {"kind": "identifier", "meaning": "The user or integration that created the shipment record (an e-mail or system name). Not a business dimension.", "groupable": false},
+    "Latest Reprocess User": {"kind": "identifier", "meaning": "The user who last reprocessed the logger data. Almost always blank.", "groupable": false},
+    "Trip Note": {"kind": "text", "meaning": "Free-text note on the trip. Mostly blank.", "groupable": false},
+
+    "Actual Departure Time CET": {"kind": "time", "meaning": "When the trip actually left the origin (CET). Always filled.", "groupable": false},
+    "Actual Arrival Time CET": {"kind": "time", "meaning": "When the trip actually arrived at the destination (CET). Always filled.", "groupable": false},
+    "Planned Departure Time CET": {"kind": "time", "meaning": "Planned departure. More than half blank, so not usable for punctuality.", "groupable": false},
+    "Planned Arrival Time CET": {"kind": "time", "meaning": "Planned arrival. About 70% blank, so not usable for punctuality.", "groupable": false},
+    "Trip Create Date CET": {"kind": "time", "meaning": "When the trip was created in the system.", "groupable": false},
+    "Segment Start Date Time": {"kind": "time", "meaning": "Start of the logged segment (equals the departure for a full trip).", "groupable": false},
+    "Segment End Date Time": {"kind": "time", "meaning": "End of the logged segment (equals the arrival for a full trip).", "groupable": false},
+    "Specs Last Updated Date/Time": {"kind": "time", "meaning": "When the temperature specification was last updated.", "groupable": false},
+    "Shipment Created Date/Time": {"kind": "time", "meaning": "When the shipment record was created.", "groupable": false},
+    "Latest Reprocess Date": {"kind": "time", "meaning": "When the logger data was last reprocessed. Almost always blank.", "groupable": false},
+
+    "Segment Length (Days)": {"kind": "measure", "unit": "days", "meaning": "Duration of the logged journey in days (departure to arrival).", "aggs": ["mean", "median", "max", "min"], "groupable": false},
+    "Mean Value": {"kind": "measure", "unit": "degrees C", "meaning": "Average logged temperature over the whole journey.", "aggs": ["mean", "median", "max", "min"], "groupable": false},
+    "Standard Deviation": {"kind": "measure", "unit": "degrees C", "meaning": "How much the temperature varied during the journey. Higher means a less stable cold chain.", "aggs": ["mean", "max"], "groupable": false},
+    "Min Value": {"kind": "measure", "unit": "degrees C", "meaning": "Coldest logged reading on the journey.", "aggs": ["mean", "min"], "groupable": false},
+    "Max Value": {"kind": "measure", "unit": "degrees C", "meaning": "Warmest logged reading on the journey.", "aggs": ["mean", "max"], "groupable": false},
+    "MKT Statistics Value": {"kind": "measure", "unit": "degrees C", "meaning": "Mean kinetic temperature: the single constant temperature that would cause the same thermal damage as the real, varying one. A measure of temperature stress.", "aggs": ["mean", "max"], "groupable": false},
+    "Time Below Low Hours": {"kind": "measure", "unit": "hours", "meaning": "Hours the temperature was below the LOW limit (too cold, out of spec).", "aggs": ["mean", "sum", "max"], "groupable": false},
+    "Time Above High Hours": {"kind": "measure", "unit": "hours", "meaning": "Hours the temperature was above the HIGH limit (too warm, out of spec).", "aggs": ["mean", "sum", "max"], "groupable": false},
+    "Time Below Ideal Hours": {"kind": "measure", "unit": "hours", "meaning": "Hours the temperature was under the ideal level but still inside the limits.", "aggs": ["mean", "sum"], "groupable": false, "confidence": "inferred"},
+    "Time Above Ideal Hours": {"kind": "measure", "unit": "hours", "meaning": "Hours the temperature was over the ideal level but still inside the limits.", "aggs": ["mean", "sum"], "groupable": false, "confidence": "inferred"},
+    "Value Minutes Below Low": {"kind": "measure", "unit": "degree-minutes", "meaning": "Accumulated severity of time below the low limit (how far and how long).", "aggs": ["mean", "sum", "max"], "groupable": false, "confidence": "inferred"},
+    "Value Minutes Below Ideal": {"kind": "measure", "unit": "degree-minutes", "meaning": "Accumulated deviation below the ideal level.", "aggs": ["mean", "sum"], "groupable": false, "confidence": "inferred"},
+    "Value Minutes Above Ideal": {"kind": "measure", "unit": "degree-minutes", "meaning": "Accumulated deviation above the ideal level.", "aggs": ["mean", "sum"], "groupable": false, "confidence": "inferred"},
+    "Value Minutes Above High": {"kind": "measure", "unit": "degree-minutes", "meaning": "Accumulated severity of time above the high limit (how far and how long).", "aggs": ["mean", "sum", "max"], "groupable": false, "confidence": "inferred"},
+
+    "Limit Low": {"kind": "setting", "unit": "degrees C", "meaning": "The product's lower temperature limit. A specification, not a result.", "groupable": false},
+    "Limit Ideal": {"kind": "setting", "unit": "degrees C", "meaning": "The product's ideal temperature. A specification, not a result.", "groupable": false},
+    "Limit High": {"kind": "setting", "unit": "degrees C", "meaning": "The product's upper temperature limit. A specification, not a result. Blank when the product is unknown.", "groupable": false},
+
+    "Trip Status": {"kind": "constant", "meaning": "Always 'Arrived'. Carries no information.", "groupable": false},
+    "Segment Name": {"kind": "constant", "meaning": "Always 'Full Trip'. Carries no information.", "groupable": false},
+    "Sensor Type": {"kind": "constant", "meaning": "Always 'Temperature'. Carries no information.", "groupable": false},
+    "Degree Unit": {"kind": "constant", "meaning": "Always 'C' (Celsius).", "groupable": false},
+    "Reprocess Type": {"kind": "constant", "meaning": "Always 'Automatic' where present; almost always blank.", "groupable": false},
+
+    "Driver Name": {"kind": "unusable", "meaning": "Despite the name it holds container numbers, and is 97% blank.", "groupable": false},
+    "Driver Cell": {"kind": "unusable", "meaning": "A stray number, 97% blank.", "groupable": false},
+    "Trip Detail": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false},
+    "Quality Status": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false},
+    "Quality Comment": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false},
+    "Managing Carrier": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false},
+    "Parent Supplier": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false},
+    "Container Name": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false},
+    "Zone Name": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false},
+    "Segment Type": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false},
+    "Segment Number": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false},
+    "Trip Review": {"kind": "empty", "meaning": "Entirely blank.", "groupable": false}
+  },
+
+  "known_features": {
+    "Country of Origin": {"kind": "dimension", "meaning": "The country the Origin is in (Italy, Spain, Greece, South Africa ...). A broader grouping of Origin.", "groupable": true},
+    "Arrival Month": {"kind": "dimension", "meaning": "Calendar month name of the arrival (January to December). Month name only, years are not separated.", "groupable": true},
+    "% In Spec": {"kind": "measure", "unit": "percent", "meaning": "Customer KPI: the share of the journey's monitored time the shipment stayed inside its temperature band. Higher is better.", "aggs": ["mean", "median", "min"], "groupable": false}
+  },
+
+  "hierarchies": [
+    {"parent": "Country of Origin", "child": "Origin", "note": "Each origin is in exactly one country. Drill from Country of Origin to Origin, never the other way."},
+    {"parent": "Product", "child": "Origin", "note": "Not a strict hierarchy: a product comes from many origins and an origin ships several products. Drill Product -> Origin to see where a product comes from."}
+  ],
+
+  "drill_patterns": [
+    {"name": "Supply chain", "path": ["Product", "Origin", "Carrier", "Destination"], "use_when": "The analysis is about volume or where goods come from and how they move."},
+    {"name": "Geography", "path": ["Country of Origin", "Origin", "Carrier"], "use_when": "Comparing regions, then the growers inside the leading region, then who moves them."},
+    {"name": "Lane", "path": ["Origin", "Destination", "Carrier"], "use_when": "Looking at specific routes and who serves them."},
+    {"name": "Quality", "path": ["Carrier", "Mode Of Transportation", "Origin"], "use_when": "The analysis measures temperature quality (% in spec, hours out of spec, alarms): find which carriers underperform, then how they travel, then from where."},
+    {"name": "Receiving end", "path": ["Destination", "Carrier", "Product"], "use_when": "The question is about what arrives at a distribution centre and how."}
+  ],
+
+  "measure_guidance": [
+    "Trips (count) answers 'how much / how many'.",
+    "Quality questions are best answered with % In Spec, hours out of spec (Time Above High Hours + Time Below Low Hours), alarm share and temperature statistics, not with counts.",
+    "A 0/1 flag feature averaged gives a share (0.4 = 40% of trips).",
+    "Segment Length (Days) is the journey time: use mean or median to compare, max to find the worst case.",
+    "Do not sum temperatures; average, take the max (worst case) or min instead."
+  ],
+
+  "data_issues": [
+    "Mode Of Transportation is blank on about a third of rows; a chart by mode will show a large '(blank)' group.",
+    "Planned departure and arrival times are mostly blank: do not build punctuality or delay measures from them.",
+    "About 6% of rows have no product, so no temperature limits and no hours-out-of-spec: they cannot be scored for quality.",
+    "Origins such as South Africa ports travel by sea for weeks, so their journey time and temperature profile differ greatly from road trips."
+  ]
+}

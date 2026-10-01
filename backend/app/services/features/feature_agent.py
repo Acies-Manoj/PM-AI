@@ -98,6 +98,24 @@ def _entry_block(entry: dict) -> str:
         f"Description: {entry.get('description', '')}\n"
         f"Calculation intent: {entry['calculation_intent']}"
         f"{cols_hint}"
+        f"{_other_features_block(entry)}"
+    )
+
+
+def _other_features_block(entry: dict) -> str:
+    """Other features being created alongside this one. If this feature is
+    defined on top of one of them, it must read that column, not repeat its
+    calculation."""
+    lines = [
+        f"- `{f['output_column']}` ({f['name']}): {f.get('description', '')}"
+        for f in entry.get("other_features") or []
+    ]
+    if not lines:
+        return ""
+    return (
+        "\nOTHER FEATURES BEING CREATED ALONGSIDE THIS ONE (computed before it when this feature builds on them -- "
+        "then read their column by its exact name instead of repeating their calculation; ignore any that are unrelated):\n"
+        + "\n".join(lines)
     )
 
 

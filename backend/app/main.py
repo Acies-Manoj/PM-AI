@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import CORS_ORIGINS, DATA_DIR
-from app.routers import analysis, audit, brief, features, planner, report
+from app.routers import analysis, analysis_paths, audit, brief, features, planner, report
 from app.services.common import token_usage
 
 app = FastAPI(title="Cold Chain Data Audit API")
@@ -29,6 +29,7 @@ app.include_router(audit.router)
 app.include_router(planner.router)
 app.include_router(features.router)
 app.include_router(analysis.router)
+app.include_router(analysis_paths.router)
 app.include_router(report.router)
 
 # Bundled example files for the Upload page's "Add all samples" button (see

@@ -285,7 +285,7 @@ def add_drilldown_entry(session_id: str, parent_id: str, drilldown: dict) -> dic
 
 def add_chain_entry(
     session_id: str, parent_id: str, *, name: str, description: str, template: dict, chart_type: str,
-    filters: list[dict], chain: dict,
+    filters: list[dict], chain: dict, status: str = "approved",
 ) -> dict:
     """Persists one confirmed level of a guided drill-down chain. Its
     deterministic `template` carries the whole narrowed-down scope, so it
@@ -293,7 +293,7 @@ def add_chain_entry(
     entry = {
         "id": f"drilldown_{uuid.uuid4().hex[:8]}",
         "source": "drilldown",
-        "status": "approved",
+        "status": status,
         "name": name,
         "description": description,
         "calculation_intent": description,

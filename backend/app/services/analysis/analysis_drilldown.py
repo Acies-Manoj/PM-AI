@@ -13,6 +13,7 @@ runs, filters and re-ranks through the ordinary analysis engine.
 """
 from __future__ import annotations
 
+import re
 import uuid
 
 import pandas as pd
@@ -123,6 +124,16 @@ def focus_condition(dimension: str, values: list[str]) -> dict:
     return {"column": dimension, "op": "in", "value": list(values)}
 
 
+# How each aggregation reads in a title or a chart label.
+AGG_LABELS = {"mean": "Avg", "sum": "Total", "median": "Median", "max": "Max", "min": "Min"}
+
+
+def agg_label(metric: str, column: str) -> str:
+    """"Avg Mean Value", or "Max of Max Value" when the column already starts with the word."""
+    prefix = AGG_LABELS[metric]
+    return f"{prefix} of {column}" if column.lower().startswith(prefix.lower()) else f"{prefix} {column}"
+
+
 def numeric_columns(df: pd.DataFrame) -> list[str]:
     """Columns that can be averaged as a drill-down metric: numeric, and not an
     identifier (nearly one distinct value per row). Engineered features included."""
@@ -130,7 +141,7 @@ def numeric_columns(df: pd.DataFrame) -> list[str]:
     for col in df.columns:
         if not pd.api.types.is_numeric_dtype(df[col]) or pd.api.types.is_bool_dtype(df[col]):
             continue
-        if "limit" in str(col).lower():  # spec limits are settings, not measurements
+        if re.search(r"limit|cell|phone|serial|number|\bid\b", str(col), re.IGNORECASE):  # settings and codes, not measurements
             continue
         values = df[col].dropna()
         if values.empty:
@@ -156,8 +167,8 @@ def build_template(
     extra = None
     if in_spec and (metric == "pct_in_spec" or rank.get("by") == "pct_in_spec"):
         extra = {"agg": "mean", "column": in_spec, "label": "% in spec"}
-    elif metric == "mean" and metric_column:
-        extra = {"agg": "mean", "column": metric_column, "label": f"Avg {metric_column}"}
+    elif metric in AGG_LABELS and metric_column:
+        extra = {"agg": metric, "column": metric_column, "label": agg_label(metric, metric_column)}
     metrics = [count_metric] if extra is None else ([extra, count_metric] if rank.get("by") == "pct_in_spec" else [count_metric, extra])
     mode = rank.get("mode", "all")
     limit = None if mode == "all" else int(rank.get("n", 3))
@@ -179,8 +190,8 @@ def build_template(
 def level_name(dimension: str | list[str], rank: dict, focus_label: str, metric: str, metric_column: str | None = None) -> str:
     dims = " x ".join([dimension] if isinstance(dimension, str) else dimension)
     by = "% in spec" if rank.get("by") == "pct_in_spec" else "trips"
-    if metric == "mean" and metric_column:
-        extra = f", with avg {metric_column}"
+    if metric in AGG_LABELS and metric_column:
+        extra = f", with {agg_label(metric, metric_column).lower()}"
     elif metric == "pct_in_spec" and rank.get("by") != "pct_in_spec":
         extra = ", with % in spec"
     else:

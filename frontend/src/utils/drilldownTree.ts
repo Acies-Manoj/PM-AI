@@ -20,13 +20,25 @@ export interface LevelNode {
   path: string[];
 }
 
+const AGG_PREFIX: Record<string, string> = { mean: "Avg", sum: "Total", median: "Median", max: "Max", min: "Min" };
+
+/** "Avg Mean Value", or "Max of Max Value" when the column already starts with the word. */
+export function aggLabel(metric: string, column: string): string {
+  const prefix = AGG_PREFIX[metric];
+  return column.toLowerCase().startsWith(prefix.toLowerCase()) ? `${prefix} of ${column}` : `${prefix} ${column}`;
+}
+
 /** The X-axis columns and measure of a guided level ("" / "" for a free-text drill-down). */
 export function axesAndMeasure(entry: AnalysisRepositoryEntry): { axes: string; measure: string } {
   const chain = entry.chain;
   if (!chain) return { axes: "", measure: "" };
   const axes = (chain.dimensions?.length ? chain.dimensions : [chain.dimension]).join(" × ");
   const measure =
-    chain.metric === "mean" && chain.metric_column ? `Avg ${chain.metric_column}` : chain.metric === "pct_in_spec" ? "% in spec" : "Trips";
+    AGG_PREFIX[chain.metric] && chain.metric_column
+      ? aggLabel(chain.metric, chain.metric_column)
+      : chain.metric === "pct_in_spec"
+        ? "% in spec"
+        : "Trips";
   return { axes, measure };
 }
 

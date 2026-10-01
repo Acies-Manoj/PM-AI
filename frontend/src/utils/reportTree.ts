@@ -1,4 +1,5 @@
 import type { AnalysisRepositoryEntry, DrilldownChain } from "../api/audit";
+import { aggLabel } from "./drilldownTree";
 
 // Mirrors routers/report.py's tree ordering, numbering and subtitle so the
 // on-screen list reads exactly like the exported deck.
@@ -23,7 +24,9 @@ export function drilldownSubtitle(chain: DrilldownChain): string {
       ? `${dims} by ${by}`
       : `${chain.rank.mode === "bottom" ? "Bottom" : "Top"} ${chain.rank.n} ${dims} by ${by}`;
   if (chain.metric === "pct_in_spec" && chain.rank.by !== "pct_in_spec") rank += ", with % in spec";
-  else if (chain.metric === "mean" && chain.metric_column) rank += `, with avg ${chain.metric_column}`;
+  else if (chain.metric_column && ["mean", "sum", "median", "max", "min"].includes(chain.metric)) {
+    rank += `, with ${aggLabel(chain.metric, chain.metric_column).toLowerCase()}`;
+  }
   const text = focus ? `${focus} - ${rank}` : rank;
   return text.length > MAX_SUBTITLE_CHARS ? `${text.slice(0, MAX_SUBTITLE_CHARS - 1).trimEnd()}…` : text;
 }

@@ -2,14 +2,23 @@ import { useEffect, useState } from "react";
 import type { ConfirmDrilldownBody, DrilldownMetric, DrilldownOptions, DrilldownProposal } from "../api/audit";
 import { AuditApiError } from "../api/audit";
 import { IconSparkle } from "./icons";
+import { aggLabel } from "../utils/drilldownTree";
 import "./DrilldownPanel.css";
 
-const METRIC_LABELS: Record<DrilldownMetric, string> = { count: "Trips", pct_in_spec: "% in spec", mean: "Average" };
+const METRIC_LABELS: Record<DrilldownMetric, string> = {
+  count: "Trips",
+  pct_in_spec: "% in spec",
+  mean: "Average",
+  sum: "Total",
+  median: "Median",
+  max: "Max",
+  min: "Min",
+};
 const MODE_LABELS = { all: "All", top: "Top", bottom: "Bottom" } as const;
 
 function proposalTitle(p: DrilldownProposal): string {
   const dims = (p.child_dimensions?.length ? p.child_dimensions : [p.child_dimension]).join(" × ");
-  const metric = p.metric === "mean" && p.metric_column ? `Avg ${p.metric_column}` : METRIC_LABELS[p.metric];
+  const metric = p.metric_column && !["count", "pct_in_spec"].includes(p.metric) ? aggLabel(p.metric, p.metric_column) : METRIC_LABELS[p.metric];
   const limit = p.rank.mode === "all" ? "All" : `${MODE_LABELS[p.rank.mode]} ${p.rank.n}`;
   return `${dims} · ${metric} · ${limit}`;
 }

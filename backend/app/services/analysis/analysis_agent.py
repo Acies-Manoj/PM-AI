@@ -64,7 +64,7 @@ def _get_client() -> OpenAI:
 
 def call_llm(
     system_prompt: str, user_prompt: str, *, json_mode: bool, temperature: float, call_name: str,
-    model: str | None = None,
+    model: str | None = None, max_tokens: int | None = None,
 ) -> str:
     client = _get_client()
     model = model or ANALYSIS_AGENT_MODEL
@@ -76,6 +76,8 @@ def call_llm(
             {"role": "user", "content": user_prompt},
         ],
     }
+    if max_tokens:
+        kwargs["max_tokens"] = max_tokens
     if json_mode:
         try:
             response = client.chat.completions.create(**kwargs, response_format={"type": "json_object"})

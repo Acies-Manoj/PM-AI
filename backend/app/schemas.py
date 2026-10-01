@@ -272,6 +272,10 @@ class AnalysisDrilldownSuggestion(BaseModel):
     child_entry_id: str | None = None
 
 
+# What a drill-down level shows per group: trips, % in spec, or an aggregation of one measure column.
+DrilldownMeasure = Literal["count", "pct_in_spec", "mean", "sum", "median", "max", "min"]
+
+
 class DrilldownRank(BaseModel):
     """How a guided drill-down step picks its groups: the top or bottom `n`
     by `by` (trip count, or % in spec)."""
@@ -289,8 +293,8 @@ class DrilldownChain(BaseModel):
     dimension: str
     # Every X-axis column of this level (1-5); `dimension` is the first one.
     dimensions: list[str] = []
-    metric: Literal["count", "pct_in_spec", "mean"] = "count"
-    # The numeric column averaged when metric == "mean".
+    metric: DrilldownMeasure = "count"
+    # The numeric column aggregated when metric is mean / sum / median / max / min.
     metric_column: str | None = None
     rank: DrilldownRank = DrilldownRank()
     # Row pre-filter this level inherits from its ancestors plus the focus the
@@ -339,7 +343,7 @@ class DrilldownProposal(BaseModel):
     child_dimension: str
     # All X-axis columns of the proposal (1-3); child_dimension is the first.
     child_dimensions: list[str] = []
-    metric: Literal["count", "pct_in_spec", "mean"] = "count"
+    metric: DrilldownMeasure = "count"
     metric_column: str | None = None
     rank: DrilldownRank = DrilldownRank()
     focus_values: list[str]
@@ -352,7 +356,7 @@ class ConfirmDrilldownRequest(BaseModel):
     child_dimension: str | None = None
     # 1-5 X-axis columns; wins over child_dimension when given.
     child_dimensions: list[str] | None = Field(default=None, max_length=5)
-    metric: Literal["count", "pct_in_spec", "mean"] = "count"
+    metric: DrilldownMeasure = "count"
     metric_column: str | None = None
     rank: DrilldownRank = DrilldownRank()
     # One slide (sibling level) per focus value instead of one combined level.
@@ -486,6 +490,47 @@ class AnalysisRepositoryEntry(BaseModel):
 class AnalysisRepositoryResponse(BaseModel):
     session_id: str
     entries: list[AnalysisRepositoryEntry]
+
+
+class DrilldownPathEntry(BaseModel):
+    """One chart of a path step. A step that splits has one per picked value
+    (e.g. one carrier chart per origin); otherwise it has a single chart."""
+    entry_id: str
+    # The values followed to get here, e.g. "Table Grapes › Giacovelli Srl".
+    path: str = ""
+    # How the values were chosen from the previous chart, e.g. "Top 3 Origin by Trips: A, B, C".
+    pick_text: str = ""
+    picked_values: list[str] = []
+    # False when an identical, already-accepted level was reused instead of created.
+    created: bool = True
+    entry: AnalysisRepositoryEntry | None = None
+
+
+class DrilldownPathStep(BaseModel):
+    """One level of a suggested drill-down path, already run."""
+    level: int
+    title: str
+    reason: str = ""
+    columns: list[str]
+    measure_label: str
+    # True = a separate chart for each picked value; False = one combined chart.
+    split: bool = False
+    entries: list[DrilldownPathEntry]
+
+
+class DrilldownPath(BaseModel):
+    """A complete suggested drill-down for one analysis. Its levels are created
+    as pending (hidden from Selected Drill-downs and the report) until accepted."""
+    path_id: str
+    root_id: str
+    name: str
+    rationale: str = ""
+    source: Literal["ai", "default"] = "ai"
+    status: Literal["pending", "accepted", "rejected"] = "pending"
+    created_at: str = ""
+    # False when a step's results are no longer in memory (e.g. after a backend restart).
+    ready: bool = True
+    steps: list[DrilldownPathStep]
 
 
 class AddCustomAnalysisRequest(BaseModel):

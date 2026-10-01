@@ -4,6 +4,7 @@ import type {
   AnalysisRepositoryEntry,
   ConfirmDrilldownBody,
   DrilldownOptions,
+  DrilldownPath,
   DrilldownProposal,
 } from "../api/audit";
 import { AuditApiError } from "../api/audit";
@@ -11,6 +12,7 @@ import Modal from "./Modal";
 import AnalysisChart from "./AnalysisChart";
 import AnalysisFilterBar from "./AnalysisFilterBar";
 import DrilldownPanel from "./DrilldownPanel";
+import DrilldownPaths from "./DrilldownPaths";
 import type { LevelNode } from "../utils/drilldownTree";
 import { IconChevronLeft, IconLayers, IconSparkle } from "./icons";
 import { CHART_LABELS } from "../utils/analysisLabels";
@@ -45,11 +47,16 @@ interface AnalysisDetailModalProps {
   onConfirmDrilldown: (body: ConfirmDrilldownBody) => Promise<void>;
   /** Re-rank / refresh this chain level; the page refetches the repository afterwards. */
   onRefreshLevel: () => Promise<void>;
+  /** Suggested drill-down PATHS (see DrilldownPaths): list, suggest, accept, reject. */
+  onFetchPaths: () => Promise<DrilldownPath[]>;
+  onSuggestPath: () => Promise<DrilldownPath>;
+  onAcceptPath: (pathId: string) => Promise<DrilldownPath>;
+  onRejectPath: (pathId: string) => Promise<DrilldownPath>;
   /** Increments after a guided drill-down is confirmed; switches to the Selected Drill-downs tab. */
   openSelectedSignal?: number;
 }
 
-type ModalTab = "analysis" | "selected";
+type ModalTab = "analysis" | "paths" | "selected";
 
 export default function AnalysisDetailModal({
   entry,
@@ -68,6 +75,10 @@ export default function AnalysisDetailModal({
   onConfirmDrilldown,
   onRefreshLevel,
   openSelectedSignal = 0,
+  onFetchPaths,
+  onSuggestPath,
+  onAcceptPath,
+  onRejectPath,
 }: AnalysisDetailModalProps) {
   // The filtered view, if filters are applied. Reset whenever the stored
   // entry changes (a re-run, or navigating to another entry).
@@ -276,6 +287,17 @@ export default function AnalysisDetailModal({
             >
               Analysis
             </button>
+            {entry.run_status === "done" && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={modalTab === "paths"}
+                className={`analysis-detail__modal-tab${modalTab === "paths" ? " analysis-detail__modal-tab--active" : ""}`}
+                onClick={() => setModalTab("paths")}
+              >
+                <IconSparkle /> Drill-down Paths
+              </button>
+            )}
             <button
               type="button"
               role="tab"
@@ -288,7 +310,16 @@ export default function AnalysisDetailModal({
             </button>
           </div>
 
-          {modalTab === "analysis" ? (
+          {modalTab === "paths" ? (
+            <DrilldownPaths
+              key={entry.id}
+              onFetch={onFetchPaths}
+              onSuggest={onSuggestPath}
+              onAccept={onAcceptPath}
+              onReject={onRejectPath}
+              onViewSelected={() => setModalTab("selected")}
+            />
+          ) : modalTab === "analysis" ? (
             <>
               {canFilter && (
                 <AnalysisFilterBar key={entry.id} filters={entry.filters} busy={filtering} onChange={changeFilters} />

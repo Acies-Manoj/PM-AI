@@ -86,3 +86,14 @@
 .step-indicator__item--current .step-indicator__connector {
   background: var(--carrier-light-blue);
 }
+
+.step-indicator__item--skipped .step-indicator__badge {
+  background: transparent;
+  border: 1px dashed currentColor;
+  color: var(--color-text-muted, #8a90ad);
+}
+
+.step-indicator__item--skipped .step-indicator__label {
+  color: var(--color-text-muted, #8a90ad);
+  text-decoration: line-through;
+}

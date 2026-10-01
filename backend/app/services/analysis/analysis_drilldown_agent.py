@@ -9,6 +9,7 @@ comes back, the caller falls back to the deterministic default.
 """
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import logging
@@ -22,18 +23,23 @@ from app.services.analysis.analysis_columns import as_labels
 
 logger = logging.getLogger(__name__)
 
-MAX_PROPOSALS = 15
+MAX_PROPOSALS = 25
+# A batch should reach this many (fewer only in "suggest more" mode, or on tiny data).
+MIN_PROPOSALS = 20
+MIN_PROPOSALS_MORE = 10
+# Wanted number of proposals by X-axis column count (1 col = 2-variable chart ... 4 cols = 5-variable chart).
+_WANT_BY_COLUMNS = {1: 3, 2: 5, 3: 5, 4: 4}
 # Columns worth drilling into: categorical with a manageable number of values.
 _MIN_VALUES, _MAX_VALUES = 2, 200
 _MAX_PROPOSAL_DIMENSIONS = 4
-# Of a batch, at least this many should be multi-column (3+ variable) and 2-column (3-variable) charts.
-_WANT_WIDE, _WANT_MID = 3, 3
 # Identifiers and free text make useless X axes (one bar per row).
-_NOT_AN_AXIS = re.compile(r"\b(id|serial|number|note|notes|comment|comments|cell|phone|email|e-mail|limit)\b", re.IGNORECASE)
+_NOT_AN_AXIS = re.compile(r"\b(id|serial|number|note|notes|comment|comments|cell|phone|email|e-mail|limit|user|created by)\b", re.IGNORECASE)
 _MAX_UNIQUE_SHARE = 0.5
+# Numeric columns that are real measurements (worth averaging), not phone numbers or codes.
+_MEASUREMENT = re.compile(r"(value|hours|length|deviation|spec|temp|mkt|days|delay|transit)", re.IGNORECASE)
 
 _SYSTEM = """You are the drill-down step of a supply-chain analytics assistant. The analyst is looking \\
-at a chart grouped by one dimension and wants to drill into the values that matter. Propose 10 to 15 \\
+at a chart grouped by one dimension and wants to drill into the values that matter. Propose 20 to 25 \\
 NEXT drill-downs -- a genuinely useful, non-repetitive SET, not just as many as you can invent.
 
 A drill-down = pick which VALUES of the current dimension to focus on, then pick ONE TO FOUR \\
@@ -41,7 +47,7 @@ different columns to break them down by (the X axis). Use ALL the columns you ar
 engineered features (computed columns), not just the obvious ones. Show every group -- do not limit to a \\
 top or bottom N.
 
-To reach 10-15 REAL ideas (not the same idea restated), vary at least one of these across your \\
+To reach 20-25 REAL ideas (not the same idea restated), vary at least one of these across your \\
 proposals: the child_dimension, the metric, the rank direction (top vs bottom), and which focus values \\
 you're narrowing into. Cover the different candidate dimensions given below rather than proposing the \\
 same one repeatedly. Two proposals are only worth both keeping if they'd actually answer a different \\
@@ -57,11 +63,13 @@ Deviation, hours out of spec, engineered features such as % In Spec) to answer q
 questions. Never average a spec-limit column (Limit Low / Ideal / High) or an identifier.
 - Prefer focusing on values that are wide (span many groups) or dominate the volume.
 - child_dimensions is a list of 1 to 4 columns and each MUST be one of the listed candidate dimensions.
-- Mix the CHART SIZES. A chart's variables = its X-axis columns + the measure. Of your 10-15 proposals: \\
-about a third use 1 column (a 2-variable chart), about a third use 2 columns (a 3-variable chart), and at \\
-least 3 use 3 or 4 columns (a 4- or 5-variable chart). Pick combinations that answer a real question (e.g. \\
-carrier AND destination AND month) and prefer columns with few distinct values for the extra columns so \\
-the chart stays readable.
+- Return AT LEAST 20 proposals (up to 25). Fewer than 20 is a failure unless there are genuinely too few columns.
+- Mix the CHART SIZES. A chart's variables = its X-axis columns + the measure. Of your 20-25 proposals: \\
+about 4 use 1 column (a 2-variable chart), about 7 use 2 columns (a 3-variable chart), about 6 use 3 columns \\
+(a 4-variable chart) and about 5 use 4 columns (a 5-variable chart). Pick combinations that answer a real \\
+question (e.g. carrier AND destination AND month) and prefer columns with few distinct values for the extra \\
+columns so the chart stays readable. Use different columns across proposals; do not build them all from the \\
+same three or four columns.
 - focus_values MUST be chosen from the listed focus values, exactly as written.
 - metric is "count" (trips), "pct_in_spec" (only if available and the analyst cares about quality/compliance), \\
 or "mean" of one of the listed numeric_columns (set metric_column to its exact name).
@@ -132,7 +140,11 @@ def _validated(raw: dict, df: pd.DataFrame, children: list[str], allowed_focus: 
         return None
     focus = [v for v in (raw.get("focus_values") or []) if v in allowed_focus]
     if not focus:
-        return None
+        # The columns and measure are what make the idea; a misspelt or missing
+        # starting value falls back to the first real one (the PM ticks values anyway).
+        if not allowed_focus:
+            return None
+        focus = allowed_focus[:1]
     have_spec = dd.find_in_spec_column(df) is not None
     metric = raw.get("metric") if raw.get("metric") in ("count", "pct_in_spec", "mean") else "count"
     metric_column = raw.get("metric_column") if raw.get("metric_column") in numeric else None
@@ -153,47 +165,75 @@ def _validated(raw: dict, df: pd.DataFrame, children: list[str], allowed_focus: 
     }
 
 
-def _shape(proposals: list[dict]) -> tuple[int, int]:
-    """(how many use 3+ X-axis columns, how many use exactly 2)."""
-    wide = sum(1 for p in proposals if len(p["child_dimensions"]) >= 3)
-    mid = sum(1 for p in proposals if len(p["child_dimensions"]) == 2)
-    return wide, mid
+def _counts_by_columns(proposals: list[dict]) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    for p in proposals:
+        n = len(p["child_dimensions"])
+        counts[n] = counts.get(n, 0) + 1
+    return counts
+
+
+def _deficits(proposals: list[dict], total_min: int) -> dict[int, int]:
+    """How many more proposals of each column count are wanted: the per-size
+    quota first, then enough extras (cycling the sizes) to reach `total_min`."""
+    have = _counts_by_columns(proposals)
+    need = {size: max(0, want - have.get(size, 0)) for size, want in _WANT_BY_COLUMNS.items()}
+    missing = total_min - len(proposals) - sum(need.values())
+    for size in itertools.cycle((2, 3, 4, 1)):
+        if missing <= 0:
+            break
+        need[size] += 1
+        missing -= 1
+    return {k: v for k, v in need.items() if v > 0}
 
 
 def _synthesize(
     facts: list[dict], children: list[str], have_spec: bool, numeric: list[str], focus: list[str],
-    seen: set, need_wide: int, need_mid: int, analysis_key,
+    seen: set, needs: dict[int, int], analysis_key,
 ) -> list[dict]:
-    """Deterministic multi-column ideas built from the lowest-cardinality
-    columns -- used only when the model didn't supply enough 2-, 3- and
-    4-column combinations."""
-    names = [f["dimension"] for f in sorted(facts, key=lambda f: f["distinct_values"]) if f["distinct_values"] <= 40] or children
+    """Deterministic ideas built from the lowest-cardinality columns -- used only
+    to fill what the model did not supply, so a batch always reaches its size."""
+    # Lowest-cardinality columns first (they make the most readable charts), but never
+    # drop the rest: with few usable columns the batch still has to reach its size.
+    names = [f["dimension"] for f in sorted(facts, key=lambda f: f["distinct_values"])] or children
+    names = names[:10]
     measures = [("count", None)]
     if have_spec:
         measures.append(("pct_in_spec", None))
-    if numeric:
-        measures.append(("mean", numeric[0]))
+    measures += [("mean", col) for col in [c for c in numeric if _MEASUREMENT.search(c)][:4]]
+    start = focus[0] if focus else "this selection"
     out: list[dict] = []
-    sizes = [2] * need_mid + [3, 4] * (need_wide // 2 + 1)
-    sizes = sizes[: need_mid + need_wide]
     n = 0
-    for size in sizes:
+    for size, need in needs.items():
         if len(names) < size:
             continue
-        for combo in itertools.combinations(names[: max(size + 4, 8)], size):
-            metric, column = measures[n % len(measures)]
+        # A fixed pseudo-random order, so the ideas spread over many columns instead of
+        # all starting with the same two.
+        combos = sorted(itertools.combinations(names, size), key=lambda c: hashlib.md5("|".join(c).encode()).hexdigest())
+        made = 0
+        # Each pass gives every combination a different measure, so scarce columns still
+        # yield distinct analyses (same columns, another question).
+        for combo, shift in ((c, k) for k in range(len(measures)) for c in combos):
+            if made == need:
+                break
+            metric, column = measures[(n + shift) % len(measures)]
             item = {
                 "child_dimension": combo[0], "child_dimensions": list(combo), "focus_values": focus[:1], "metric": metric,
                 "metric_column": column, "rank": {"mode": "all", "n": 5, "by": "count"},
-                "reason": f"See how {', '.join(combo[:-1])} and {combo[-1]} combine for {focus[0] if focus else 'this selection'}.",
                 "source": "default",
             }
             if analysis_key(item) in seen:
                 continue
+            joined = ", ".join(combo[:-1]) + (" and " if len(combo) > 1 else "") + combo[-1]
+            item["reason"] = {
+                "count": f"How {start} shipments spread across {joined}.",
+                "pct_in_spec": f"Where {start} stays in spec, across {joined}.",
+                "mean": f"How average {column} varies across {joined} for {start}.",
+            }[metric]
             seen.add(analysis_key(item))
             out.append(item)
+            made += 1
             n += 1
-            break
     return out
 
 
@@ -243,12 +283,14 @@ def propose(
     try:
         raw = analysis_agent.call_llm(
             _SYSTEM, user, json_mode=True, temperature=0.4, call_name="drilldown_agent", model=DRILLDOWN_AGENT_MODEL,
+            max_tokens=12000,
         )
         payload = json.loads(analysis_agent.strip_json_fence(raw))
         items = payload.get("proposals", []) if isinstance(payload, dict) else []
     except Exception as exc:
-        logger.info("drilldown proposal failed, using the default: %s", exc)
-        return fallback
+        # No model answer: the batch is built from the data alone below.
+        logger.info("drilldown proposal failed, building from the data: %s", exc)
+        items = []
 
     proposals: list[dict] = []
     seen: set[tuple] = set(avoid_keys)
@@ -263,42 +305,42 @@ def propose(
         if len(proposals) == MAX_PROPOSALS:
             break
 
-    # The model tends to default to one X-axis column. Make sure there are also
-    # 2-column (3-variable) and 3-4-column (4-5-variable) charts: ask once more,
-    # then fill any remaining gap from the lowest-cardinality columns.
-    wide, mid = _shape(proposals)
-    need_wide, need_mid = max(0, _WANT_WIDE - wide), max(0, _WANT_MID - mid)
-    if proposals and (need_wide or need_mid) and len(children) >= 2:
+    # The model tends to return few and simple ideas. Reach the wanted size and mix
+    # of chart sizes: ask once more for exactly what is missing, then fill any
+    # remaining gap from the lowest-cardinality columns.
+    total_min = MIN_PROPOSALS_MORE if avoid else MIN_PROPOSALS
+    need = _deficits(proposals, total_min)
+    need = {size: n for size, n in need.items() if size == 1 or len(children) >= size}
+    if need and proposals:
         try:
             extra_prompt = json.loads(user)
             extra_prompt["also_needed"] = {
                 "instruction": "Return ONLY additional proposals with the column counts below; do not repeat the ones already given.",
-                "with_3_or_4_columns": need_wide,
-                "with_exactly_2_columns": need_mid,
+                "how_many_by_number_of_columns": {f"{size}_columns": n for size, n in need.items()},
                 "already_have": [{"columns": p["child_dimensions"], "metric": p["metric"]} for p in proposals],
             }
             raw = analysis_agent.call_llm(
                 _SYSTEM, json.dumps(extra_prompt, default=str), json_mode=True, temperature=0.5,
-                call_name="drilldown_agent_wide", model=DRILLDOWN_AGENT_MODEL,
+                call_name="drilldown_agent_more", model=DRILLDOWN_AGENT_MODEL, max_tokens=8000,
             )
             more_items = json.loads(analysis_agent.strip_json_fence(raw)).get("proposals", [])
         except Exception as exc:
-            logger.info("wide drilldown proposals failed, synthesising: %s", exc)
+            logger.info("extra drilldown proposals failed, synthesising: %s", exc)
             more_items = []
         for item in more_items if isinstance(more_items, list) else []:
             ok = _validated(item, df, children, allowed_focus, numeric) if isinstance(item, dict) else None
-            if ok and len(ok["child_dimensions"]) >= 2 and analysis_key(ok) not in seen:
+            if ok and analysis_key(ok) not in seen:
                 seen.add(analysis_key(ok))
                 proposals.append(ok)
-        wide, mid = _shape(proposals)
-        need_wide, need_mid = max(0, _WANT_WIDE - wide), max(0, _WANT_MID - mid)
-        if need_wide or need_mid:
-            proposals += _synthesize(
-                facts, children, dd.find_in_spec_column(df) is not None, numeric, default_focus or allowed_focus,
-                seen, need_wide, need_mid, analysis_key,
-            )
-        # Room for the multi-column ones: drop trailing single-column ideas first.
-        while len(proposals) > MAX_PROPOSALS:
-            drop = next((i for i in range(len(proposals) - 1, -1, -1) if len(proposals[i]["child_dimensions"]) == 1), None)
-            proposals.pop(drop if drop is not None else -1)
+    need = _deficits(proposals, total_min)
+    need = {size: n for size, n in need.items() if size == 1 or len(children) >= size}
+    if need:
+        proposals += _synthesize(
+            facts, children, dd.find_in_spec_column(df) is not None, numeric, default_focus or allowed_focus,
+            seen, need, analysis_key,
+        )
+    # Over the cap: drop trailing single-column ideas first.
+    while len(proposals) > MAX_PROPOSALS:
+        drop = next((i for i in range(len(proposals) - 1, -1, -1) if len(proposals[i]["child_dimensions"]) == 1), None)
+        proposals.pop(drop if drop is not None else -1)
     return proposals or (fallback if not avoid else [])

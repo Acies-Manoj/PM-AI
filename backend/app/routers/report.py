@@ -68,8 +68,9 @@ def _drilldown_subtitle(chain: dict) -> str:
     rank_text = rank_text.replace("  ", " ")
     if chain.get("metric") == "pct_in_spec" and rank.get("by") != "pct_in_spec":
         rank_text += ", with % in spec"
-    elif chain.get("metric") == "mean" and chain.get("metric_column"):
-        rank_text += f", with avg {chain['metric_column']}"
+    elif chain.get("metric") in ("mean", "sum", "median", "max", "min") and chain.get("metric_column"):
+        from app.services.analysis import analysis_drilldown
+        rank_text += f", with {analysis_drilldown.agg_label(chain['metric'], chain['metric_column']).lower()}"
 
     text = f"{focus} - {rank_text}" if focus else rank_text
     if len(text) > MAX_SUBTITLE_CHARS:
@@ -119,6 +120,8 @@ def _report_ready_entries(
         definition = definitions.get(entry_id)
         if definition is None or entry_id in candidates:
             continue
+        if definition.get("status") != "approved":
+            continue  # a pending or rejected drill-down path level is never in the report
         result = session.analysis_results.get(entry_id)
         if not result or result.run_status != "done":
             continue

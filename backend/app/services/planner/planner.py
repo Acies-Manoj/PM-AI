@@ -9,7 +9,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from app.config import DATA_DIR, OPENROUTER_API_KEY, OPENROUTER_MODEL
+from app.config import DATA_DIR, OPENROUTER_API_KEY, PLANNER_AGENT_MODEL
 from app.services.analysis import analysis_agent
 from app.services.common import token_usage
 from app.services.features import feature_agent
@@ -59,6 +59,17 @@ Do not add an analysis just because a feature could be charted. "Calculate trans
 "existing": the request is already covered (cite the id in the reason; for analyses also "existing_analysis_id").
 "create_new": not covered and needs creating.
 "needs_clarification": meaningful but under-specified; list the specific questions in "clarifications_required". Never invent a business rule or threshold.
+
+--- WHEN THE BRIEF DEFINES A METRIC ---
+* If the brief DEFINES a calculation, flag or threshold (e.g. "flag a shipment as a major excursion when it is out of spec for more than 12 hours"), each defined step becomes a feature -- a classification such as "Major Excursion Flag" is a feature -- and every analysis about it MUST use that feature.
+* Never substitute a different column as a proxy for a defined metric (e.g. do not use "Is Alarmed" for an excursion rate the brief defines from hours out of spec).
+* Never drop a threshold or condition the brief states.
+* "X by A and by B" means TWO analyses (by A; by B). Only "by A and B together" or "combinations of A and B" is one analysis grouped by both.
+* "Scored" shipments are those where the defined feature is not blank: count non-blank feature values, and compute rates over them.
+* When you list a feature in an analysis's feature_dependencies, that analysis really is computed from that feature.
+* A flag or threshold on a combined value applies to the COMBINED value (e.g. hours out of spec = above-high + below-low, then flag when that total is > 12), never to each part separately.
+* Never create a feature just to count shipments or Trip IDs, and never base a count on an unrelated column: counting is analysis logic. The number of "scored" shipments is the count of non-blank values of the defined feature.
+* Example: "Show the excursion rate by product and by carrier" -> TWO analyses: "Excursion rate by product" and "Excursion rate by carrier"; "by carrier and destination together" -> ONE analysis grouped by both.
 
 --- GUARDRAILS ---
 * Every "required_fields" entry must be an exact COLUMN CATALOG name; unavailable ones go in "missing_fields". Never invent, rename or guess columns, KPI definitions or analysis definitions.
@@ -257,7 +268,7 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     user_prompt = _build_user_prompt(final_brief, columns_block, catalog_block, additional_context)
 
     response = client.chat.completions.create(
-        model=OPENROUTER_MODEL,
+        model=PLANNER_AGENT_MODEL,
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -265,7 +276,7 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
         temperature=0.2,
         max_tokens=4096,
     )
-    token_usage.record("planner_agent", OPENROUTER_MODEL, response)
+    token_usage.record("planner_agent", PLANNER_AGENT_MODEL, response)
 
     raw = response.choices[0].message.content or ""
 
@@ -296,6 +307,7 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     # Validate every reuse/dependency claim against the real catalogs, split
     # any combined feature+analysis, and record who needs which feature.
     result["recommendations"] = planner_dependencies.normalize(result["recommendations"], context)
+    _flag_empty_columns(result["recommendations"], col_data.get("columns", {}), row_count)
     _attach_generated_formulas(result["recommendations"], columns_block)
     _sync_feature_columns(result["recommendations"], set(col_data.get("columns", {})))
 
@@ -305,6 +317,26 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     )
 
     return result
+
+
+EMPTY_COLUMN_SHARE = 0.9
+
+
+def _flag_empty_columns(recommendations: list[dict], columns: dict, row_count: int) -> None:
+    """Warns on a recommendation built on a column that is almost entirely blank
+    (it would compute nothing useful, and the Audit drops such columns)."""
+    if not row_count:
+        return
+    for rec in recommendations:
+        empty = [
+            f"{c} ({columns[c].get('missing', 0) / row_count:.0%} blank)"
+            for c in rec.get("required_fields") or []
+            if c in columns and columns[c].get("missing", 0) / row_count >= EMPTY_COLUMN_SHARE
+        ]
+        if empty:
+            rec.setdefault("guardrail_warnings", []).append(
+                f"Uses almost-empty column(s): {', '.join(empty)}. This will not compute anything useful -- reject it or ask for a different definition."
+            )
 
 
 def _sync_feature_columns(recommendations: list[dict], catalog_columns: set[str]) -> None:
@@ -320,7 +352,7 @@ def _sync_feature_columns(recommendations: list[dict], catalog_columns: set[str]
             rec["required_fields"] = used
 
 
-def _think_entry_for(rec: dict) -> dict:
+def _think_entry_for(rec: dict, others: list[dict] | None = None) -> dict:
     """Reshapes one flat Planner recommendation into the entry shape
     feature_agent.think() expects. The Planner no longer proposes its own
     output_column/formula (see the current system prompt) -- output_column
@@ -333,6 +365,10 @@ def _think_entry_for(rec: dict) -> dict:
         "description": rec.get("description", ""),
         "calculation_intent": rec.get("description", ""),
         "input_columns": rec.get("required_fields", []),
+        "other_features": [
+            {"name": o["name"], "output_column": planner_dependencies.slug(o["name"]), "description": o.get("description", "")}
+            for o in others or []
+        ],
     }
 
 
@@ -391,7 +427,8 @@ def _attach_generated_formulas(recommendations: list[dict], columns_block: str) 
 
     def _run_feature(rec: dict) -> None:
         try:
-            plan = feature_agent.think(_think_entry_for(rec), columns_block)
+            siblings = [o for o in feature_targets if o is not rec]
+            plan = feature_agent.think(_think_entry_for(rec, siblings), columns_block)
             rec["generated_feature_formula"] = plan.get("plan")
             rec["feature_formula_expression"] = _clean_line(plan.get("formula"))
             rec["feature_columns_used"] = _clean_list(plan.get("columns_used"))
@@ -399,9 +436,34 @@ def _attach_generated_formulas(recommendations: list[dict], columns_block: str) 
         except Exception:
             rec["generated_feature_formula"] = None
 
+    def _unused_features(entry: dict, plan: dict) -> list[str]:
+        """Required features the plan never mentions (by column or name)."""
+        text = f"{plan.get('plan', '')} {plan.get('logic', '')}".lower()
+        return [
+            f["name"] for f in entry.get("required_features") or []
+            if f["output_column"].lower() not in text and f["name"].lower() not in text
+        ]
+
     def _run_analysis(rec: dict) -> None:
         try:
-            plan = analysis_agent.think(_analysis_think_entry_for(rec, feature_by_slug), columns_block)
+            think_entry = _analysis_think_entry_for(rec, feature_by_slug)
+            plan = analysis_agent.think(think_entry, columns_block)
+            unused = _unused_features(think_entry, plan)
+            if unused:
+                # The analysis declares a feature it doesn't use: ask once more, then flag it.
+                plan = analysis_agent.think(
+                    think_entry, columns_block,
+                    feedback=(
+                        f"The plan does not use the required feature(s): {', '.join(unused)}. "
+                        "Compute the analysis FROM those feature columns (by their exact column names) and do not "
+                        "substitute other columns for them."
+                    ),
+                )
+                unused = _unused_features(think_entry, plan)
+            if unused:
+                rec.setdefault("guardrail_warnings", []).append(
+                    f"The plan does not use its required feature(s): {', '.join(unused)}. Reject or re-check this analysis."
+                )
             rec["generated_analysis_formula"] = plan.get("plan")
             rec["analysis_logic"] = _clean_line(plan.get("logic"))
             rec["analysis_group_by"] = _clean_list(plan.get("group_by"))
@@ -412,3 +474,42 @@ def _attach_generated_formulas(recommendations: list[dict], columns_block: str) 
     jobs = [(_run_feature, rec) for rec in feature_targets] + [(_run_analysis, rec) for rec in analysis_targets]
     with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
         list(pool.map(lambda job: job[0](job[1]), jobs))
+    _order_features_by_dependency(recommendations)
+    _inherit_required_for(recommendations)
+
+
+def _inherit_required_for(recommendations: list[dict]) -> None:
+    """A feature that another feature is built on is needed by whatever needs that
+    feature, so it is not shown as an orphan ("Needed by: none")."""
+    features = [r for r in recommendations if r.get("type") == "feature"]
+    columns = {planner_dependencies.slug(r["name"]): r for r in features}
+    for _ in range(len(features)):  # repeat so chains of three or more settle
+        for rec in features:
+            text = f"{rec.get('generated_feature_formula') or ''} {rec.get('feature_formula_expression') or ''}".lower()
+            for col, base in columns.items():
+                if base is rec or col not in text:
+                    continue
+                merged = list(dict.fromkeys((base.get("required_for_analysis") or []) + (rec.get("required_for_analysis") or [])))
+                base["required_for_analysis"] = merged
+                base.setdefault("used_by_features", [])
+                if rec["name"] not in base["used_by_features"]:
+                    base["used_by_features"].append(rec["name"])
+
+
+def _order_features_by_dependency(recommendations: list[dict]) -> None:
+    """Features are computed in list order and each may read the columns of the
+    ones before it, so a feature whose plan reads another new feature's column
+    must come after it. Moves only such features; everything else keeps its place."""
+    features = [r for r in recommendations if r.get("type") == "feature"]
+    columns = {planner_dependencies.slug(r["name"]): r for r in features}
+
+    def reads(rec: dict) -> list[dict]:
+        text = f"{rec.get('generated_feature_formula') or ''} {rec.get('feature_formula_expression') or ''}".lower()
+        own = planner_dependencies.slug(rec["name"])
+        return [o for col, o in columns.items() if col != own and col in text]
+
+    for rec in list(features):
+        for needed in reads(rec):
+            if recommendations.index(needed) > recommendations.index(rec) and rec not in reads(needed):
+                recommendations.remove(needed)
+                recommendations.insert(recommendations.index(rec), needed)

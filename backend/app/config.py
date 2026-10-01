@@ -32,7 +32,12 @@ ANALYSIS_AGENT_MODEL = os.getenv("ANALYSIS_AGENT_MODEL", OPENROUTER_MODEL)
 # Guided drill-down proposals (which dimension / focus / top-N to drill into
 # next). A small JSON-only call, but a wrong pick sends the PM down the wrong
 # chain, so it can be pointed at a stronger model than the rest of the agent.
-DRILLDOWN_AGENT_MODEL = os.getenv("DRILLDOWN_AGENT_MODEL", ANALYSIS_AGENT_MODEL)
+DRILLDOWN_AGENT_MODEL = os.getenv("DRILLDOWN_AGENT_MODEL", "anthropic/claude-sonnet-4")
+
+# The Planner turns a client brief into features and analyses. A wrong reading here
+# (merged breakdowns, a dropped threshold) misleads every later step, so it can be
+# pointed at a stronger model than the rest of the app.
+PLANNER_AGENT_MODEL = os.getenv("PLANNER_AGENT_MODEL", "anthropic/claude-sonnet-4")
 
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY", "")
 # Free tier uses api-free.deepl.com; Pro uses api.deepl.com

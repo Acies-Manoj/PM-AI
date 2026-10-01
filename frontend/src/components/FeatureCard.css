@@ -277,6 +277,7 @@
 }
 
 .feature-card__required-badge {
+  white-space: nowrap;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -286,4 +287,16 @@
   border-radius: 999px;
   padding: 2px 8px;
   line-height: 1.2;
+}
+
+.feature-card__needed-by {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.feature-card__needed-by strong {
+  color: var(--carrier-blue);
+  font-weight: 700;
 }

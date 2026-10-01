@@ -84,8 +84,8 @@ export default function FeatureCard({ feature, colorIndex = 0, requiredFor = [],
         </div>
         <div className="feature-card__badges">
           {requiredFor.length > 0 && (
-            <span className="feature-card__required-badge" title={requiredFor.join(", ")}>
-              Required for analysis: {requiredFor.join(", ")}
+            <span className="feature-card__required-badge" title={`Needed by: ${requiredFor.join(", ")}`}>
+              Required for analysis
             </span>
           )}
           {feature.source !== "predefined" && (
@@ -96,6 +96,11 @@ export default function FeatureCard({ feature, colorIndex = 0, requiredFor = [],
         </div>
       </div>
       <p className="feature-card__description">{feature.description}</p>
+      {requiredFor.length > 0 && (
+        <p className="feature-card__needed-by">
+          <strong>Needed by:</strong> {requiredFor.join(" · ")}
+        </p>
+      )}
       <p className="feature-card__coverage">
         {feature.non_null_count.toLocaleString()} of {total.toLocaleString()} rows populated
         {feature.null_count > 0 && ` (${feature.null_count.toLocaleString()} null)`}

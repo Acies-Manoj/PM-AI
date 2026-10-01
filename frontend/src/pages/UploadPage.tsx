@@ -11,6 +11,7 @@ import type { FilesState } from "../App";
 import type { BriefState } from "../components/ClientBriefInput";
 import { uploadOnly } from "../api/audit";
 import { finalizeBrief } from "../api/brief";
+import { hasBrief } from "../context/plannerSkipped";
 import "./UploadPage.css";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -111,7 +112,8 @@ export default function UploadPage({
       }
 
       onUploadComplete(sessionIds);
-      navigate("/planner");
+      // No client brief = nothing for the Planner to plan: go straight to the data Audit.
+      navigate(hasBrief(brief) ? "/planner" : "/audit");
     } catch (err: unknown) {
       setUploadError(
         err instanceof Error ? err.message : "Upload failed. Is the backend running?"

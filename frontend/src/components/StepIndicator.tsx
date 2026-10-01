@@ -1,4 +1,6 @@
+import { useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { PlannerSkippedContext } from "../context/plannerSkipped";
 import "./StepIndicator.css";
 
 interface StepIndicatorProps {
@@ -16,12 +18,24 @@ const STEPS = [
 
 export default function StepIndicator({ current }: StepIndicatorProps) {
   const navigate = useNavigate();
+  const plannerSkipped = useContext(PlannerSkippedContext);
 
   return (
     <ol className="step-indicator" aria-label="Progress">
       {STEPS.map(({ step, label, path }, idx) => {
-        const isDone = step < current;
+        // No client brief: the Planner was skipped (only shown once the PM is past it).
+        const isSkipped = step === 2 && plannerSkipped && current > 2;
+        const isDone = step < current && !isSkipped;
         const isCurrent = step === current;
+        if (isSkipped) {
+          return (
+            <li key={step} className="step-indicator__item step-indicator__item--skipped" title="Skipped: no client brief was given">
+              <span className="step-indicator__badge">–</span>
+              <span className="step-indicator__label">{label}</span>
+              {idx < STEPS.length - 1 && <span className="step-indicator__connector" aria-hidden="true" />}
+            </li>
+          );
+        }
         return (
           <li
             key={step}

@@ -1,3 +1,4 @@
+import { PlannerSkippedContext, hasBrief } from "./context/plannerSkipped";
 import { useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import WelcomePage from "./pages/WelcomePage";
@@ -40,6 +41,8 @@ function App() {
   const [resolvingIssueId, setResolvingIssueId] = useState<ResolvingState>({});
   const [reuploadingSensiwatch, setReuploadingSensiwatch] = useState(false);
   const [reuploadError, setReuploadError] = useState<string | null>(null);
+
+  const plannerSkipped = !hasBrief(brief);
 
   const handleUploadComplete = (sessionIds: UploadedSessionIdsState) => {
     setUploadedSessionIds(sessionIds);
@@ -152,6 +155,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <PlannerSkippedContext.Provider value={plannerSkipped}>
       <Routes>
         <Route path="/" element={<WelcomePage />} />
         <Route
@@ -196,6 +200,7 @@ function App() {
         <Route path="/report" element={<ReportPage files={files} auditReports={auditReports} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </PlannerSkippedContext.Provider>
     </BrowserRouter>
   );
 }

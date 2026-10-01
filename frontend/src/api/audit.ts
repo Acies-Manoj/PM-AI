@@ -225,8 +225,8 @@ export interface DrilldownRank {
   by: "count" | "pct_in_spec";
 }
 
-// "mean" averages a numeric column (`metric_column`), features included.
-export type DrilldownMetric = "count" | "pct_in_spec" | "mean";
+// mean / sum / median / max / min aggregate one numeric column (`metric_column`), features included.
+export type DrilldownMetric = "count" | "pct_in_spec" | "mean" | "sum" | "median" | "max" | "min";
 
 /** Marks an entry as one level of a guided drill-down chain (level 1 is the
  * original analysis, which has no `chain`). */
@@ -298,6 +298,46 @@ export interface ConfirmDrilldownBody {
   split?: boolean;
 }
 
+
+/** One chart of a path step. A step that splits has one per picked value
+ * (e.g. one carrier chart for each origin). */
+export interface DrilldownPathEntry {
+  entry_id: string;
+  // The values followed to get here, e.g. "Table Grapes › Giacovelli Srl".
+  path: string;
+  // How the values were chosen from the previous chart, e.g. "Top 3 Origin by Trips: A, B, C".
+  pick_text: string;
+  picked_values: string[];
+  created: boolean;
+  entry: AnalysisRepositoryEntry | null;
+}
+
+/** One level of a suggested drill-down path, already run. */
+export interface DrilldownPathStep {
+  level: number;
+  title: string;
+  reason: string;
+  columns: string[];
+  measure_label: string;
+  // True = a separate chart for each picked value; false = one combined chart.
+  split: boolean;
+  entries: DrilldownPathEntry[];
+}
+
+/** A complete suggested drill-down for one analysis. Its levels stay hidden
+ * (pending) until the PM accepts the path. */
+export interface DrilldownPath {
+  path_id: string;
+  root_id: string;
+  name: string;
+  rationale: string;
+  source: "ai" | "default";
+  status: "pending" | "accepted" | "rejected";
+  created_at: string;
+  // False when a step's results are no longer in memory (e.g. after a backend restart).
+  ready: boolean;
+  steps: DrilldownPathStep[];
+}
 
 export type RequiredFeatureState = "satisfied" | "not_approved" | "not_computed" | "missing";
 
@@ -769,6 +809,28 @@ async function postDrilldown<T>(path: string, body?: unknown): Promise<T> {
     throw new AuditApiError(await parseErrorDetail(response));
   }
   return response.json();
+}
+
+export async function fetchDrilldownPaths(sessionId: string, entryId: string): Promise<DrilldownPath[]> {
+  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/paths`);
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
+/** Designs a complete drill-down path for this analysis and runs every step.
+ * Takes a while (one planning call, then each level runs). */
+export function suggestDrilldownPath(sessionId: string, entryId: string): Promise<DrilldownPath> {
+  return postDrilldown(`${sessionId}/entries/${entryId}/paths/suggest`);
+}
+
+export function acceptDrilldownPath(sessionId: string, pathId: string): Promise<DrilldownPath> {
+  return postDrilldown(`${sessionId}/paths/${pathId}/accept`);
+}
+
+export function rejectDrilldownPath(sessionId: string, pathId: string): Promise<DrilldownPath> {
+  return postDrilldown(`${sessionId}/paths/${pathId}/reject`);
 }
 
 /** What a guided drill-down from this analysis can look like (wide values,

@@ -24,8 +24,12 @@ import {
   filterAnalysisEntry,
   fetchDrilldownOptions,
   proposeDrilldowns,
+  acceptDrilldownPath,
   confirmDrilldown,
+  fetchDrilldownPaths,
   refreshDrilldown,
+  rejectDrilldownPath,
+  suggestDrilldownPath,
   runAnalysisEntry,
   applyFeatures,
   selectRequiredFeature,
@@ -327,6 +331,15 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
     return confirmDrilldown(sessionId, entryId, body)
       .then(() => refreshRepository(id, sessionId))
       .then(() => setOpenSelectedSignal((n) => n + 1));
+  };
+
+  // Suggested drill-down paths. Accepting or rejecting refetches the repository so the
+  // accepted levels show up under Selected Drill-downs (and the report) straight away.
+  const decidePath = (id: UploadSlotId, pathId: string, accept: boolean) => {
+    const sessionId = auditReports[id]!.session_id;
+    return (accept ? acceptDrilldownPath : rejectDrilldownPath)(sessionId, pathId).then((path) =>
+      refreshRepository(id, sessionId).then(() => path)
+    );
   };
 
   const refreshChainLevel = (id: UploadSlotId, entryId: string): Promise<void> => {
@@ -827,6 +840,10 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
               onConfirmDrilldown={(body) => confirmChainDrilldown(openEntry.slotId, openEntry.entryId, body)}
               onRefreshLevel={() => refreshChainLevel(openEntry.slotId, openEntry.entryId)}
               openSelectedSignal={openSelectedSignal}
+              onFetchPaths={() => fetchDrilldownPaths(auditReports[openEntry.slotId]!.session_id, openEntry.entryId)}
+              onSuggestPath={() => suggestDrilldownPath(auditReports[openEntry.slotId]!.session_id, openEntry.entryId)}
+              onAcceptPath={(pathId) => decidePath(openEntry.slotId, pathId, true)}
+              onRejectPath={(pathId) => decidePath(openEntry.slotId, pathId, false)}
               onApplyFilters={(filters: AnalysisFilterSelections) =>
                 filterAnalysisEntry(auditReports[openEntry.slotId]!.session_id, openEntry.entryId, filters)
               }

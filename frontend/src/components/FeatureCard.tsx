@@ -83,11 +83,6 @@ export default function FeatureCard({ feature, colorIndex = 0, requiredFor = [],
           <span className="feature-card__column">{feature.output_column}</span>
         </div>
         <div className="feature-card__badges">
-          {requiredFor.length > 0 && (
-            <span className="feature-card__required-badge" title={`Needed by: ${requiredFor.join(", ")}`}>
-              Required for analysis
-            </span>
-          )}
           {feature.source !== "predefined" && (
             <span className={feature.source === "ai_suggested" ? "feature-card__ai-badge" : "feature-card__custom-badge"}>
               {SOURCE_LABELS[feature.source] ?? feature.source}

@@ -383,7 +383,7 @@ class ReportBuilder:
             return style.CHART_TOP
         self._caption(slide, subtitle, top=Inches(0.6), bold=True, size=11)
         self._caption(slide, description, top=Inches(0.9))
-        return style.CHART_TOP + Inches(0.3)
+        return style.CHART_TOP + Inches(0.5)
 
     def add_title_slide(self, title: str, subtitle: str | None):
         """Cover slide: logo top-left, title/subtitle on the left, and a
@@ -450,7 +450,7 @@ class ReportBuilder:
 
         chart_type = XL_CHART_TYPE.LINE_MARKERS if is_line else XL_CHART_TYPE.COLUMN_CLUSTERED
         gf = slide.shapes.add_chart(
-            chart_type, Inches(0.5), chart_top, style.SLIDE_W - Inches(1.0), style.SLIDE_H - chart_top - Inches(0.6), data,
+            chart_type, Inches(0.7), chart_top, style.SLIDE_W - Inches(1.4), style.SLIDE_H - chart_top - Inches(1.0), data,
         )
         chart = gf.chart
         style_native_chart(chart, number_format="#,##0.##", single_series=len(series) == 1)
@@ -481,8 +481,8 @@ class ReportBuilder:
         data.add_series(line_name, line_values)
 
         gf = slide.shapes.add_chart(
-            XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.5), chart_top,
-            style.SLIDE_W - Inches(1.0), style.SLIDE_H - chart_top - Inches(0.6), data,
+            XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.7), chart_top,
+            style.SLIDE_W - Inches(1.4), style.SLIDE_H - chart_top - Inches(1.0), data,
         )
         chart = gf.chart
         if not split_into_combo(chart, line_axis_title):
@@ -540,7 +540,7 @@ class ReportBuilder:
         data.add_series(heading, [_to_number(v) for v in values])
 
         gf = slide.shapes.add_chart(
-            XL_CHART_TYPE.PIE, Inches(1.5), chart_top, style.SLIDE_W - Inches(3.0), style.SLIDE_H - chart_top - Inches(0.6), data,
+            XL_CHART_TYPE.PIE, Inches(1.8), chart_top, style.SLIDE_W - Inches(3.6), style.SLIDE_H - chart_top - Inches(1.0), data,
         )
         chart = gf.chart
         style.set_chart_default_font(chart, style.CHART_DATA_LABEL_FONT_PT, style.FONT_BODY)

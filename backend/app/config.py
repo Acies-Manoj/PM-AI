@@ -82,35 +82,35 @@ NOVA_PRO = "amazon/nova-pro-v1"
 
 MODEL_BY_CALL: dict[str, str] = {
     # -- Planner and drill-down path design: reasoning that decides what gets built ----------
-    "planner_agent": SONNET_45,                      # before: openai/gpt-4o-mini
-    "drilldown_path": SONNET_45,                     # before: anthropic/claude-sonnet-4 (new call)
+    "planner_agent": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): SONNET_45
+    "drilldown_path": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): SONNET_45 -- was claude-sonnet-4
 
     # -- Feature agent: think = designs the formula, write_code = pandas, validate = checks ---
-    "feature_agent_think": SONNET_45,                # before: openai/gpt-4o-mini | first pick: anthropic/claude-haiku-4.5
-    "feature_agent_write_code": HAIKU_45,            # before: openai/gpt-4o-mini
-    "feature_agent_validate": HAIKU_45,              # before: openai/gpt-4o-mini
-    "feature_suggester": HAIKU_45,                   # before: openai/gpt-4o-mini | first pick: amazon/nova-pro-v1
+    "feature_agent_think": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): SONNET_45
+    "feature_agent_write_code": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
+    "feature_agent_validate": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
+    "feature_suggester": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
 
     # -- Analysis agent ----------------------------------------------------------------------
-    "analysis_agent_think": SONNET_45,               # before: openai/gpt-4o-mini | first pick: anthropic/claude-haiku-4.5
-    "analysis_agent_write_code": HAIKU_45,           # before: openai/gpt-4o-mini
-    "analysis_agent_chart_suggestion": HAIKU_45,     # before: openai/gpt-4o-mini
-    "analysis_agent_interpret": HAIKU_45,            # before: openai/gpt-4o-mini (runs once per chart)
-    "analysis_agent_drilldown": HAIKU_45,            # before: openai/gpt-4o-mini (follow-up ideas, new in this table)
+    "analysis_agent_think": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): SONNET_45
+    "analysis_agent_write_code": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
+    "analysis_agent_chart_suggestion": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
+    "analysis_agent_interpret": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
+    "analysis_agent_drilldown": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
 
     # -- Analysis designer (custom analyses, template matching) ------------------------------
-    "analysis_designer_template_match": SONNET_46,   # before: openai/gpt-4o-mini
-    "analysis_designer_chart": HAIKU_45,             # before: openai/gpt-4o-mini
-    "analysis_suggester": HAIKU_45,                  # before: openai/gpt-4o-mini | first pick: amazon/nova-pro-v1
+    "analysis_designer_template_match": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): SONNET_46
+    "analysis_designer_chart": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
+    "analysis_suggester": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
 
     # -- Drill-down suggestions --------------------------------------------------------------
-    "drilldown_agent": HAIKU_45,                     # before: openai/gpt-4o-mini | first pick: amazon/nova-pro-v1
-    "drilldown_agent_more": HAIKU_45,                # before: openai/gpt-4o-mini (was named drilldown_agent_wide) | first pick: amazon/nova-pro-v1
+    "drilldown_agent": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
+    "drilldown_agent_more": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
 
     # -- Summaries -----------------------------------------------------------------------------
-    "audit_agent": NOVA_PRO,                         # before: google/gemini-2.5-flash-lite
-    "overall_analysis_agent": NOVA_PRO,              # before: google/gemini-2.5-flash-lite
-    "report_final_summary_agent": HAIKU_45,          # before: google/gemini-2.5-flash-lite | first pick: amazon/nova-pro-v1
+    "audit_agent": "google/gemini-2.5-flash-lite",  # trial (Anthropic/Nova): NOVA_PRO
+    "overall_analysis_agent": "google/gemini-2.5-flash-lite",  # trial (Anthropic/Nova): NOVA_PRO
+    "report_final_summary_agent": "google/gemini-2.5-flash-lite",  # trial (Anthropic/Nova): HAIKU_45
 }
 
 

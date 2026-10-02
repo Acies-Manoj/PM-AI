@@ -439,9 +439,6 @@ function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap, 
             <span className={`planner-page__badge planner-page__badge--type-${typeSlug(rec.type)}`}>
               {typeLabel(rec.type)}
             </span>
-            {requiredFor.length > 0 && (
-              <span className="planner-page__badge planner-page__badge--required">Required for analysis</span>
-            )}
             <span className={`planner-page__badge planner-page__badge--status-${statusLabel(rec.status).toLowerCase().replace(/\s+/g, "-")}`}>
               {statusLabel(rec.status)}
             </span>

@@ -7,3 +7,7 @@ out*.txt
 label_counts.txt
 data/sessions
 data/token_usage.jsonl
+# system prompts live in Amazon Bedrock Prompt Management, not in the image
+prompts/
+prompts_export/
+scripts/

@@ -22,6 +22,7 @@ backend/generated_reports/
 backend/data/sessions/
 backend/data/profiles/
 backend/data/audit_log.jsonl
+backend/prompts_export/
 
 # Editor/OS
 .vscode/*

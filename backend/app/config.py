@@ -73,12 +73,22 @@ CORS_ALLOW_LOCALHOST = os.getenv("CORS_ALLOW_LOCALHOST", "1") != "0"
 # AMAZON BEDROCK
 #
 # BEDROCK_*_MODEL are Bedrock model ids or cross-region inference-profile ids (the "eu."
-# prefix ones). The defaults are placeholders: confirm in the Bedrock console (Model
-# catalog / Cross-region inference) which ids your account can call, then set these env
-# vars -- no code change needed.
+# prefix ones). The defaults below are PLACEHOLDERS for OpenAI's open-weight gpt-oss-20b, the
+# lightest and cheapest model in the Stockholm catalog: copy the exact "Model ID" from the
+# model's card in the Bedrock console (Model catalog) and set the env vars -- no code change.
+# Other options: openai.gpt-oss-120b-1:0 (stronger), eu.amazon.nova-micro/lite/pro-v1:0.
+# (Google Gemini and OpenAI's hosted GPT-4o-mini are NOT available on Bedrock.)
 # =====================================================================================
-BEDROCK_DEFAULT_MODEL = os.getenv("BEDROCK_DEFAULT_MODEL", "eu.anthropic.claude-haiku-4-5-20251001-v1:0")
-BEDROCK_STRONG_MODEL = os.getenv("BEDROCK_STRONG_MODEL", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0")
+# Three tiers; the cheapest setup uses the same small model for all of them. Point
+# BEDROCK_STRONG_MODEL at a bigger model only if the planner / "think" / code-writing calls
+# turn out unreliable.
+BEDROCK_CHEAP_MODEL = os.getenv("BEDROCK_CHEAP_MODEL", "openai.gpt-oss-20b-1:0")
+BEDROCK_DEFAULT_MODEL = os.getenv("BEDROCK_DEFAULT_MODEL", "openai.gpt-oss-20b-1:0")
+BEDROCK_STRONG_MODEL = os.getenv("BEDROCK_STRONG_MODEL", "openai.gpt-oss-20b-1:0")
+
+# Amazon Nova models cap the answer length per call (about 5K tokens). A request above the cap
+# is rejected, so llm.py lowers max_tokens to this for any "amazon.nova" model id.
+NOVA_MAX_OUTPUT_TOKENS = int(os.getenv("NOVA_MAX_OUTPUT_TOKENS", "5000"))
 
 # The older per-agent settings are kept as the `legacy` fallback that `model_for()` takes.
 LLM_MODEL = os.getenv("LLM_MODEL", BEDROCK_DEFAULT_MODEL)
@@ -89,9 +99,15 @@ DRILLDOWN_AGENT_MODEL = os.getenv("DRILLDOWN_AGENT_MODEL", BEDROCK_STRONG_MODEL)
 PLANNER_AGENT_MODEL = os.getenv("PLANNER_AGENT_MODEL", BEDROCK_STRONG_MODEL)
 
 # Bedrock Prompt Management: JSON object mapping a prompt name (the call_name, e.g.
-# "planner_agent") to "<PROMPT_ID>" or "<PROMPT_ID>:<VERSION>". Prompts not listed (or any
-# lookup failure) use the text that lives in the source, so this is optional.
+# "planner_agent") to "<PROMPT_ID>" or "<PROMPT_ID>:<VERSION>". The system prompts no longer
+# live in the Python code. Each call gets its prompt from Bedrock when its name is listed here;
+# otherwise from backend/prompts/<name>.txt (shipped only in a dev checkout -- the Docker image
+# does NOT contain them, so a deployed backend needs every prompt listed here).
 BEDROCK_PROMPT_IDS = os.getenv("BEDROCK_PROMPT_IDS", "")
+# Where the default prompt files are. PROMPTS_BEDROCK_ONLY=1 ignores them entirely, so a
+# prompt missing from Bedrock fails loudly instead of silently using a local copy.
+PROMPTS_DIR = Path(os.environ["PROMPTS_DIR"]) if os.getenv("PROMPTS_DIR") else BACKEND_DIR / "prompts"
+PROMPTS_BEDROCK_ONLY = os.getenv("PROMPTS_BEDROCK_ONLY", "0") == "1"
 PROMPT_CACHE_SECONDS = int(os.getenv("PROMPT_CACHE_SECONDS", "300"))
 
 
@@ -112,6 +128,7 @@ DEFAULT_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "6000"))
 
 USE_PER_CALL_MODELS = os.getenv("USE_PER_CALL_MODELS", "1") != "0"
 
+_C = BEDROCK_CHEAP_MODEL
 _D = BEDROCK_DEFAULT_MODEL
 _S = BEDROCK_STRONG_MODEL
 
@@ -130,7 +147,7 @@ MODEL_BY_CALL: dict[str, str] = {
     "analysis_agent_think": _S,
     "analysis_agent_write_code": _D,
     "analysis_agent_chart_suggestion": _D,
-    "analysis_agent_interpret": _D,
+    "analysis_agent_interpret": _C,
     "analysis_agent_drilldown": _D,
 
     # -- Analysis designer (custom analyses, template matching) ------------------------------
@@ -143,9 +160,9 @@ MODEL_BY_CALL: dict[str, str] = {
     "drilldown_agent_more": _D,
 
     # -- Summaries -----------------------------------------------------------------------------
-    "audit_agent": _D,
-    "overall_analysis_agent": _D,
-    "report_final_summary_agent": _D,
+    "audit_agent": _C,
+    "overall_analysis_agent": _C,
+    "report_final_summary_agent": _C,
 }
 
 

@@ -27,10 +27,12 @@ from app.config import (
     BEDROCK_PROMPT_IDS,
     DEFAULT_MAX_TOKENS,
     LLM_MODEL,
+    NOVA_MAX_OUTPUT_TOKENS,
     PROMPT_CACHE_SECONDS,
+    PROMPTS_BEDROCK_ONLY,
     model_for,
 )
-from app.services.common import aws_clients, token_usage
+from app.services.common import aws_clients, prompt_files, token_usage
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +88,10 @@ def strip_code_fence(text: str) -> str:
 
 
 # --------------------------------------------------------------------------- Converse
+# Models that rejected a temperature setting (filled in at runtime; see _converse).
+_NO_TEMPERATURE: set[str] = set()
+
+
 class LLMError(RuntimeError):
     """The model call succeeded at the API level but its answer is unusable (blocked by a
     content filter / guardrail, or cut off mid-JSON)."""
@@ -100,13 +106,30 @@ def _converse(
     call_name: str,
 ) -> tuple[str, str | None]:
     """One Converse call. Returns (text, stopReason)."""
+    if "amazon.nova" in model:
+        max_tokens = min(max_tokens, NOVA_MAX_OUTPUT_TOKENS)  # Nova rejects longer answers
     client = aws_clients.bedrock_runtime()
-    response = client.converse(
+    inference: dict = {"maxTokens": max_tokens}
+    if model not in _NO_TEMPERATURE:
+        inference["temperature"] = temperature
+    request = dict(
         modelId=model,
         system=[{"text": system_prompt}],
         messages=[{"role": "user", "content": [{"text": user_prompt}]}],
-        inferenceConfig={"maxTokens": max_tokens, "temperature": temperature},
+        inferenceConfig=inference,
     )
+    try:
+        response = client.converse(**request)
+    except Exception as exc:  # noqa: BLE001 - inspected below, re-raised unless it is the temperature case
+        # Some reasoning models (e.g. OpenAI's) accept only their default temperature and reject
+        # the field. Remember that for the model and retry once without it.
+        if "temperature" in inference and "temperature" in str(exc).lower() and "validation" in str(exc).lower():
+            log.warning("%s rejects the temperature setting; retrying without it", model)
+            _NO_TEMPERATURE.add(model)
+            inference.pop("temperature")
+            response = client.converse(**request)
+        else:
+            raise
     token_usage.record(call_name, model, response.get("usage"))
     stop = response.get("stopReason")
     if stop in ("content_filtered", "guardrail_intervened"):
@@ -194,40 +217,67 @@ def _fetch_prompt_text(identifier: str) -> str | None:
     return None
 
 
-def system_prompt(name: str, fallback: str, **variables: object) -> str:
-    """The system prompt for `name`. Uses Bedrock Prompt Management when `name` is in
-    BEDROCK_PROMPT_IDS (cached for PROMPT_CACHE_SECONDS), substituting `{{var}}` placeholders
-    from `variables`; otherwise -- or on any error -- returns `fallback` unchanged."""
+class PromptNotFound(LLMError):
+    """No system prompt could be found for a call (not in Bedrock, and no local file)."""
+
+
+def _bedrock_prompt(name: str) -> str | None:
+    """The prompt text from Prompt Management, or None if `name` is not configured or the
+    lookup failed (cached for PROMPT_CACHE_SECONDS; a failed lookup only briefly)."""
     identifier = _configured_prompts().get(name)
     if not identifier:
-        return fallback
-
+        return None
     now = time.time()
     with _prompt_lock:
         cached = _prompt_cache.get(name)
     if cached and now - cached[0] < PROMPT_CACHE_SECONDS:
-        text = cached[1]
-    else:
-        failed = False
-        try:
-            text = _fetch_prompt_text(identifier)
-        except Exception as exc:  # noqa: BLE001 - never let Prompt Management break an LLM call
-            log.warning("Prompt Management lookup for %s failed (%s); using in-source prompt", name, exc)
-            text = None
-            failed = True
-        with _prompt_lock:
-            # A failed lookup is only remembered briefly, so a transient error does not pin the
-            # in-source prompt for the whole cache period.
-            stamp = now - PROMPT_CACHE_SECONDS + 30 if failed else now
-            _prompt_cache[name] = (stamp, text)
-
-    if not text:
-        return fallback
-    if variables:
-        # One pass, so a substituted value that itself contains "{{other}}" is left alone.
-        text = re.sub(
-            r"\{\{(\w+)\}\}",
-            lambda m: str(variables[m.group(1)]) if m.group(1) in variables else m.group(0),
-            text,
-        )
+        return cached[1]
+    failed = False
+    try:
+        text = _fetch_prompt_text(identifier)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Prompt Management lookup for %s failed: %s", name, exc)
+        text = None
+        failed = True
+    with _prompt_lock:
+        # A failed lookup is only remembered briefly, so a transient error does not pin the
+        # fallback for the whole cache period.
+        _prompt_cache[name] = (now - PROMPT_CACHE_SECONDS + 30 if failed else now, text)
     return text
+
+
+def _fill(text: str, variables: dict) -> str:
+    if not variables:
+        return text
+    # One pass, so a substituted value that itself contains "{{other}}" is left alone.
+    return re.sub(
+        r"\{\{(\w+)\}\}",
+        lambda m: str(variables[m.group(1)]) if m.group(1) in variables else m.group(0),
+        text,
+    )
+
+
+def system_prompt(name: str, fallback: str | None = None, **variables: object) -> str:
+    """The system prompt for the call `name`, with `{{variable}}` placeholders filled from
+    `variables`.
+
+    Order: Amazon Bedrock Prompt Management (when `name` is in BEDROCK_PROMPT_IDS) -> `fallback`
+    if the caller gave one -> backend/prompts/<name>.txt. With PROMPTS_BEDROCK_ONLY=1 only
+    Bedrock counts. If none has it, PromptNotFound says what to set.
+    """
+    text = _bedrock_prompt(name)
+    if not text and not PROMPTS_BEDROCK_ONLY:
+        text = fallback or prompt_files.load(name)
+    if not text:
+        configured = name in _configured_prompts()
+        raise PromptNotFound(
+            f"No system prompt for '{name}': "
+            + (
+                "Bedrock Prompt Management could not be read for it (check the id/version in "
+                "BEDROCK_PROMPT_IDS and the task role's bedrock:GetPrompt)."
+                if configured
+                else "add it to BEDROCK_PROMPT_IDS (create the prompts with "
+                "`python scripts/bedrock_prompts.py create`)."
+            )
+        )
+    return _fill(text, variables)

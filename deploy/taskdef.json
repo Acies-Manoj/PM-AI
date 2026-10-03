@@ -26,8 +26,9 @@
         { "name": "ENTRA_CLIENT_ID", "value": "<PMAI_API_CLIENT_ID>" },
         { "name": "CORS_ORIGINS", "value": "https://<BRANCH>.<APP_ID>.amplifyapp.com" },
         { "name": "CORS_ALLOW_LOCALHOST", "value": "0" },
-        { "name": "BEDROCK_DEFAULT_MODEL", "value": "<bedrock model or eu. inference-profile id>" },
-        { "name": "BEDROCK_STRONG_MODEL", "value": "<bedrock model or eu. inference-profile id>" }
+        { "name": "BEDROCK_CHEAP_MODEL", "value": "openai.gpt-oss-20b-1:0" },
+        { "name": "BEDROCK_DEFAULT_MODEL", "value": "openai.gpt-oss-20b-1:0" },
+        { "name": "BEDROCK_STRONG_MODEL", "value": "openai.gpt-oss-20b-1:0" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

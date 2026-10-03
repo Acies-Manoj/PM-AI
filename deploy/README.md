@@ -26,3 +26,22 @@ DynamoDB (on-demand): `pmai-sessions` (`session_id`), `pmai-docs` (`session_id`,
 `pmai-profiles` (`user_id`, `profile`), `pmai-audit-log` (`session_id`, `ts_event`, plus GSI
 `by-user` on `user_id`, `ts_event`). TTL attribute `ttl` on sessions, docs and the audit log.
 S3: one private bucket with CORS allowing `PUT`/`GET` from the Amplify origin.
+
+## Prompts in Amazon Bedrock Prompt Management (optional)
+
+The system prompts live in the source and work with no setup. To manage them in Bedrock instead
+(versioned, editable without a redeploy), use `backend/scripts/bedrock_prompts.py` (run from `backend/`):
+
+```
+python scripts/bedrock_prompts.py export              # write each prompt to prompts_export/<call>.txt
+python scripts/bedrock_prompts.py create --dry-run    # preview
+python scripts/bedrock_prompts.py create              # create the 19 prompts + version 1; prints BEDROCK_PROMPT_IDS
+python scripts/bedrock_prompts.py verify              # compare Bedrock with the source
+python scripts/bedrock_prompts.py create --update     # push the current source text as a new version
+```
+
+Put the printed `BEDROCK_PROMPT_IDS` value in the task definition. A prompt is used from Bedrock only
+when its call name is in that variable; otherwise (or if Bedrock is unreachable) the in-source text is
+used. Lookups are cached for `PROMPT_CACHE_SECONDS` (default 300). Pin versions (`ID:2`), and move to a
+new version by editing the variable. The user running the script needs `bedrock:CreatePrompt`,
+`UpdatePrompt`, `CreatePromptVersion`, `GetPrompt` and `ListPrompts`; the task role needs `bedrock:GetPrompt`.

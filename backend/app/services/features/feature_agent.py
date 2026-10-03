@@ -5,7 +5,7 @@ suggestion) -- has already been reduced to a plain-English
 `calculation_intent` by the time it reaches here (see
 feature_repository.py), so this agent has exactly one job regardless of
 source: THINK about how to compute it, WRITE the pandas code, and VALIDATE
-the result -- three separate OpenRouter calls, never Groq. The generated
+the result -- three separate Bedrock calls. The generated
 code is never trusted at face value: it runs through the same AST-sandboxed
 executor as before (ai_code_executor.py).
 """
@@ -16,10 +16,9 @@ import re
 from dataclasses import dataclass
 
 import pandas as pd
-from openai import OpenAI
 
-from app.config import DEFAULT_MAX_TOKENS, FEATURE_AGENT_MODEL, OPENROUTER_API_KEY, model_for
-from app.services.common import ai_code_executor, token_usage
+from app.config import DEFAULT_MAX_TOKENS, FEATURE_AGENT_MODEL, model_for
+from app.services.common import ai_code_executor, llm
 
 MAX_ATTEMPTS = 3
 # A pre-supplied formula (Planner-generated and PM-approved, or a fully
@@ -30,57 +29,21 @@ MAX_ATTEMPTS = 3
 # actually converge instead of stopping right after the first correction.
 FIXED_FORMULA_MAX_ATTEMPTS = 3
 
-_client: OpenAI | None = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        if not OPENROUTER_API_KEY:
-            raise RuntimeError(
-                "OPENROUTER_API_KEY is not set. Add your key from https://openrouter.ai/keys to backend/.env"
-            )
-        _client = OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
-    return _client
-
-
 def _call(
     system_prompt: str, user_prompt: str, *, json_mode: bool, temperature: float, call_name: str
 ) -> str:
-    client = _get_client()
+    system = llm.system_prompt(call_name, system_prompt)
     model = model_for(call_name, FEATURE_AGENT_MODEL)
-    kwargs: dict = {
-        "model": model,
-        "max_tokens": DEFAULT_MAX_TOKENS,
-        "temperature": temperature,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
     if json_mode:
-        try:
-            response = client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
-        except Exception:
-            response = client.chat.completions.create(**kwargs)
-    else:
-        response = client.chat.completions.create(**kwargs)
-    token_usage.record(call_name, model, response)
-    return response.choices[0].message.content or ""
+        return llm.chat_json(system, user_prompt, model=model, temperature=temperature,
+                             call_name=call_name, max_tokens=DEFAULT_MAX_TOKENS)
+    return llm.chat_text(system, user_prompt, model=model, temperature=temperature,
+                         call_name=call_name, max_tokens=DEFAULT_MAX_TOKENS)
 
 
-def _strip_code_fence(text: str) -> str:
-    stripped = text.strip()
-    match = re.match(r"^```(?:python)?\s*\n(.*)\n```$", stripped, re.DOTALL)
-    return match.group(1) if match else stripped
-
-
-def _strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("```", 2)[-1] if stripped.count("```") >= 2 else stripped
-        stripped = stripped[4:].strip() if stripped.lower().startswith("json") else stripped
-    return stripped
+# Kept importable under their old names.
+_strip_code_fence = llm.strip_code_fence
+_strip_json_fence = llm.strip_json_fence
 
 
 def _columns_block(df: pd.DataFrame) -> str:

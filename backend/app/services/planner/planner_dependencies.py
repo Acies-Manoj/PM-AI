@@ -42,9 +42,10 @@ def build_context(session_id: str) -> dict:
     """Every existing definition the Planner must check before proposing
     anything new, each with the id it must cite when reusing it."""
     kpis = []
-    specs = feature_definitions_store.store.definitions or []
+    _filename, specs = feature_definitions_store.load_for_session(session_id)
+    specs = specs or []
     by_id = {f"predefined_{s['id']}": s for s in specs}
-    for entry in feature_repository._predefined_entries():
+    for entry in feature_repository._predefined_entries(session_id):
         spec = by_id.get(entry["id"], {})
         kpis.append({
             "id": entry["id"], "name": entry["name"], "description": entry["description"],
@@ -62,7 +63,7 @@ def build_context(session_id: str) -> dict:
         {"id": e["id"], "name": e["name"], "description": e["description"],
          "intent": e["calculation_intent"], "input_columns": e.get("input_columns", []),
          "required_features": e.get("required_features", [])}
-        for e in analysis_repository._predefined_entries()
+        for e in analysis_repository._predefined_entries(session_id)
     ]
     analyses = [
         {"id": e["id"], "name": e["name"], "intent": e["calculation_intent"], "status": e["status"]}

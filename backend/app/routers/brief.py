@@ -1,25 +1,12 @@
-import json
-import ssl
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
-import certifi
-
-_SSL_CTX = ssl.create_default_context(cafile=certifi.where())
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.config import DATA_DIR, DEEPL_API_KEY, DEEPL_API_URL
+from app.routers.deps import User, get_user, require_owned
+from app.services.common import audit_log, doc_store
 
 router = APIRouter(prefix="/api/brief", tags=["brief"])
-
-SESSIONS_DIR = DATA_DIR / "sessions"
-SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 LANGUAGE_NAMES: dict[str, str] = {
     "af": "Afrikaans", "ar": "Arabic", "bg": "Bulgarian", "bn": "Bengali",
@@ -152,17 +139,18 @@ class FinalizeResponse(BaseModel):
 
 
 @router.post("/finalize", response_model=FinalizeResponse)
-def finalize(req: FinalizeRequest):
+def finalize(req: FinalizeRequest, user: User = Depends(get_user)):
     """Merge brief + all uploaded datasets into one metadata.json.
 
-    Uses the first audit session's folder as the canonical session so
-    there is exactly one folder and one file per run.
+    Uses the first audit session as the canonical session: the brief is stored
+    as that session's BRIEF_META document.
     """
     if not req.audit_session_ids:
         raise HTTPException(status_code=400, detail="At least one audit_session_id is required.")
+    for sid in req.audit_session_ids:
+        require_owned(sid, user)
 
     primary_sid = req.audit_session_ids[0]
-    session_dir = SESSIONS_DIR / primary_sid
 
     metadata = {
         "session_id": primary_sid,
@@ -177,8 +165,10 @@ def finalize(req: FinalizeRequest):
         "files": [f.model_dump() for f in req.files],
     }
 
-    (session_dir / "metadata.json").write_text(
-        json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
+    doc_store.put(primary_sid, "BRIEF_META", metadata)
+    audit_log.log_event(
+        primary_sid, user.id, "brief_finalize",
+        {"audit_session_ids": req.audit_session_ids, "files": [f.filename for f in req.files]},
     )
 
     return FinalizeResponse(session_id=primary_sid)

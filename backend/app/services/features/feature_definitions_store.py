@@ -1,33 +1,36 @@
 """
-Holds whatever feature-definitions JSON was most recently uploaded to the
-"Customer KPI Profile" slot. There is no bundled backend default -- if
-nothing has been uploaded, `store.definitions` is None and feature
-engineering simply cannot run yet. Single-slot, thread-safe -- same scope as
-the other in-memory stores in this app (one demo session at a time).
+The "Customer KPI Profile" a PM uploaded: a JSON list of feature definitions, stored PER USER
+(see services/common/profile_store.py). There is no bundled backend default -- if the user has
+not uploaded one, `load*` returns (None, None) and feature engineering simply cannot run yet.
 """
-import threading
+from app.services.common import profile_store
 
 SUPPORTED_TYPES = {"lookup", "extract_month", "ratio", "duration_hours", "custom_formula", "ai_generated"}
 
 
-class FeatureDefinitionsStore:
-    def __init__(self):
-        self._lock = threading.Lock()
-        self.filename: str | None = None
-        self.definitions: list[dict] | None = None
-
-    def set(self, filename: str, definitions: list[dict]) -> None:
-        with self._lock:
-            self.filename = filename
-            self.definitions = definitions
-
-    def clear(self) -> None:
-        with self._lock:
-            self.filename = None
-            self.definitions = None
+def save(user_id: str, filename: str, definitions: list[dict]) -> None:
+    profile_store.save(user_id, profile_store.KPI, filename, definitions)
 
 
-store = FeatureDefinitionsStore()
+def clear(user_id: str) -> None:
+    profile_store.clear(user_id, profile_store.KPI)
+
+
+def load(user_id: str) -> tuple[str | None, list[dict] | None]:
+    """(filename, definitions) for this user; (None, None) if nothing was uploaded."""
+    profile = profile_store.load(user_id, profile_store.KPI)
+    if not profile:
+        return None, None
+    return profile.get("filename"), profile.get("definitions")
+
+
+def load_for_session(session_id: str) -> tuple[str | None, list[dict] | None]:
+    """Same, for the owner of `session_id` -- what the repositories and the planner use,
+    since they only know the session."""
+    profile = profile_store.load_for_session(session_id, profile_store.KPI)
+    if not profile:
+        return None, None
+    return profile.get("filename"), profile.get("definitions")
 
 
 def validate(payload: dict) -> list[dict]:

@@ -1,0 +1,42 @@
+{
+  "family": "pmai-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "4096",
+  "runtimePlatform": { "cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX" },
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/pmai-task-exec-role",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/pmai-task-role",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "<ACCOUNT_ID>.dkr.ecr.eu-north-1.amazonaws.com/pm-ai-backend:latest",
+      "essential": true,
+      "portMappings": [{ "containerPort": 8000, "protocol": "tcp" }],
+      "environment": [
+        { "name": "AWS_REGION", "value": "eu-north-1" },
+        { "name": "BEDROCK_REGION", "value": "eu-north-1" },
+        { "name": "TRANSLATE_REGION", "value": "eu-north-1" },
+        { "name": "S3_BUCKET", "value": "pmai-data-<ACCOUNT_ID>-eu-north-1" },
+        { "name": "DDB_SESSIONS", "value": "pmai-sessions" },
+        { "name": "DDB_DOCS", "value": "pmai-docs" },
+        { "name": "DDB_PROFILES", "value": "pmai-profiles" },
+        { "name": "DDB_AUDIT", "value": "pmai-audit-log" },
+        { "name": "ENTRA_TENANT_ID", "value": "<TENANT_ID>" },
+        { "name": "ENTRA_CLIENT_ID", "value": "<PMAI_API_CLIENT_ID>" },
+        { "name": "CORS_ORIGINS", "value": "https://<BRANCH>.<APP_ID>.amplifyapp.com" },
+        { "name": "CORS_ALLOW_LOCALHOST", "value": "0" },
+        { "name": "BEDROCK_DEFAULT_MODEL", "value": "<bedrock model or eu. inference-profile id>" },
+        { "name": "BEDROCK_STRONG_MODEL", "value": "<bedrock model or eu. inference-profile id>" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/pmai-backend",
+          "awslogs-region": "eu-north-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

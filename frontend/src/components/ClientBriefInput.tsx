@@ -6,8 +6,6 @@ import "./ClientBriefInput.css";
 // reads final_text/raw_text directly. Commented out below rather than
 // removed so it can be turned back on later without rebuilding it.
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-void API_BASE_URL; // referenced only by the commented-out translate call below
 
 export interface BriefState {
   rawText: string;
@@ -79,7 +77,7 @@ export default function ClientBriefInput({ value, onChange }: Props) {
       if (!text.trim() || text.trim().length < 15) return;
       setIsDetecting(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/brief/detect-translate`, {
+        const res = await apiFetch(`/api/brief/detect-translate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text }),

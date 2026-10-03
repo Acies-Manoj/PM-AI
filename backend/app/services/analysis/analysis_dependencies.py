@@ -17,15 +17,12 @@ not just in the UI.
 """
 from __future__ import annotations
 
-import json
 import re
 
 import pandas as pd
 
-from app.config import DATA_DIR
+from app.services.common import doc_store
 from app.services.features import feature_repository
-
-_SESSIONS_DIR = DATA_DIR / "sessions"
 
 SATISFIED = "satisfied"
 NOT_APPROVED = "not_approved"
@@ -159,16 +156,20 @@ def select_feature(session_id: str, feature_id: str) -> bool:
             index = int(feature_id.split("_", 1)[1])
         except ValueError:
             return False
-        path = _SESSIONS_DIR / session_id / "planner_output.json"
-        if not path.exists():
+        result = {"ok": False}
+
+        def _accept(data):
+            recs = (data or {}).get("recommendations", []) if isinstance(data, dict) else []
+            if not 0 <= index < len(recs) or recs[index].get("type") not in ("feature", "feature_and_analysis"):
+                return data
+            recs[index]["pm_decision"] = "accepted"
+            result["ok"] = True
+            return data
+
+        if doc_store.get(session_id, "PLANNER_OUTPUT") is None:
             return False
-        data = json.loads(path.read_text(encoding="utf-8"))
-        recs = data.get("recommendations", [])
-        if not 0 <= index < len(recs) or recs[index].get("type") not in ("feature", "feature_and_analysis"):
-            return False
-        recs[index]["pm_decision"] = "accepted"
-        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        return True
+        doc_store.update(session_id, "PLANNER_OUTPUT", _accept)
+        return result["ok"]
     if feature_id.startswith("predefined_"):
         return True
     return feature_repository.set_entry_status(session_id, feature_id, "approved") is not None

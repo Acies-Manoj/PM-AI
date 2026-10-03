@@ -1,3 +1,4 @@
+import { downloadFile } from "../api/apiFetch";
 import ThinkingLoader from "../components/ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
@@ -467,20 +468,20 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
 
               <a
                 className={`report-page__download-btn ${selectedIds.length === 0 ? "report-page__download-btn--disabled" : ""}`}
-                href={
-                  selectedIds.length > 0
-                    ? downloadReportUrl(
-                        auditReports[id]!.session_id,
-                        selectedEntries.map((e) => ({ entryId: e.id, chartType: defaultChartType(e) })),
-                        language
-                      )
-                    : undefined
-                }
+                href="#"
                 aria-disabled={selectedIds.length === 0}
                 onClick={(e) => {
-                  if (selectedIds.length === 0) e.preventDefault();
+                  e.preventDefault();
+                  if (selectedIds.length === 0) return;
+                  downloadFile(
+                    downloadReportUrl(
+                      auditReports[id]!.session_id,
+                      selectedEntries.map((e) => ({ entryId: e.id, chartType: defaultChartType(e) })),
+                      language
+                    ),
+                    "report.pptx"
+                  ).catch((err) => window.alert(err.message));
                 }}
-                download
               >
                 <IconDownload />
                 {selectedIds.length === 0 ? "Select at least one analysis" : `Download Report (${selectedIds.length} slides + summary)`}

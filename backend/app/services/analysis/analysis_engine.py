@@ -40,7 +40,7 @@ from app.services.analysis import analysis_agent, analysis_cache, analysis_depen
 from app.services.analysis.analysis_agent import AnalysisComputation
 from app.services.analysis.analysis_filters import FilterSelection
 from app.services.analysis.analysis_templates import TemplateError
-from app.services.common import ai_code_executor
+from app.services.common import ai_code_executor, request_context
 
 logger = logging.getLogger(__name__)
 
@@ -153,11 +153,11 @@ def _design_and_run(session_id: str, entry: dict, df: pd.DataFrame, chart_type: 
         # one LLM call -- so every source gets real filters now, not just a
         # hand-drafted custom entry.
         chart_job = pool.submit(
-            analysis_designer.suggest_chart_and_filters,
+            request_context.wrap(analysis_designer.suggest_chart_and_filters),
             entry["name"], entry.get("description") or entry["calculation_intent"], plan, columns_block, df,
         )
         match_job = pool.submit(
-            analysis_designer.match_template,
+            request_context.wrap(analysis_designer.match_template),
             entry["name"], entry.get("description") or entry["calculation_intent"], plan, columns_block, df,
         )
         chart_result = chart_job.result()

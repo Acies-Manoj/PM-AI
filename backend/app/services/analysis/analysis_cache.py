@@ -9,32 +9,11 @@ data even when the underlying computation itself doesn't need rethinking.
 Invalidated automatically if the entry's own calculation basis changes (a
 different formula/calculation_intent for the same id) -- see `get`.
 """
-import json
-from pathlib import Path
-
-from app.config import DATA_DIR
-
-_SESSIONS_DIR = DATA_DIR / "sessions"
+from app.services.common import doc_store
 
 
-def _cache_path(session_id: str) -> Path:
-    d = _SESSIONS_DIR / session_id
-    d.mkdir(parents=True, exist_ok=True)
-    return d / "analysis_cache.json"
-
-
-def _load(session_id: str) -> dict:
-    path = _cache_path(session_id)
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def _save(session_id: str, cache: dict) -> None:
-    _cache_path(session_id).write_text(json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8")
+def _doc(entry_id: str) -> str:
+    return f"ACACHE#{entry_id}"
 
 
 def get(session_id: str, entry: dict) -> dict | None:
@@ -42,7 +21,7 @@ def get(session_id: str, entry: dict) -> dict | None:
     one exists and the entry's calculation basis (its formula if it has
     one, else its calculation_intent) hasn't changed since it was cached.
     None otherwise, so the caller computes fresh."""
-    cached = _load(session_id).get(entry["id"])
+    cached = doc_store.get(session_id, _doc(entry["id"]))
     if not cached:
         return None
     basis = entry.get("formula") or entry["calculation_intent"]
@@ -63,20 +42,15 @@ def set(
     discovered alongside it -- both kept so a replay reuses them without
     asking the LLM again. `entry` must be the entry as stored in the
     repository, since its logic is the cache key (`basis`)."""
-    cache = _load(session_id)
-    cache[entry["id"]] = {
+    doc_store.put(session_id, _doc(entry["id"]), {
         "basis": entry.get("formula") or entry["calculation_intent"],
         "plan_text": plan_text,
         "generated_code": generated_code,
         "chart_recommendation": chart_recommendation,
         "template": template,
         "filters": filters,
-    }
-    _save(session_id, cache)
+    })
 
 
 def invalidate(session_id: str, entry_id: str) -> None:
-    cache = _load(session_id)
-    if entry_id in cache:
-        del cache[entry_id]
-        _save(session_id, cache)
+    doc_store.delete(session_id, _doc(entry_id))

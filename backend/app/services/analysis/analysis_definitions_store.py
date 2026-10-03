@@ -1,34 +1,38 @@
-"""Holds whatever analysis-definitions JSON was most recently uploaded to
-the "Analysis Profile" slot. There is no bundled backend default -- if
-nothing has been uploaded, `store.definitions` is None and the Analysis
-page simply shows zero `predefined` entries (never a hard error). Single-
-slot, thread-safe -- same scope as feature_definitions_store.py.
+"""The "Analysis Profile" a PM uploaded: a JSON list of analysis definitions, stored PER USER
+(see services/common/profile_store.py). There is no bundled backend default -- if the user has
+not uploaded one, `load*` returns (None, None) and the Analysis page simply shows zero
+`predefined` entries (never a hard error).
 
-Deliberately looser than the old pivot-table JSON schema: no group_by/
-metrics/agg vocabulary, since the Analysis Agent now derives the
-aggregation itself from a plain-English `calculation_intent`.
+Deliberately looser than the old pivot-table JSON schema: no group_by/metrics/agg vocabulary,
+since the Analysis Agent now derives the aggregation itself from a plain-English
+`calculation_intent`.
 """
-import threading
+from app.services.common import profile_store
 
 
-class AnalysisDefinitionsStore:
-    def __init__(self):
-        self._lock = threading.Lock()
-        self.filename: str | None = None
-        self.definitions: list[dict] | None = None
-
-    def set(self, filename: str, definitions: list[dict]) -> None:
-        with self._lock:
-            self.filename = filename
-            self.definitions = definitions
-
-    def clear(self) -> None:
-        with self._lock:
-            self.filename = None
-            self.definitions = None
+def save(user_id: str, filename: str, definitions: list[dict]) -> None:
+    profile_store.save(user_id, profile_store.ANALYSIS, filename, definitions)
 
 
-store = AnalysisDefinitionsStore()
+def clear(user_id: str) -> None:
+    profile_store.clear(user_id, profile_store.ANALYSIS)
+
+
+def load(user_id: str) -> tuple[str | None, list[dict] | None]:
+    """(filename, definitions) for this user; (None, None) if nothing was uploaded."""
+    profile = profile_store.load(user_id, profile_store.ANALYSIS)
+    if not profile:
+        return None, None
+    return profile.get("filename"), profile.get("definitions")
+
+
+def load_for_session(session_id: str) -> tuple[str | None, list[dict] | None]:
+    """Same, for the owner of `session_id` -- what the repositories use, since they only
+    know the session."""
+    profile = profile_store.load_for_session(session_id, profile_store.ANALYSIS)
+    if not profile:
+        return None, None
+    return profile.get("filename"), profile.get("definitions")
 
 
 def validate(payload: dict) -> list[dict]:

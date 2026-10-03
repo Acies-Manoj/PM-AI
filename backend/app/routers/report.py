@@ -5,7 +5,7 @@ Analysis page first, and this router only reads whatever is already there.
 The report's own closing-slide bullet points (see final_summary_agent.py)
 are the one thing generated fresh here, from whichever analyses are
 included."""
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from app.schemas import (
@@ -16,7 +16,10 @@ from app.schemas import (
     SupportedLanguagesResponse,
 )
 from app.services.analysis import analysis_repository
-from app.services.audit.audit_store import AuditSession, store
+from app.routers import deps
+from app.routers.deps import User, get_user
+from app.services.audit.audit_store import AuditSession
+from app.services.common.audit_log import log_event
 from app.services.report import final_summary_agent, report_generator, translation_service
 
 router = APIRouter(prefix="/api/report", tags=["report"])
@@ -24,22 +27,15 @@ router = APIRouter(prefix="/api/report", tags=["report"])
 
 @router.get("/languages", response_model=SupportedLanguagesResponse)
 def get_supported_languages() -> SupportedLanguagesResponse:
-    """English plus whatever DeepL target languages translation_service
-    currently lists -- see that module for what happens when no DeepL key
-    is configured (every language still lists here, but the actual download
-    silently falls back to English text)."""
+    """English plus whatever Amazon Translate target languages translation_service
+    currently lists -- see that module for what happens when Translate
+    is unavailable (every language still lists here, but the actual download
+    falls back to English text)."""
     languages = [LanguageOption(code="en", name="English")] + [
         LanguageOption(code=code, name=name)
         for code, (name, _) in sorted(translation_service.SUPPORTED_LANGUAGES.items(), key=lambda kv: kv[1][0])
     ]
     return SupportedLanguagesResponse(languages=languages)
-
-
-def _get_session_or_404(session_id: str) -> AuditSession:
-    session = store.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Audit session not found.")
-    return session
 
 
 MAX_SUBTITLE_CHARS = 110
@@ -162,16 +158,16 @@ def _report_ready_entries(
 
 
 @router.get("/{session_id}/summary", response_model=ReportSummaryResponse)
-def get_report_summary(session_id: str, entry_id: list[str] | None = Query(default=None)) -> ReportSummaryResponse:
+def get_report_summary(session_id: str, entry_id: list[str] | None = Query(default=None), user: User = Depends(get_user)) -> ReportSummaryResponse:
     """The Report page's own closing-slide bullet points, synthesized from
     the included analyses' interpretations -- recomputed on demand (never
     cached), since it changes with the PM's selection."""
-    session = _get_session_or_404(session_id)
+    session = deps.load_owned_session(session_id, user)
     entries = _report_ready_entries(session, session_id, entry_id)
     try:
         bullets = final_summary_agent.generate_summary(entries)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Report summary agent (OpenRouter) is unavailable: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Report summary agent (Bedrock) is unavailable: {exc}") from exc
     return ReportSummaryResponse(session_id=session_id, bullets=bullets)
 
 
@@ -180,13 +176,14 @@ def get_report_translations(
     session_id: str,
     language: str = Query(...),
     entry_id: list[str] | None = Query(default=None),
+    user: User = Depends(get_user),
 ) -> ReportTranslationsResponse:
     """On-screen preview mirror of what build_report translates onto each
     slide -- lets the Report page show translated headings/interpretations
     before the PM downloads anything, using the same translate_entry_texts
     batch call the .pptx export itself uses, so the preview never drifts
     from what the download will actually say."""
-    session = _get_session_or_404(session_id)
+    session = deps.load_owned_session(session_id, user)
     if language != "en" and language not in translation_service.SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=422, detail=f"'{language}' isn't a supported report language.")
     entries = _report_ready_entries(session, session_id, entry_id, include_stale=True)
@@ -209,8 +206,9 @@ def download_report(
     entry_id: list[str] | None = Query(default=None),
     chart_type: list[str] | None = Query(default=None),
     language: str = Query(default="en"),
+    user: User = Depends(get_user),
 ):
-    session = _get_session_or_404(session_id)
+    session = deps.load_owned_session(session_id, user)
     overrides = (
         dict(zip(entry_id, chart_type)) if entry_id and chart_type and len(entry_id) == len(chart_type) else None
     )
@@ -231,6 +229,7 @@ def download_report(
         summary_bullets = ["Final summary is unavailable right now."]
 
     pptx_bytes = report_generator.build_report(session.filename, session.df, entries, summary_bullets, language)
+    log_event(session_id, user.id, "report_downloaded", {"language": language, "entry_count": len(entries)})
     filename = f"{report_generator.REPORT_NAME}.pptx"
     return Response(
         content=pptx_bytes,

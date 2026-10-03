@@ -1,22 +1,24 @@
 import io
 import json
-from pathlib import Path
+import re
+import uuid
 
 import pandas as pd
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from app.config import DATA_DIR
+from app import config
+from app.routers.deps import User, get_user, load_owned_session
 from app.schemas import AuditIssue, AuditReport, FeatureReport, ResolveRequest, UpdateTripValueRequest
 from app.services.audit import data_audit
 from app.services.audit.audit_agent import generate_audit_analysis
 from app.services.audit.audit_store import AuditSession, store
 from app.services.audit.column_profiler import profile_dataframe
 from app.services.audit.excel_parser import load_spreadsheet
+from app.services.common import audit_log, aws_clients, doc_store
 from app.services.features import feature_engineering, feature_repository
-
-_SESSIONS_DIR = DATA_DIR / "sessions"
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -58,13 +60,6 @@ def _to_feature_report(session: AuditSession) -> FeatureReport:
     )
 
 
-def _get_session_or_404(session_id: str) -> AuditSession:
-    session = store.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Audit session not found.")
-    return session
-
-
 class UploadOnlyResponse(BaseModel):
     session_id: str
     filename: str
@@ -73,41 +68,64 @@ class UploadOnlyResponse(BaseModel):
     columns: list[str]
 
 
-@router.post("/upload", response_model=UploadOnlyResponse)
-async def upload_for_profiling(
-    file: UploadFile = File(...), source: str = Form(...)
+ALLOWED_EXTENSIONS = (".xlsx", ".xlsm", ".xls", ".csv")
+
+
+def _check_filename(filename: str) -> None:
+    if not filename.lower().endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}.",
+        )
+
+
+def _check_size(size: int) -> None:
+    if size > config.UPLOAD_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File is too large (limit {config.UPLOAD_MAX_BYTES // (1024 * 1024)} MB).",
+        )
+
+
+def _sanitize_filename(filename: str) -> str:
+    name = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    name = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._") or "upload"
+    return name[:120]
+
+
+def _create_session_from_bytes(
+    raw: bytes, filename: str, source: str, user: User, raw_key: str | None
 ) -> UploadOnlyResponse:
-    """Upload a file, create a session, and profile its columns.
-    Does NOT run the audit agent — call /{session_id}/run for that."""
-    raw = await file.read()
+    """Parse an uploaded spreadsheet, create the session and store its column metadata."""
+    _check_filename(filename)
     if not raw:
         raise HTTPException(status_code=422, detail="Uploaded file is empty.")
+    _check_size(len(raw))
 
     try:
-        df, _warnings = load_spreadsheet(raw, file.filename or "upload")
+        df, _warnings = load_spreadsheet(raw, filename)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    session = store.create(source=source, filename=file.filename or "upload", df=df)
+    session = store.create(source=source, filename=filename, df=df, user_id=user.id, raw_key=raw_key)
 
     try:
-        col_meta = profile_dataframe(df)
-        session_dir = _SESSIONS_DIR / session.session_id
-        session_dir.mkdir(parents=True, exist_ok=True)
         combined = {
             "session_id": session.session_id,
             "filename": session.filename,
             "source": source,
             "row_count": len(df),
             "column_count": len(df.columns),
-            "columns": col_meta,
+            "columns": profile_dataframe(df),
         }
-        (session_dir / "column_metadata.json").write_text(
-            json.dumps(combined, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        doc_store.put(session.session_id, "COLUMN_META", combined)
     except Exception:
         pass
 
+    audit_log.log_event(
+        session.session_id, user.id, "upload",
+        {"filename": filename, "source": source, "rows": len(df), "cols": len(df.columns)},
+    )
     return UploadOnlyResponse(
         session_id=session.session_id,
         filename=session.filename,
@@ -117,10 +135,73 @@ async def upload_for_profiling(
     )
 
 
+@router.post("/upload", response_model=UploadOnlyResponse)
+async def upload_for_profiling(
+    file: UploadFile = File(...), source: str = Form(...), user: User = Depends(get_user)
+) -> UploadOnlyResponse:
+    """Upload a file, create a session, and profile its columns.
+    Does NOT run the audit agent -- call /{session_id}/run for that.
+    (Legacy multipart path, used in local development; deployed clients use
+    /upload-url + /upload/complete to send the file straight to S3.)"""
+    filename = file.filename or "upload"
+    _check_filename(filename)
+    raw = await file.read()
+    return await run_in_threadpool(_create_session_from_bytes, raw, filename, source, user, None)
+
+
+class UploadUrlRequest(BaseModel):
+    source: str
+    filename: str
+    size: int | None = None
+
+
+class UploadCompleteRequest(BaseModel):
+    key: str
+    source: str
+    filename: str
+
+
+@router.post("/upload-url")
+def create_upload_url(body: UploadUrlRequest, user: User = Depends(get_user)):
+    """Where the browser should send the file: {"mode": "direct"} (use the multipart
+    /upload) locally, or a presigned S3 PUT URL when AWS storage is configured."""
+    if not config.USE_AWS_STORAGE:
+        return {"mode": "direct"}
+    _check_filename(body.filename)
+    if body.size is not None:
+        _check_size(body.size)
+    key = f"uploads/{user.id}/{uuid.uuid4().hex}/{_sanitize_filename(body.filename)}"
+    url = aws_clients.s3().generate_presigned_url(
+        "put_object",
+        Params={"Bucket": config.S3_BUCKET, "Key": key},
+        ExpiresIn=config.PRESIGN_EXPIRY_SECONDS,
+    )
+    return {"mode": "s3", "url": url, "key": key, "expires_in": config.PRESIGN_EXPIRY_SECONDS}
+
+
+@router.post("/upload/complete", response_model=UploadOnlyResponse)
+def complete_upload(body: UploadCompleteRequest, user: User = Depends(get_user)) -> UploadOnlyResponse:
+    """Called after the browser PUT the file to S3: read it back and create the session."""
+    if not config.USE_AWS_STORAGE:
+        raise HTTPException(status_code=400, detail="Direct-to-S3 upload is not enabled.")
+    if not body.key.startswith(f"uploads/{user.id}/") or ".." in body.key:
+        raise HTTPException(status_code=403, detail="Not allowed to use this upload key.")
+    _check_filename(body.filename)
+
+    s3 = aws_clients.s3()
+    try:
+        head = s3.head_object(Bucket=config.S3_BUCKET, Key=body.key)
+    except Exception as exc:  # noqa: BLE001 - botocore ClientError (404) and friends
+        raise HTTPException(status_code=404, detail="Uploaded file not found.") from exc
+    _check_size(int(head.get("ContentLength", 0)))
+    raw = s3.get_object(Bucket=config.S3_BUCKET, Key=body.key)["Body"].read()
+    return _create_session_from_bytes(raw, body.filename, body.source, user, body.key)
+
+
 @router.post("/{session_id}/run", response_model=AuditReport)
-def run_audit_agent(session_id: str) -> AuditReport:
+def run_audit_agent(session_id: str, user: User = Depends(get_user)) -> AuditReport:
     """Run the audit agent on an already-uploaded session."""
-    session = _get_session_or_404(session_id)
+    session = load_owned_session(session_id, user)
 
     if session.issues:
         return _to_report(session)
@@ -132,7 +213,7 @@ def run_audit_agent(session_id: str) -> AuditReport:
         )
     except Exception as exc:
         raise HTTPException(
-            status_code=502, detail=f"Data audit agent (Groq) is unavailable: {exc}"
+            status_code=502, detail=f"Data audit agent (Bedrock) is unavailable: {exc}"
         ) from exc
 
     for issue in issues:
@@ -142,17 +223,26 @@ def run_audit_agent(session_id: str) -> AuditReport:
 
     session.issues = issues
     session.summary = summary
+    store.save(session)
+    audit_log.log_event(session_id, user.id, "audit_run", {"issues": len(issues)})
     return _to_report(session)
 
 
 @router.get("/{session_id}", response_model=AuditReport)
-def get_audit(session_id: str) -> AuditReport:
-    return _to_report(_get_session_or_404(session_id))
+def get_audit(session_id: str, user: User = Depends(get_user)) -> AuditReport:
+    return _to_report(load_owned_session(session_id, user))
+
+
+@router.get("/{session_id}/log")
+def get_session_log(session_id: str, user: User = Depends(get_user)):
+    """The audit trail (uploads, decisions, edits, ...) recorded for this session."""
+    load_owned_session(session_id, user)
+    return audit_log.events_for_session(session_id)
 
 
 @router.post("/{session_id}/resolve", response_model=AuditReport)
-def resolve_issue(session_id: str, body: ResolveRequest) -> AuditReport:
-    session = _get_session_or_404(session_id)
+def resolve_issue(session_id: str, body: ResolveRequest, user: User = Depends(get_user)) -> AuditReport:
+    session = load_owned_session(session_id, user)
     issue = _get_issue_or_404(session, body.issue_id)
     if issue.status == "resolved":
         raise HTTPException(status_code=400, detail="This issue has already been resolved.")
@@ -184,12 +274,18 @@ def resolve_issue(session_id: str, body: ResolveRequest) -> AuditReport:
     issue.status = "resolved"
     issue.resolution = resolution_text
 
+    store.save(session)
+    audit_log.log_event(
+        session_id, user.id, "decision",
+        {"issue_id": issue.id, "decision_id": body.decision_id,
+         "selected_items": list(body.selected_items) if body.selected_items else None},
+    )
     return _to_report(session)
 
 
 @router.post("/{session_id}/issues/{issue_id}/revert", response_model=AuditReport)
-def revert_issue(session_id: str, issue_id: str) -> AuditReport:
-    session = _get_session_or_404(session_id)
+def revert_issue(session_id: str, issue_id: str, user: User = Depends(get_user)) -> AuditReport:
+    session = load_owned_session(session_id, user)
     issue = _get_issue_or_404(session, issue_id)
     if issue.status != "resolved":
         raise HTTPException(status_code=400, detail="This issue has not been resolved yet.")
@@ -207,6 +303,8 @@ def revert_issue(session_id: str, issue_id: str) -> AuditReport:
         _rebuild_audit_df(session)
         _reset_downstream(session)
 
+    store.save(session)
+    audit_log.log_event(session_id, user.id, "revert", {"issue_id": issue_id})
     return _to_report(session)
 
 
@@ -248,11 +346,11 @@ def _reset_downstream(session: AuditSession) -> None:
 
 
 @router.get("/{session_id}/download")
-def download_cleansed_file(session_id: str):
+def download_cleansed_file(session_id: str, user: User = Depends(get_user)):
     """Streams the session's CURRENT dataframe (post-audit, and post-feature-
     engineering once that's run) as an .xlsx attachment -- always whatever
     session.df is right now, never the original upload."""
-    session = _get_session_or_404(session_id)
+    session = load_owned_session(session_id, user)
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         session.df.to_excel(writer, index=False, sheet_name="Cleansed Data")
@@ -260,6 +358,7 @@ def download_cleansed_file(session_id: str):
 
     stem = session.filename.rsplit(".", 1)[0] if "." in session.filename else session.filename
     filename = f"{stem}_cleansed.xlsx"
+    audit_log.log_event(session_id, user.id, "download", {"kind": "cleansed", "filename": filename})
     return Response(
         content=buffer.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -268,12 +367,12 @@ def download_cleansed_file(session_id: str):
 
 
 @router.get("/{session_id}/outliers/download")
-def download_flagged_outliers(session_id: str):
+def download_flagged_outliers(session_id: str, user: User = Depends(get_user)):
     """Streams the CURRENTLY flagged duration + temperature outlier rows as a two-sheet
     .xlsx -- what the PM takes away to correct in SensiWatch before re-uploading."""
     from app.services.audit.outlier_detectors import build_outlier_export
 
-    session = _get_session_or_404(session_id)
+    session = load_owned_session(session_id, user)
     duration_df, temperature_df = build_outlier_export(session.df)
 
     buffer = io.BytesIO()
@@ -281,6 +380,7 @@ def download_flagged_outliers(session_id: str):
         duration_df.to_excel(writer, index=False, sheet_name="Duration Outliers")
         temperature_df.to_excel(writer, index=False, sheet_name="Temperature Outliers")
     buffer.seek(0)
+    audit_log.log_event(session_id, user.id, "download", {"kind": "flagged_outliers"})
 
     return Response(
         content=buffer.getvalue(),
@@ -290,10 +390,10 @@ def download_flagged_outliers(session_id: str):
 
 
 @router.get("/{session_id}/preview")
-def preview_data(session_id: str, rows: int = DEFAULT_PREVIEW_ROWS):
+def preview_data(session_id: str, rows: int = DEFAULT_PREVIEW_ROWS, user: User = Depends(get_user)):
     """Sample of the session's current dataframe for the HITL review view on
     the Features page -- reflects whatever has been resolved/engineered so far."""
-    session = _get_session_or_404(session_id)
+    session = load_owned_session(session_id, user)
     n = max(1, min(rows, MAX_PREVIEW_ROWS))
     sample = session.df.head(n)
     records = json.loads(sample.to_json(orient="records"))
@@ -310,12 +410,12 @@ MAX_ISSUE_ROWS = 2000
 
 
 @router.get("/{session_id}/issues/{issue_id}/rows")
-def get_issue_rows(session_id: str, issue_id: str, limit: int = MAX_ISSUE_ROWS):
+def get_issue_rows(session_id: str, issue_id: str, limit: int = MAX_ISSUE_ROWS, user: User = Depends(get_user)):
     """Every row currently matching this finding, with every column -- unlike
     the issue's own `sample` (capped to a handful of rows/columns for the
     inline card preview), this is the full table for the "view all rows"
     popup. Re-detects fresh against the current dataframe, same as resolve."""
-    session = _get_session_or_404(session_id)
+    session = load_owned_session(session_id, user)
     issue = _get_issue_or_404(session, issue_id)
     mask = data_audit.detect_mask_for_category(session.df, issue.category)
     matching = session.df[mask]
@@ -331,41 +431,14 @@ def get_issue_rows(session_id: str, issue_id: str, limit: int = MAX_ISSUE_ROWS):
     }
 
 
-def _write_enriched_column_metadata(session: AuditSession) -> None:
-    """Re-profiles the CURRENT session dataframe (post-audit, post-feature)
-    and writes it as a new column_metadata_with_features.json alongside the
-    original column_metadata.json -- so downstream stages (Analysis,
-    Planner re-runs, Report) have a single file describing every column,
-    old and newly agent-computed, without needing to reconstruct it
-    themselves. Best-effort: a profiling failure shouldn't block the
-    feature response the PM is waiting on."""
-    try:
-        session_dir = _SESSIONS_DIR / session.session_id
-        session_dir.mkdir(parents=True, exist_ok=True)
-        combined = {
-            "session_id": session.session_id,
-            "filename": session.filename,
-            "source": session.source,
-            "row_count": len(session.df),
-            "column_count": len(session.df.columns),
-            "columns": profile_dataframe(session.df),
-            "feature_columns": [f.output_column for f in session.features],
-        }
-        (session_dir / "column_metadata_with_features.json").write_text(
-            json.dumps(combined, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
-    except Exception:
-        pass
-
-
 @router.post("/{session_id}/features", response_model=FeatureReport)
-def apply_features(session_id: str) -> FeatureReport:
+def apply_features(session_id: str, user: User = Depends(get_user)) -> FeatureReport:
     """Computes every APPROVED entry in this session's feature repository
     (predefined + planner-approved + custom + accepted AI suggestions --
     see feature_repository.py) via the Feature Agent. No Customer KPI
     Profile is required: if none was uploaded, predefined simply
     contributes zero entries and the other three sources still run."""
-    session = _get_session_or_404(session_id)
+    session = load_owned_session(session_id, user)
     # Always recompute from the pre-feature snapshot (not the possibly
     # already-engineered `session.df`) so accepting another suggestion
     # re-runs the full entry set cleanly instead of layering feature
@@ -379,20 +452,23 @@ def apply_features(session_id: str) -> FeatureReport:
     session.features = results
     session.feature_skipped_notes = skipped_notes
 
-    _write_enriched_column_metadata(session)
-
+    store.save(session)
+    audit_log.log_event(
+        session_id, user.id, "apply_features",
+        {"features": [f.output_column for f in results], "rows": len(new_df), "cols": len(new_df.columns)},
+    )
     return _to_feature_report(session)
 
 
 @router.get("/{session_id}/features", response_model=FeatureReport)
-def get_features(session_id: str) -> FeatureReport:
-    return _to_feature_report(_get_session_or_404(session_id))
+def get_features(session_id: str, user: User = Depends(get_user)) -> FeatureReport:
+    return _to_feature_report(load_owned_session(session_id, user))
 
 
 @router.get("/{session_id}/outliers")
-def get_outliers(session_id: str):
+def get_outliers(session_id: str, user: User = Depends(get_user)):
     from app.services.audit.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
-    session = _get_session_or_404(session_id)
+    session = load_owned_session(session_id, user)
     return {
         "session_id": session_id,
         "segment": detect_segment_outliers(session.df),
@@ -401,7 +477,7 @@ def get_outliers(session_id: str):
 
 
 @router.patch("/{session_id}/trip-value")
-def edit_trip_value(session_id: str, body: UpdateTripValueRequest):
+def edit_trip_value(session_id: str, body: UpdateTripValueRequest, user: User = Depends(get_user)):
     """A PM's inline correction to one trip's Segment Length (Days) or Mean
     Value_Temperature (see the Segment/Temperature Outlier tabs' editable
     columns) -- writes straight into session.df, then returns freshly
@@ -414,7 +490,7 @@ def edit_trip_value(session_id: str, body: UpdateTripValueRequest):
     instead of being silently overwritten the next time features recompute."""
     from app.services.audit.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
     from app.services.audit.outlier_detectors import update_trip_value as apply_trip_value_edit
-    session = _get_session_or_404(session_id)
+    session = load_owned_session(session_id, user)
     try:
         session.df = apply_trip_value_edit(session.df, body.serial, body.trip_id, body.field, body.value)
     except ValueError as exc:
@@ -437,6 +513,11 @@ def edit_trip_value(session_id: str, body: UpdateTripValueRequest):
             # snapshot to begin with). The primary edit above already
             # succeeded, so don't fail the whole request over this one.
             pass
+    store.save(session)
+    audit_log.log_event(
+        session_id, user.id, "edit",
+        {"serial": body.serial, "trip_id": body.trip_id, "field": body.field, "value": body.value},
+    )
     return {
         "session_id": session_id,
         "segment": detect_segment_outliers(session.df),

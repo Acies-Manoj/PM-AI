@@ -1,0 +1,54 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3Data",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::pmai-data-<ACCOUNT_ID>-eu-north-1/*"
+    },
+    {
+      "Sid": "S3List",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::pmai-data-<ACCOUNT_ID>-eu-north-1"
+    },
+    {
+      "Sid": "DynamoDB",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:BatchWriteItem"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:eu-north-1:<ACCOUNT_ID>:table/pmai-*",
+        "arn:aws:dynamodb:eu-north-1:<ACCOUNT_ID>:table/pmai-*/index/*"
+      ]
+    },
+    {
+      "Sid": "BedrockInvoke",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": [
+        "arn:aws:bedrock:*::foundation-model/*",
+        "arn:aws:bedrock:*:<ACCOUNT_ID>:inference-profile/*"
+      ]
+    },
+    {
+      "Sid": "BedrockPrompts",
+      "Effect": "Allow",
+      "Action": "bedrock:GetPrompt",
+      "Resource": "arn:aws:bedrock:eu-north-1:<ACCOUNT_ID>:prompt/*"
+    },
+    {
+      "Sid": "Translate",
+      "Effect": "Allow",
+      "Action": "translate:TranslateText",
+      "Resource": "*"
+    }
+  ]
+}

@@ -1,12 +1,12 @@
 """Turns the deterministic highlights from overall_analysis.py into a short
-executive-summary narrative via Groq. This is the only LLM call in the
+executive-summary narrative via Bedrock. This is the only LLM call in the
 overall-analysis pipeline -- it never computes a number itself, only
 explains the highlights already given, same guardrail as audit_agent.py.
-There is no fallback: if Groq isn't configured or the call fails, that's a
+There is no fallback: if Bedrock isn't configured or the call fails, that's a
 real error and the caller surfaces it as one.
 """
 from app.schemas import OverallHighlight
-from app.services.common.groq_client import chat_text
+from app.services.common import llm
 
 SYSTEM_PROMPT = """You are a program manager writing the executive-summary \
 paragraph for a recurring cold-chain shipment report. You've been given a \
@@ -32,5 +32,7 @@ def _highlights_block(highlights: list[OverallHighlight]) -> str:
 def generate_narrative(row_count: int, highlights: list[OverallHighlight]) -> str:
     block = _highlights_block(highlights)
     user_prompt = f"Rows analyzed: {row_count}\n\n{block}\n\nWrite the executive summary now."
-    text = chat_text(SYSTEM_PROMPT, user_prompt, call_name="overall_analysis_agent")
+    text = llm.chat_text(
+        llm.system_prompt("overall_analysis_agent", SYSTEM_PROMPT), user_prompt, call_name="overall_analysis_agent",
+    )
     return text.strip()

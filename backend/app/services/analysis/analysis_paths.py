@@ -24,13 +24,13 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from app.config import DATA_DIR, DRILLDOWN_AGENT_MODEL, model_for
+from app.config import DRILLDOWN_AGENT_MODEL, model_for
 from app.services.analysis import analysis_agent, analysis_drilldown as dd, analysis_semantics
 from app.services.analysis.analysis_columns import as_labels
+from app.services.common import doc_store
 
 logger = logging.getLogger(__name__)
 
-_SESSIONS_DIR = DATA_DIR / "sessions"
 MAX_PICK = 6
 MAX_STEP_COLUMNS = 3
 # The most charts one path may create in total (splitting multiplies them), so it stays quick to run and read.
@@ -80,24 +80,19 @@ _SYSTEM = (
 # --- storage -----------------------------------------------------------------------------------------
 
 
-def _path_file(session_id: str):
-    return _SESSIONS_DIR / session_id / "drilldown_paths.json"
+PATHS_DOC = "PATHS"
 
 
 def load(session_id: str) -> list[dict]:
-    p = _path_file(session_id)
-    if not p.exists():
-        return []
     try:
-        return json.loads(p.read_text(encoding="utf-8")).get("paths", [])
+        data = doc_store.get(session_id, PATHS_DOC)
+        return data.get("paths", []) if isinstance(data, dict) else []
     except Exception:
         return []
 
 
 def save(session_id: str, paths: list[dict]) -> None:
-    p = _path_file(session_id)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"session_id": session_id, "paths": paths}, ensure_ascii=False, indent=1), encoding="utf-8")
+    doc_store.put(session_id, PATHS_DOC, {"session_id": session_id, "paths": paths})
 
 
 def get(session_id: str, path_id: str) -> dict | None:
@@ -105,9 +100,12 @@ def get(session_id: str, path_id: str) -> dict | None:
 
 
 def upsert(session_id: str, path: dict) -> None:
-    paths = [p for p in load(session_id) if p["path_id"] != path["path_id"]]
-    paths.append(path)
-    save(session_id, paths)
+    def _merge(data):
+        paths = [p for p in ((data or {}).get("paths") or []) if p["path_id"] != path["path_id"]]
+        paths.append(path)
+        return {"session_id": session_id, "paths": paths}
+
+    doc_store.update(session_id, PATHS_DOC, _merge, default={})
 
 
 def new_path_id() -> str:

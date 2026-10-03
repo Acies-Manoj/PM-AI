@@ -1,25 +1,28 @@
 """Tracks input/output token usage for every LLM call in the pipeline.
 
-Each of the 8 LLM calls (Planner, Feature Agent think/write/validate,
-Feature Suggester, Audit Agent, Pivot Suggester, Overall Analysis) calls
-`record()` right after getting its OpenRouter response, tagged with a
-`call_name` identifying which of the 8 calls it was. Usage is kept in memory
-for the life of the process and also appended to a JSONL file so it survives
-restarts and can be reviewed later.
+Each LLM call (Planner, Feature Agent think/write/validate, Feature Suggester, Audit Agent,
+Analysis Agent, Overall Analysis, ...) goes through `services/common/llm.py`, which calls
+`record()` right after getting its Bedrock response, tagged with a `call_name` identifying
+which call it was.
+
+Usage is kept in memory for the life of the process (it backs `GET /token-usage` quickly)
+AND written to the audit log as an `llm_call` event, attributed to the current user/session
+(see request_context). The audit log is what survives restarts and is shared by every ECS
+task, so per-task in-memory totals are only a convenience.
 """
 from __future__ import annotations
 
-import json
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
+from typing import Any
 
-from app.config import BACKEND_DIR
-
-LOG_PATH = BACKEND_DIR / "data" / "token_usage.jsonl"
+from app.services.common import audit_log, request_context
 
 _lock = threading.Lock()
 _records: list["TokenUsage"] = []
+# The in-memory list is only a cache; keep it from growing without bound.
+_MAX_RECORDS = 5000
 
 
 @dataclass
@@ -30,44 +33,62 @@ class TokenUsage:
     output_tokens: int
     total_tokens: int
     timestamp: float
+    user_id: str | None = None
 
 
-def record(call_name: str, model: str, response) -> TokenUsage | None:
-    """Extract usage from an OpenAI-compatible chat completion response and
-    store it. Returns None if the response carries no usage block (some
-    OpenRouter models omit it) -- callers should not fail on that."""
-    usage = getattr(response, "usage", None)
-    if usage is None:
+def record(call_name: str, model: str, usage: dict[str, Any] | None) -> TokenUsage | None:
+    """Store the usage block of a Bedrock Converse response (`inputTokens`, `outputTokens`,
+    `totalTokens`). Returns None if there is no usage block -- callers must not fail on that."""
+    if not usage:
         return None
 
+    input_tokens = int(usage.get("inputTokens", 0) or 0)
+    output_tokens = int(usage.get("outputTokens", 0) or 0)
+    total = int(usage.get("totalTokens", 0) or 0) or (input_tokens + output_tokens)
+    user_id = request_context.current_user_id.get()
     entry = TokenUsage(
         call_name=call_name,
         model=model,
-        input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-        output_tokens=getattr(usage, "completion_tokens", 0) or 0,
-        total_tokens=getattr(usage, "total_tokens", 0) or 0,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total,
         timestamp=time.time(),
+        user_id=user_id,
     )
 
     with _lock:
         _records.append(entry)
-        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(asdict(entry)) + "\n")
+        if len(_records) > _MAX_RECORDS:
+            del _records[: len(_records) - _MAX_RECORDS]
 
+    audit_log.log_event(
+        request_context.current_session_id.get(),
+        user_id,
+        "llm_call",
+        {
+            "call_name": call_name,
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total,
+        },
+    )
     return entry
 
 
-def get_records() -> list[TokenUsage]:
+def get_records(user_id: str | None = None) -> list[TokenUsage]:
     with _lock:
-        return list(_records)
+        records = list(_records)
+    if user_id is not None:
+        records = [r for r in records if r.user_id == user_id]
+    return records
 
 
-def summary_by_call() -> dict[str, dict[str, int]]:
-    """Aggregate call count and token totals per call_name, across the
-    life of this process."""
+def summary_by_call(user_id: str | None = None) -> dict[str, dict[str, int]]:
+    """Aggregate call count and token totals per call_name since this process started
+    (optionally only for one user)."""
     totals: dict[str, dict[str, int]] = {}
-    for r in get_records():
+    for r in get_records(user_id):
         bucket = totals.setdefault(
             r.call_name,
             {"calls": 0, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0},

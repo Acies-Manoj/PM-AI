@@ -15,7 +15,7 @@ will be computed and how it will be drawn.
 
 Steps 2 and 3 only depend on step 1, so they run in parallel. Everything
 the LLMs return is validated here; nothing is trusted as-is. Runs on
-OpenRouter via analysis_agent.call_llm.
+Bedrock via analysis_agent.call_llm.
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ import pandas as pd
 
 from app.services.analysis import analysis_agent, analysis_charts, analysis_filters, analysis_templates
 from app.services.analysis.analysis_templates import TemplateError
+from app.services.common import request_context
 
 logger = logging.getLogger(__name__)
 
@@ -183,8 +184,8 @@ def draft_analysis(name: str, description: str, df: pd.DataFrame, formula: str |
         plan = analysis_agent.think(entry, columns_block)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        template_future = pool.submit(match_template, name, description, plan, columns_block, df)
-        chart_future = pool.submit(suggest_chart_and_filters, name, description, plan, columns_block, df)
+        template_future = pool.submit(request_context.wrap(match_template), name, description, plan, columns_block, df)
+        chart_future = pool.submit(request_context.wrap(suggest_chart_and_filters), name, description, plan, columns_block, df)
         match, chart_result = template_future.result(), chart_future.result()
 
     notes: list[str] = []

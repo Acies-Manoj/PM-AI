@@ -6,7 +6,7 @@ plain-English `calculation_intent` by the time it reaches here (see
 analysis_repository.py), so this agent has one job regardless of source:
 THINK about how to aggregate it, WRITE the pandas code, pick a CHART TYPE
 for the resulting table (unless one was already chosen), INTERPRET the
-chart, and SUGGEST follow-up drilldowns -- all via OpenRouter, never Groq.
+chart, and SUGGEST follow-up drilldowns -- all via Amazon Bedrock.
 The chart itself is drawn from the real table by analysis_charts.py, never
 by the LLM. Generated code is never trusted at face value: it runs through
 the same AST-sandboxed executor as the Feature Agent (ai_code_executor.py).
@@ -23,13 +23,12 @@ import re
 from dataclasses import dataclass, field
 
 import pandas as pd
-from openai import OpenAI
 
-from app.config import ANALYSIS_AGENT_MODEL, DEFAULT_MAX_TOKENS, DRILLDOWN_AGENT_MODEL, OPENROUTER_API_KEY, model_for
+from app.config import ANALYSIS_AGENT_MODEL, DRILLDOWN_AGENT_MODEL, model_for
 from app.services.analysis import analysis_charts
 from app.services.analysis.analysis_charts import ChartRoles
 from app.services.analysis.analysis_columns import column_catalog
-from app.services.common import ai_code_executor, token_usage
+from app.services.common import ai_code_executor, llm
 
 MAX_ATTEMPTS = 3
 # A pre-supplied formula (Planner-generated and PM-approved, or a predefined
@@ -38,68 +37,24 @@ MAX_ATTEMPTS = 3
 FIXED_FORMULA_MAX_ATTEMPTS = 3
 
 _ALLOWED_CHART_TYPES = set(analysis_charts.CHART_TYPES)
-# Upper bound for one OpenRouter call -- the SDK default (10 minutes) would
-# leave a Run click hanging far past any useful point. The SDK itself
-# retries transient connection/5xx errors.
-REQUEST_TIMEOUT_S = 60.0
-
-_client: OpenAI | None = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        if not OPENROUTER_API_KEY:
-            raise RuntimeError(
-                "OPENROUTER_API_KEY is not set. Add your key from https://openrouter.ai/keys to backend/.env"
-            )
-        _client = OpenAI(
-            api_key=OPENROUTER_API_KEY,
-            base_url="https://openrouter.ai/api/v1",
-            timeout=REQUEST_TIMEOUT_S,
-            max_retries=2,
-        )
-    return _client
 
 
 def call_llm(
     system_prompt: str, user_prompt: str, *, json_mode: bool, temperature: float, call_name: str,
     model: str | None = None, max_tokens: int | None = None,
 ) -> str:
-    client = _get_client()
+    """One Bedrock call. The system prompt is passed through Prompt Management by
+    `call_name` (in-source text is the fallback). Bedrock has no JSON mode, so the
+    prompts themselves demand JSON; `json_mode` just selects the fence-stripping path."""
     model = model or model_for(call_name, ANALYSIS_AGENT_MODEL)
-    kwargs: dict = {
-        "model": model,
-        "temperature": temperature,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-    kwargs["max_tokens"] = max_tokens or DEFAULT_MAX_TOKENS
-    if json_mode:
-        try:
-            response = client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
-        except Exception:
-            response = client.chat.completions.create(**kwargs)
-    else:
-        response = client.chat.completions.create(**kwargs)
-    token_usage.record(call_name, model, response)
-    return response.choices[0].message.content or ""
+    system = llm.system_prompt(call_name, system_prompt)
+    fn = llm.chat_json if json_mode else llm.chat_text
+    return fn(system, user_prompt, model=model, temperature=temperature, call_name=call_name, max_tokens=max_tokens)
 
 
-def _strip_code_fence(text: str) -> str:
-    stripped = text.strip()
-    match = re.match(r"^```(?:python)?\s*\n(.*)\n```$", stripped, re.DOTALL)
-    return match.group(1) if match else stripped
-
-
-def strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("```", 2)[-1] if stripped.count("```") >= 2 else stripped
-        stripped = stripped[4:].strip() if stripped.lower().startswith("json") else stripped
-    return stripped
+# Kept importable: other modules use these names.
+_strip_code_fence = strip_code_fence = llm.strip_code_fence
+strip_json_fence = llm.strip_json_fence
 
 
 def describe_columns(df: pd.DataFrame) -> str:

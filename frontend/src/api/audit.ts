@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { apiFetch } from "./apiFetch";
 
 export type Severity = "info" | "warning" | "critical";
 export type IssueStatus = "pending" | "resolved";
@@ -446,13 +446,42 @@ export interface UploadOnlyResponse {
   columns: string[];
 }
 
-/** Upload a file and profile its columns. Does NOT run the audit agent. */
+/** Upload a file and profile its columns. Does NOT run the audit agent.
+ * Uses a direct-to-S3 presigned upload when the backend offers one, else the
+ * legacy multipart upload. */
 export async function uploadOnly(source: string, file: File): Promise<UploadOnlyResponse> {
+  const urlResponse = await apiFetch("/api/audit/upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source, filename: file.name, size: file.size }),
+  });
+  if (!urlResponse.ok) {
+    throw new AuditApiError(await parseErrorDetail(urlResponse));
+  }
+  const target: { mode: "direct" | "s3"; url?: string; key?: string } = await urlResponse.json();
+
+  if (target.mode === "s3" && target.url && target.key) {
+    // Plain fetch: the presigned URL carries its own auth; no bearer header to S3.
+    const put = await fetch(target.url, { method: "PUT", body: file });
+    if (!put.ok) {
+      throw new AuditApiError(`Upload to storage failed (${put.status}).`);
+    }
+    const complete = await apiFetch("/api/audit/upload/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: target.key, source, filename: file.name }),
+    });
+    if (!complete.ok) {
+      throw new AuditApiError(await parseErrorDetail(complete));
+    }
+    return complete.json();
+  }
+
   const formData = new FormData();
   formData.append("file", file);
   formData.append("source", source);
 
-  const response = await fetch(`${API_BASE_URL}/api/audit/upload`, {
+  const response = await apiFetch("/api/audit/upload", {
     method: "POST",
     body: formData,
   });
@@ -465,7 +494,7 @@ export async function uploadOnly(source: string, file: File): Promise<UploadOnly
 
 /** Run the audit agent on an already-uploaded session. */
 export async function runAudit(sessionId: string): Promise<AuditReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/run`, {
+  const response = await apiFetch(`/api/audit/${sessionId}/run`, {
     method: "POST",
   });
 
@@ -481,7 +510,7 @@ export async function resolveIssue(
   decisionId: string,
   selectedItems?: string[]
 ): Promise<AuditReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/resolve`, {
+  const response = await apiFetch(`/api/audit/${sessionId}/resolve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ issue_id: issueId, decision_id: decisionId, selected_items: selectedItems ?? null }),
@@ -494,7 +523,7 @@ export async function resolveIssue(
 }
 
 export async function revertIssue(sessionId: string, issueId: string): Promise<AuditReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/issues/${issueId}/revert`, {
+  const response = await apiFetch(`/api/audit/${sessionId}/issues/${issueId}/revert`, {
     method: "POST",
   });
 
@@ -505,17 +534,17 @@ export async function revertIssue(sessionId: string, issueId: string): Promise<A
 }
 
 export function downloadCleansedFileUrl(sessionId: string): string {
-  return `${API_BASE_URL}/api/audit/${sessionId}/download`;
+  return `/api/audit/${sessionId}/download`;
 }
 
 export function downloadFlaggedOutliersUrl(sessionId: string): string {
-  return `${API_BASE_URL}/api/audit/${sessionId}/outliers/download`;
+  return `/api/audit/${sessionId}/outliers/download`;
 }
 
 export async function applyFeatures(sessionId: string): Promise<FeatureReport> {
   // Computes every APPROVED entry in this session's feature repository --
   // no body needed, the repository already holds everything server-side.
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/features`, { method: "POST" });
+  const response = await apiFetch(`/api/audit/${sessionId}/features`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -523,7 +552,7 @@ export async function applyFeatures(sessionId: string): Promise<FeatureReport> {
 }
 
 export async function fetchFeatureReport(sessionId: string): Promise<FeatureReport> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/features`);
+  const response = await apiFetch(`/api/audit/${sessionId}/features`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -531,7 +560,7 @@ export async function fetchFeatureReport(sessionId: string): Promise<FeatureRepo
 }
 
 export async function fetchFeatureRepository(sessionId: string): Promise<FeatureRepositoryResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}`);
+  const response = await apiFetch(`/api/features/repository/${sessionId}`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -566,7 +595,7 @@ export async function draftCustomFeature(
   sessionId: string,
   body: { name: string; description: string; input_columns?: string[]; formula?: string }
 ): Promise<FeatureDraft> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/draft`, {
+  const response = await apiFetch(`/api/features/repository/${sessionId}/draft`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -589,7 +618,7 @@ export interface AddCustomFeatureBody {
 }
 
 export async function addCustomFeature(sessionId: string, body: AddCustomFeatureBody): Promise<FeatureRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/custom`, {
+  const response = await apiFetch(`/api/features/repository/${sessionId}/custom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -601,7 +630,7 @@ export async function addCustomFeature(sessionId: string, body: AddCustomFeature
 }
 
 export async function suggestFeatureEntries(sessionId: string): Promise<SuggestFeatureEntriesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/suggest`, { method: "POST" });
+  const response = await apiFetch(`/api/features/repository/${sessionId}/suggest`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -609,7 +638,7 @@ export async function suggestFeatureEntries(sessionId: string): Promise<SuggestF
 }
 
 export async function acceptFeatureEntry(sessionId: string, entryId: string): Promise<FeatureRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
+  const response = await apiFetch(`/api/features/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -617,7 +646,7 @@ export async function acceptFeatureEntry(sessionId: string, entryId: string): Pr
 }
 
 export async function rejectFeatureEntry(sessionId: string, entryId: string): Promise<FeatureRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
+  const response = await apiFetch(`/api/features/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -633,7 +662,7 @@ export interface IssueRowsResponse {
 }
 
 export async function fetchIssueRows(sessionId: string, issueId: string): Promise<IssueRowsResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/issues/${issueId}/rows`);
+  const response = await apiFetch(`/api/audit/${sessionId}/issues/${issueId}/rows`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -641,7 +670,7 @@ export async function fetchIssueRows(sessionId: string, issueId: string): Promis
 }
 
 export async function fetchPreview(sessionId: string, rows = 20): Promise<DataPreview> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/preview?rows=${rows}`);
+  const response = await apiFetch(`/api/audit/${sessionId}/preview?rows=${rows}`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -652,7 +681,7 @@ export async function uploadFeatureDefinitions(file: File): Promise<FeatureDefin
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${API_BASE_URL}/api/features/definitions`, {
+  const response = await apiFetch(`/api/features/definitions`, {
     method: "POST",
     body: formData,
   });
@@ -667,7 +696,7 @@ export async function uploadAnalysisDefinitions(file: File): Promise<AnalysisDef
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${API_BASE_URL}/api/analysis/definitions`, {
+  const response = await apiFetch(`/api/analysis/definitions`, {
     method: "POST",
     body: formData,
   });
@@ -679,7 +708,7 @@ export async function uploadAnalysisDefinitions(file: File): Promise<AnalysisDef
 }
 
 export async function fetchAnalysisRepository(sessionId: string): Promise<AnalysisRepositoryResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}`);
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -690,7 +719,7 @@ export async function draftAnalysis(
   sessionId: string,
   body: { name: string; description: string; formula?: string }
 ): Promise<AnalysisDraft> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/draft`, {
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}/draft`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -716,7 +745,7 @@ export interface AddCustomAnalysisBody {
 }
 
 export async function addCustomAnalysis(sessionId: string, body: AddCustomAnalysisBody): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/custom`, {
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}/custom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -728,7 +757,7 @@ export async function addCustomAnalysis(sessionId: string, body: AddCustomAnalys
 }
 
 export async function suggestAnalysisEntries(sessionId: string): Promise<SuggestAnalysisEntriesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/suggest`, { method: "POST" });
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}/suggest`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -736,7 +765,7 @@ export async function suggestAnalysisEntries(sessionId: string): Promise<Suggest
 }
 
 export async function acceptAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -744,7 +773,7 @@ export async function acceptAnalysisEntry(sessionId: string, entryId: string): P
 }
 
 export async function rejectAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -752,7 +781,7 @@ export async function rejectAnalysisEntry(sessionId: string, entryId: string): P
 }
 
 export async function runAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/run`, { method: "POST" });
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}/entries/${entryId}/run`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -766,7 +795,7 @@ export async function filterAnalysisEntry(
   entryId: string,
   filters: AnalysisFilterSelections
 ): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/filter`, {
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}/entries/${entryId}/filter`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filters }),
@@ -778,8 +807,8 @@ export async function filterAnalysisEntry(
 }
 
 export async function triggerDrilldown(sessionId: string, entryId: string, drilldownId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/${drilldownId}/trigger`,
+  const response = await apiFetch(
+    `/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/${drilldownId}/trigger`,
     { method: "POST" }
   );
   if (!response.ok) {
@@ -789,8 +818,8 @@ export async function triggerDrilldown(sessionId: string, entryId: string, drill
 }
 
 export async function suggestMoreDrilldowns(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/suggest-more`,
+  const response = await apiFetch(
+    `/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/suggest-more`,
     { method: "POST" }
   );
   if (!response.ok) {
@@ -800,7 +829,7 @@ export async function suggestMoreDrilldowns(sessionId: string, entryId: string):
 }
 
 async function postDrilldown<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${path}`, {
+  const response = await apiFetch(`/api/analysis/repository/${path}`, {
     method: "POST",
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -812,7 +841,7 @@ async function postDrilldown<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export async function fetchDrilldownPaths(sessionId: string, entryId: string): Promise<DrilldownPath[]> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/paths`);
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}/entries/${entryId}/paths`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -836,7 +865,7 @@ export function rejectDrilldownPath(sessionId: string, pathId: string): Promise<
 /** What a guided drill-down from this analysis can look like (wide values,
  * default focus and top-N). No LLM. */
 export async function fetchDrilldownOptions(sessionId: string, entryId: string): Promise<DrilldownOptions> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldown/options`);
+  const response = await apiFetch(`/api/analysis/repository/${sessionId}/entries/${entryId}/drilldown/options`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -869,8 +898,8 @@ export function refreshDrilldown(sessionId: string, entryId: string): Promise<An
 /** Approves one required feature of an analysis (it still has to be
  * computed on the Features step before the analysis can run). */
 export async function selectRequiredFeature(sessionId: string, entryId: string, featureId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/required-features/select`,
+  const response = await apiFetch(
+    `/api/analysis/repository/${sessionId}/entries/${entryId}/required-features/select`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feature_id: featureId }) }
   );
   if (!response.ok) {
@@ -880,7 +909,7 @@ export async function selectRequiredFeature(sessionId: string, entryId: string, 
 }
 
 export async function fetchOverallAnalysis(sessionId: string): Promise<OverallAnalysisReport> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/${sessionId}/overall`);
+  const response = await apiFetch(`/api/analysis/${sessionId}/overall`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -912,7 +941,7 @@ export function downloadReportUrl(
   }
   if (language !== "en") params.set("language", language);
   const query = params.toString();
-  return `${API_BASE_URL}/api/report/${sessionId}/download${query ? `?${query}` : ""}`;
+  return `/api/report/${sessionId}/download${query ? `?${query}` : ""}`;
 }
 
 // The Report page's own closing-slide bullet points -- synthesized from the
@@ -928,7 +957,7 @@ export interface ReportSummaryResponse {
 export async function fetchReportSummary(sessionId: string, entryIds: string[]): Promise<ReportSummaryResponse> {
   const params = new URLSearchParams();
   for (const id of entryIds) params.append("entry_id", id);
-  const response = await fetch(`${API_BASE_URL}/api/report/${sessionId}/summary?${params.toString()}`);
+  const response = await apiFetch(`/api/report/${sessionId}/summary?${params.toString()}`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -955,7 +984,7 @@ export async function fetchReportTranslations(
   const params = new URLSearchParams();
   params.set("language", language);
   for (const id of entryIds) params.append("entry_id", id);
-  const response = await fetch(`${API_BASE_URL}/api/report/${sessionId}/translations?${params.toString()}`);
+  const response = await apiFetch(`/api/report/${sessionId}/translations?${params.toString()}`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -972,7 +1001,7 @@ export interface SupportedLanguagesResponse {
 }
 
 export async function fetchSupportedReportLanguages(): Promise<SupportedLanguagesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/report/languages`);
+  const response = await apiFetch(`/api/report/languages`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -1054,7 +1083,7 @@ export interface OutliersResponse {
 }
 
 export async function fetchOutliers(sessionId: string): Promise<OutliersResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/outliers`);
+  const response = await apiFetch(`/api/audit/${sessionId}/outliers`);
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }
@@ -1068,7 +1097,7 @@ export async function updateTripValue(
   sessionId: string,
   params: { serial: string; tripId: string | number; field: "segment_days" | "mean_temp"; value: number }
 ): Promise<OutliersResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/trip-value`, {
+  const response = await apiFetch(`/api/audit/${sessionId}/trip-value`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

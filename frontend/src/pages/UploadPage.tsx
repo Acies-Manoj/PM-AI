@@ -15,7 +15,7 @@ import { finalizeBrief } from "../api/brief";
 import { hasBrief } from "../context/plannerSkipped";
 import "./UploadPage.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { API_BASE_URL } from "../api/apiFetch";
 
 type ErrorsState = Partial<Record<UploadSlotId, string>>;
 

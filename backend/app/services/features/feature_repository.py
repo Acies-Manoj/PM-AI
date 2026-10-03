@@ -16,32 +16,16 @@ anywhere else). Every read rebuilds the full merged view.
 """
 from __future__ import annotations
 
-import json
 import re
 import uuid
-from pathlib import Path
-from typing import Any
 
-from app.config import DATA_DIR
+from app.services.common import doc_store
 from app.services.features import feature_definitions_store as defs_store
-
-_SESSIONS_DIR = DATA_DIR / "sessions"
 
 _PERSISTED_SOURCES = {"custom", "ai_suggested"}
 
-
-def _session_dir(session_id: str) -> Path:
-    d = _SESSIONS_DIR / session_id
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def _repo_path(session_id: str) -> Path:
-    return _session_dir(session_id) / "feature_repository.json"
-
-
-def _planner_output_path(session_id: str) -> Path:
-    return _session_dir(session_id) / "planner_output.json"
+REPO_DOC = "FEATURE_REPO"
+PLANNER_OUTPUT_DOC = "PLANNER_OUTPUT"
 
 
 # --- describing a structured spec in plain English -----------------------
@@ -93,11 +77,13 @@ def _describe_predefined(spec: dict) -> tuple[str, list[str]]:
     return (spec.get("description", ""), [])
 
 
-def _predefined_entries() -> list[dict]:
-    if defs_store.store.definitions is None:
+def _predefined_entries(session_id: str) -> list[dict]:
+    """Entries derived from the session owner's Customer KPI Profile."""
+    _filename, definitions = defs_store.load_for_session(session_id)
+    if definitions is None:
         return []
     entries = []
-    for spec in defs_store.store.definitions:
+    for spec in definitions:
         intent, cols = _describe_predefined(spec)
         # Every structured type (lookup/ratio/duration_hours/extract_month/
         # custom_formula) is already a fully unambiguous computation -- that
@@ -120,21 +106,20 @@ def _predefined_entries() -> list[dict]:
     return entries
 
 
-def predefined_catalog_lines() -> list[str]:
+def predefined_catalog_lines(session_id: str) -> list[str]:
     """Plain-text lines describing every predefined feature -- fed into the
     Planner's "existing catalog" context so it recommends things NOT already
     covered by the uploaded KPI Profile, the same way it already avoids
     re-suggesting its own past recommendations."""
-    return [f"[feature] {e['name']}: {e['description']}" for e in _predefined_entries()]
+    return [f"[feature] {e['name']}: {e['description']}" for e in _predefined_entries(session_id)]
 
 
 def _planner_entries(session_id: str) -> list[dict]:
-    path = _planner_output_path(session_id)
-    if not path.exists():
-        return []
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = doc_store.get(session_id, PLANNER_OUTPUT_DOC)
     except Exception:
+        return []
+    if not isinstance(data, dict):
         return []
     entries = []
     for i, rec in enumerate(data.get("recommendations", [])):
@@ -171,32 +156,22 @@ def _planner_entries(session_id: str) -> list[dict]:
 
 
 def _load_persisted(session_id: str) -> list[dict]:
-    path = _repo_path(session_id)
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    data = doc_store.get(session_id, REPO_DOC)
+    if not isinstance(data, dict):
         return []
     return [e for e in data.get("entries", []) if e.get("source") in _PERSISTED_SOURCES]
 
 
 def _save(session_id: str, entries: list[dict]) -> None:
-    _repo_path(session_id).write_text(
-        json.dumps({"session_id": session_id, "entries": entries}, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    doc_store.put(session_id, REPO_DOC, {"session_id": session_id, "entries": entries})
 
 
 def get_repository(session_id: str) -> list[dict]:
     """The full merged view: freshly-derived predefined + planner entries,
     plus whatever custom/ai_suggested entries this session has persisted.
-    Also re-saves the merge so the file on disk always reflects the latest
-    KPI Profile / planner decisions, not just what existed when they were
-    first added."""
-    entries = _predefined_entries() + _planner_entries(session_id) + _load_persisted(session_id)
-    _save(session_id, entries)
-    return entries
+    Read-only: the stored document is only rewritten when an entry is added
+    or changes status (the derived entries are recomputed on every read)."""
+    return _predefined_entries(session_id) + _planner_entries(session_id) + _load_persisted(session_id)
 
 
 def get_approved_entries(session_id: str) -> list[dict]:
@@ -225,7 +200,7 @@ def add_custom_entry(
     }
     persisted = _load_persisted(session_id)
     persisted.append(entry)
-    entries = _predefined_entries() + _planner_entries(session_id) + persisted
+    entries = _predefined_entries(session_id) + _planner_entries(session_id) + persisted
     _save(session_id, entries)
     return entry
 
@@ -258,7 +233,7 @@ def add_ai_suggested_entries(session_id: str, suggestions: list[dict]) -> list[d
         new_entries.append(entry)
         existing_cols.add(entry["output_column"])
 
-    entries = _predefined_entries() + _planner_entries(session_id) + persisted
+    entries = _predefined_entries(session_id) + _planner_entries(session_id) + persisted
     _save(session_id, entries)
     return new_entries
 
@@ -273,6 +248,6 @@ def set_entry_status(session_id: str, entry_id: str, status: str) -> dict | None
             break
     if found is None:
         return None
-    entries = _predefined_entries() + _planner_entries(session_id) + persisted
+    entries = _predefined_entries(session_id) + _planner_entries(session_id) + persisted
     _save(session_id, entries)
     return found

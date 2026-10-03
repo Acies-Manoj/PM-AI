@@ -1,3 +1,4 @@
+import { downloadFile } from "../api/apiFetch";
 import ThinkingLoader from "../components/ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
@@ -239,7 +240,7 @@ export default function AuditPage({
                             hideSummaryTab
                           />
                           <div className="audit-page__row-actions">
-                            <a className="audit-page__download-link" href={downloadCleansedFileUrl(report.session_id)} download>
+                            <a className="audit-page__download-link" href="#" onClick={(e) => { e.preventDefault(); downloadFile(downloadCleansedFileUrl(report.session_id), "cleansed.xlsx").catch((err) => window.alert(err.message)); }}>
                               <IconDownload />
                               Download cleansed file
                             </a>
@@ -270,7 +271,7 @@ export default function AuditPage({
                         onTabChange={(tab) => setActiveTabs((prev) => ({ ...prev, [id]: tab }))}
                       />
                       <div className="audit-page__row-actions">
-                        <a className="audit-page__download-link" href={downloadCleansedFileUrl(report.session_id)} download>
+                        <a className="audit-page__download-link" href="#" onClick={(e) => { e.preventDefault(); downloadFile(downloadCleansedFileUrl(report.session_id), "cleansed.xlsx").catch((err) => window.alert(err.message)); }}>
                           <IconDownload />
                           Download cleansed file
                         </a>

@@ -1,21 +1,16 @@
-"""Planner Agent service: reads metadata.json + column_metadata.json for a session
-and calls OpenRouter to produce structured feature/analysis recommendations."""
+"""Planner Agent service: reads the BRIEF_META + COLUMN_META documents for a session
+and calls Bedrock to produce structured feature/analysis recommendations."""
 from __future__ import annotations
 
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
-from openai import OpenAI
-
-from app.config import DATA_DIR, OPENROUTER_API_KEY, PLANNER_AGENT_MODEL, model_for
+from app.config import PLANNER_AGENT_MODEL, model_for
 from app.services.analysis import analysis_agent
-from app.services.common import token_usage
+from app.services.common import doc_store, llm, request_context
 from app.services.features import feature_agent
 from app.services.planner import planner_dependencies
-
-_SESSIONS_DIR = DATA_DIR / "sessions"
 
 _SYSTEM_PROMPT = """\
 You are the Planner Agent for a cold-chain shipment analytics tool.
@@ -221,18 +216,13 @@ def _build_user_prompt(
 
 def suggest(session_id: str, additional_context: str = "") -> dict:
     """Call the Planner LLM and return the structured recommendations dict."""
-    session_dir = _SESSIONS_DIR / session_id
+    col_data = doc_store.get(session_id, "COLUMN_META")
+    meta_data = doc_store.get(session_id, "BRIEF_META")
 
-    col_path = session_dir / "column_metadata.json"
-    meta_path = session_dir / "metadata.json"
-
-    if not col_path.exists():
-        raise FileNotFoundError(f"column_metadata.json not found for session {session_id}")
-    if not meta_path.exists():
-        raise FileNotFoundError(f"metadata.json not found for session {session_id}")
-
-    col_data = json.loads(col_path.read_text(encoding="utf-8"))
-    meta_data = json.loads(meta_path.read_text(encoding="utf-8"))
+    if col_data is None:
+        raise FileNotFoundError(f"COLUMN_META (column metadata) not found for session {session_id}")
+    if meta_data is None:
+        raise FileNotFoundError(f"BRIEF_META (brief metadata) not found for session {session_id}")
 
     brief_block = meta_data.get("client_brief", {})
     final_brief = (
@@ -255,38 +245,17 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     context = planner_dependencies.build_context(session_id)
     catalog_block = planner_dependencies.render_context(context)
 
-    if not OPENROUTER_API_KEY:
-        raise RuntimeError(
-            "OPENROUTER_API_KEY is not set. Add it to your .env file."
-        )
-
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
-    )
-
     user_prompt = _build_user_prompt(final_brief, columns_block, catalog_block, additional_context)
 
-    response = client.chat.completions.create(
+    raw = llm.chat_json(
+        llm.system_prompt("planner_agent", _SYSTEM_PROMPT),
+        user_prompt,
         model=model_for("planner_agent", PLANNER_AGENT_MODEL),
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
         temperature=0.2,
+        call_name="planner_agent",
         max_tokens=4096,
     )
-    token_usage.record("planner_agent", model_for("planner_agent", PLANNER_AGENT_MODEL), response)
-
-    raw = response.choices[0].message.content or ""
-
-    # Strip any accidental markdown fences
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```", 2)[-1] if raw.count("```") >= 2 else raw
-        raw = raw.lstrip("json").strip()
-        if raw.endswith("```"):
-            raw = raw[: raw.rfind("```")].strip()
+    raw = llm.strip_json_fence(raw)
 
     result = json.loads(raw)
     if "recommendations" not in result or not isinstance(result["recommendations"], list):
@@ -313,9 +282,7 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     _sync_feature_columns(result["recommendations"], set(col_data.get("columns", {})))
 
     # Cache the raw planner output so /save can attach decisions to it
-    (session_dir / "planner_suggest.json").write_text(
-        json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    doc_store.put(session_id, "PLANNER_SUGGEST", result)
 
     return result
 
@@ -505,7 +472,10 @@ def _attach_generated_formulas(recommendations: list[dict], columns_block: str) 
 
     jobs = [(_run_feature, rec) for rec in feature_targets] + [(_run_analysis, rec) for rec in analysis_targets]
     with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
-        list(pool.map(lambda job: job[0](job[1]), jobs))
+        # one wrapped callable PER job: a copied Context can only be entered by one thread at a time
+        futures = [pool.submit(request_context.wrap(fn), rec) for fn, rec in jobs]
+        for f in futures:
+            f.result()
     _order_features_by_dependency(recommendations)
     _inherit_required_for(recommendations)
 

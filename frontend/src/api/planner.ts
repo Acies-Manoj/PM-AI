@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { apiFetch } from "./apiFetch";
 
 export type PlannerRecommendationType = "feature" | "analysis" | "feature_and_analysis" | "configuration";
 export type PlannerRecommendationStatus = "existing" | "create_new" | "needs_clarification";
@@ -93,7 +93,7 @@ export async function fetchSuggestions(
   sessionId: string,
   additionalContext = ""
 ): Promise<PlannerSuggestResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/planner/suggest`, {
+  const res = await apiFetch(`/api/planner/suggest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId, additional_context: additionalContext }),
@@ -109,7 +109,7 @@ export async function saveDecisions(
   sessionId: string,
   decisions: PmDecision[]
 ): Promise<SaveDecisionsResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/planner/save`, {
+  const res = await apiFetch(`/api/planner/save`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId, decisions }),

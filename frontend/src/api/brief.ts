@@ -2,7 +2,7 @@ import type { BriefState } from "../components/ClientBriefInput";
 import type { FilesState } from "../App";
 import { UPLOAD_SLOTS } from "../constants/uploadSlots";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { apiFetch } from "./apiFetch";
 
 export interface SessionMetadata {
   session_id: string;
@@ -33,7 +33,7 @@ export async function finalizeBrief(
     files: fileEntries,
   };
 
-  const res = await fetch(`${API_BASE_URL}/api/brief/finalize`, {
+  const res = await apiFetch(`/api/brief/finalize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

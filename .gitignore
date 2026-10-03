@@ -20,6 +20,8 @@ frontend/dist-ssr/
 # Generated output (not source)
 backend/generated_reports/
 backend/data/sessions/
+backend/data/profiles/
+backend/data/audit_log.jsonl
 
 # Editor/OS
 .vscode/*

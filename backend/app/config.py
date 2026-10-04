@@ -40,8 +40,6 @@ DRILLDOWN_AGENT_MODEL = os.getenv("DRILLDOWN_AGENT_MODEL", "anthropic/claude-son
 PLANNER_AGENT_MODEL = os.getenv("PLANNER_AGENT_MODEL", "anthropic/claude-sonnet-4")
 
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY", "")
-# Free tier uses api-free.deepl.com; Pro uses api.deepl.com
-DEEPL_API_URL = os.getenv("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")
 
 CORS_ORIGINS = [
     "http://localhost:5173",

@@ -115,7 +115,8 @@ def _to_number(value) -> float:
     return float(value) if _is_numeric(value) else 0.0
 
 
-# -- chart styling -----------------------------------------------------------
+# -- chart styling (module-level so a future template-based builder can
+# reuse the same look) -------------------------------------------------------
 
 def style_axes_grid(category_axis, value_axis):
     """Left value-axis line + bottom category-axis line, both made visible,

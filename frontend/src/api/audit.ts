@@ -138,20 +138,6 @@ export type AnalysisSource = "predefined" | "planner" | "custom" | "ai_suggested
 export type AnalysisEntryStatus = "approved" | "pending" | "rejected";
 export type AnalysisRunStatus = "not_run" | "done" | "error";
 
-export interface AnalysisDrilldownSuggestion {
-  id: string;
-  name: string;
-  description: string;
-  calculation_intent: string;
-  // Set when this drilldown reuses the parent analysis's own chart type
-  // (e.g. "combo") for visual consistency down a drill chain -- carried
-  // through to the child entry's own chart pick server-side, not read
-  // directly by the frontend.
-  chart_type_hint: string | null;
-  triggered: boolean;
-  child_entry_id: string | null;
-}
-
 export interface AnalysisChartSpec {
   data: unknown[];
   layout: Record<string, unknown>;
@@ -392,7 +378,6 @@ export interface AnalysisRepositoryEntry {
   chart_spec: AnalysisChartSpec | null;
   interpretation: string | null;
   error: string | null;
-  drilldown_suggestions: AnalysisDrilldownSuggestion[];
   computation_mode: AnalysisComputationMode | null;
   notes: string[];
   // Set only on a filtered view returned by filterAnalysisEntry.
@@ -777,28 +762,6 @@ export async function filterAnalysisEntry(
   return response.json();
 }
 
-export async function triggerDrilldown(sessionId: string, entryId: string, drilldownId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/${drilldownId}/trigger`,
-    { method: "POST" }
-  );
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function suggestMoreDrilldowns(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/drilldowns/suggest-more`,
-    { method: "POST" }
-  );
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
 async function postDrilldown<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${path}`, {
     method: "POST",
@@ -854,11 +817,6 @@ export function proposeDrilldowns(sessionId: string, entryId: string, more = fal
 /** The PM's Confirm: builds and runs the next chain level. */
 export function confirmDrilldown(sessionId: string, entryId: string, body: ConfirmDrilldownBody): Promise<AnalysisRepositoryEntry> {
   return postDrilldown(`${sessionId}/entries/${entryId}/drilldown`, body);
-}
-
-/** Changes a level's Top/Bottom and N; levels below it become stale. */
-export function rerankDrilldown(sessionId: string, entryId: string, rank: DrilldownRank): Promise<AnalysisRepositoryEntry> {
-  return postDrilldown(`${sessionId}/entries/${entryId}/drilldown/rank`, rank);
 }
 
 /** Rebuilds a stale level from its parent's current groups. */

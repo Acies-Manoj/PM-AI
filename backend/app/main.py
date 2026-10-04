@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.config import CORS_ORIGINS, DATA_DIR
+from app.config import DATA_DIR
 from app.routers import analysis, analysis_paths, audit, brief, features, planner, report
 from app.services.common import token_usage
 

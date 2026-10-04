@@ -219,40 +219,6 @@ class SuggestFeatureEntriesResponse(BaseModel):
     entries: list[FeatureRepositoryEntry]
 
 
-class FeatureSuggestion(BaseModel):
-    """One AI-proposed feature -- shaped so the frontend can echo it straight
-    back as an `extra_features` entry when the user accepts it, no
-    reshaping needed. Only the fields relevant to `type` are populated."""
-    id: str
-    name: str
-    description: str
-    output_column: str
-    type: str
-    formula: str
-    summary: str
-    start_column: str | None = None
-    end_column: str | None = None
-    unit: str | None = None
-    numerator_columns: list[str] | None = None
-    denominator_columns: list[str] | None = None
-    source_columns: list[str] | None = None
-    calculation_prompt: str | None = None
-    generated_code: str | None = None
-
-
-class SuggestFeaturesRequest(BaseModel):
-    session_id: str
-
-
-class FeatureSuggestionsResponse(BaseModel):
-    session_id: str
-    suggestions: list[FeatureSuggestion]
-
-
-class ApplyFeaturesRequest(BaseModel):
-    extra_features: list[dict[str, Any]] = []
-
-
 AnalysisSource = Literal["predefined", "planner", "custom", "ai_suggested", "drilldown"]
 AnalysisEntryStatus = Literal["approved", "pending", "rejected"]
 AnalysisRunStatus = Literal["not_run", "done", "error"]

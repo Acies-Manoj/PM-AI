@@ -9,7 +9,6 @@ load_dotenv()
 APP_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = APP_DIR.parent
 DATA_DIR = BACKEND_DIR / "data"
-RAW_DATA_DIR = DATA_DIR / "raw"
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # Low-cost default: google/gemini-2.5-flash-lite (very cheap, fast).

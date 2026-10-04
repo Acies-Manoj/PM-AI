@@ -1,6 +1,5 @@
 import io
 import json
-from pathlib import Path
 
 import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile

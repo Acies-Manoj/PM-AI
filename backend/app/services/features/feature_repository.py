@@ -20,7 +20,6 @@ import json
 import re
 import uuid
 from pathlib import Path
-from typing import Any
 
 from app.config import DATA_DIR
 from app.services.features import feature_definitions_store as defs_store
@@ -120,12 +119,6 @@ def _predefined_entries() -> list[dict]:
     return entries
 
 
-def predefined_catalog_lines() -> list[str]:
-    """Plain-text lines describing every predefined feature -- fed into the
-    Planner's "existing catalog" context so it recommends things NOT already
-    covered by the uploaded KPI Profile, the same way it already avoids
-    re-suggesting its own past recommendations."""
-    return [f"[feature] {e['name']}: {e['description']}" for e in _predefined_entries()]
 
 
 def _planner_entries(session_id: str) -> list[dict]:

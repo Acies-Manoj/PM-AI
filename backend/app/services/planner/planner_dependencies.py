@@ -244,16 +244,3 @@ def normalize(recs: list[dict], ctx: dict) -> list[dict]:
     return flat
 
 
-def dependency_index(recs: list[dict]) -> dict[int, list[int]]:
-    """analysis rec index -> indexes of the feature recs it needs created."""
-    by_slug = {slug(r["name"]): i for i, r in enumerate(recs) if r.get("type") in ("feature", "feature_and_analysis")}
-    out: dict[int, list[int]] = {}
-    for i, rec in enumerate(recs):
-        if rec.get("type") not in ("analysis", "feature_and_analysis"):
-            continue
-        idx = [by_slug[slug(d["feature_name"])] for d in rec.get("feature_dependencies") or []
-               if d.get("action") == "create_new" and slug(d["feature_name"]) in by_slug]
-        if rec.get("type") == "feature_and_analysis" and not idx:
-            idx = [i]
-        out[i] = idx
-    return out

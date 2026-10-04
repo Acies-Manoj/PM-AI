@@ -85,11 +85,6 @@ def _profile_feature_refs(raw) -> list[dict]:
     return refs
 
 
-def predefined_catalog_lines() -> list[str]:
-    """Plain-text lines describing every predefined analysis -- fed into the
-    Planner's "existing catalog" context so it recommends things NOT already
-    covered by the uploaded Analysis Profile."""
-    return [f"[analysis] {e['name']}: {e['description']}" for e in _predefined_entries()]
 
 
 def _planner_entries(session_id: str) -> list[dict]:

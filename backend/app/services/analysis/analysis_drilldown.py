@@ -14,7 +14,6 @@ runs, filters and re-ranks through the ordinary analysis engine.
 from __future__ import annotations
 
 import re
-import uuid
 
 import pandas as pd
 
@@ -202,10 +201,6 @@ def level_name(dimension: str | list[str], rank: dict, focus_label: str, metric:
     return f"{focus_label}: {word} {rank.get('n', 3)} {dims} by {by}{extra}"
 
 
-def new_chain_id() -> str:
-    return f"chain_{uuid.uuid4().hex[:8]}"
-
-
 def descendants(entries: list[dict], entry_id: str) -> list[dict]:
     """Every entry below `entry_id` in the chain, nearest first."""
     out: list[dict] = []
@@ -219,19 +214,3 @@ def descendants(entries: list[dict], entry_id: str) -> list[dict]:
     return out
 
 
-def chain_numbers(entries: list[dict]) -> dict[str, str]:
-    """Report slide numbers per entry id: roots keep their position (1, 2..),
-    drill-downs hang under their parent (2.1, 2.2, 2.1.1)."""
-    by_parent: dict[str | None, list[dict]] = {}
-    for e in entries:
-        by_parent.setdefault(e.get("parent_id") if e.get("chain") else None, []).append(e)
-    numbers: dict[str, str] = {}
-
-    def walk(parent_id: str | None, prefix: str) -> None:
-        for i, e in enumerate(by_parent.get(parent_id, []), start=1):
-            label = f"{prefix}.{i}" if prefix else str(i)
-            numbers[e["id"]] = label
-            walk(e["id"], label)
-
-    walk(None, "")
-    return numbers

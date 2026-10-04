@@ -23,12 +23,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.schemas import AuditIssue, IssueOption, OutlierChart
+from app.schemas import AuditIssue, IssueOption
 from app.services.audit.anomaly_detection import SENSOR_TYPE_COL
 
 HIGH_NULL_THRESHOLD_PCT = 50.0
 OUTLIER_IQR_MULTIPLIER = 3.0
-MEASUREMENT_COL_NAMES = {"Mean Value", "Min Value", "Max Value", "Standard Deviation"}
 
 # Never offered as a droppable "constant value" column, even when every row
 # shares one value -- a single-sensor-type export (e.g. Temperature-only)
@@ -76,16 +75,6 @@ def _sample(df: pd.DataFrame, mask: pd.Series, n: int = SAMPLE_ROWS) -> list[dic
 
 def _new_id() -> str:
     return uuid.uuid4().hex[:10]
-
-
-def _is_measurement_col(name: str) -> bool:
-    if name in MEASUREMENT_COL_NAMES:
-        return True
-    if re.search(r"(hours|days)\s*\)?\s*$", name, re.I):
-        return True
-    if "segment length" in name.lower():
-        return True
-    return False
 
 
 def detect_id_column(df: pd.DataFrame) -> str | None:
@@ -175,10 +164,6 @@ def detect_range_violations(df: pd.DataFrame) -> tuple[pd.Series, list[str]]:
     return mask, notes
 
 
-def _measurement_columns(df: pd.DataFrame) -> list[str]:
-    return [c for c in df.columns if _is_measurement_col(c) and pd.api.types.is_numeric_dtype(df[c])]
-
-
 def _iqr_bounds(series: pd.Series) -> tuple[float, float, float, float] | None:
     """(q1, q3, lower, upper) for IQR-based outlier detection, or None if the
     series has no data or zero IQR (nothing to distinguish as an outlier)."""
@@ -201,44 +186,6 @@ def detect_outlier_mask_for_column(df: pd.DataFrame, col: str) -> pd.Series:
         return pd.Series(False, index=df.index)
     _, _, lower, upper = bounds
     return (df[col] < lower) | (df[col] > upper)
-
-
-def build_outlier_chart(df: pd.DataFrame, col: str) -> OutlierChart | None:
-    """Box-plot data for `col`: quartiles, the 3x-IQR fence the detector used,
-    and the actual value of every row that fence flagged. This is the
-    purpose-built chart for an IQR-based outlier finding -- a histogram
-    buries the handful of outlier bars under the one dominant "normal" bin."""
-    series = df[col].dropna()
-    bounds = _iqr_bounds(series)
-    if bounds is None:
-        return None
-    q1, q3, lower, upper = bounds
-    values = series.astype(float)
-    outlier_values = sorted(values[(values < lower) | (values > upper)].tolist())
-    if not outlier_values:
-        return None
-    return OutlierChart(
-        column=col,
-        min=float(values.min()),
-        max=float(values.max()),
-        q1=q1,
-        median=float(values.median()),
-        q3=q3,
-        lower_bound=lower,
-        upper_bound=upper,
-        outlier_values=outlier_values,
-    )
-
-
-def detect_outlier_columns(df: pd.DataFrame) -> list[tuple[str, int]]:
-    """Which measurement columns have outliers, and how many rows each."""
-    per_col: list[tuple[str, int]] = []
-    for c in _measurement_columns(df):
-        mask = detect_outlier_mask_for_column(df, c)
-        if mask.any():
-            per_col.append((c, int(mask.sum())))
-    per_col.sort(key=lambda x: -x[1])
-    return per_col
 
 
 def detect_missing_identifier_columns(df: pd.DataFrame, id_col: str | None) -> list[tuple[str, int]]:
@@ -422,10 +369,9 @@ def run_audit(df: pd.DataFrame) -> list[AuditIssue]:
     # cover exactly this ground with domain-aware logic (per-lane Tukey
     # fences, per-trip configured limits) instead of a blind IQR pass over
     # every measurement column, so keeping both just duplicated the finding.
-    # detect_outlier_columns/detect_outlier_mask_for_column/build_outlier_chart
-    # are kept for detect_mask_for_category/apply_decision's sake, in case an
-    # older session still has a statistical_outliers issue from before this
-    # change.
+    # detect_outlier_mask_for_column is kept for detect_mask_for_category/
+    # apply_decision's sake, in case an older session still has a
+    # statistical_outliers issue from before this change.
 
     id_col = detect_id_column(df)
     for col, n in detect_missing_identifier_columns(df, id_col):

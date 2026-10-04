@@ -16,6 +16,10 @@ import pandas as pd
 _IDENTIFIER_HINTS = re.compile(
     r"\b(id|code|key|number|no\.?|ref|uuid|trip)\b", re.IGNORECASE
 )
+_TIMESTAMP_HINTS = re.compile(
+    r"\b(date|time|at|on|cet|utc|timestamp|arrival|departure|created|updated)\b",
+    re.IGNORECASE,
+)
 _FLAG_HINTS = re.compile(
     r"\b(is_|has_|alarmed|flag|status|active|enabled|bool)\b", re.IGNORECASE
 )

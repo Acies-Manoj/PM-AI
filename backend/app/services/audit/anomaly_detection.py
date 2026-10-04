@@ -12,10 +12,23 @@ Two layers:
      non-conforming transport, high variability, severe heat/cold excursion
      magnitude, MKT confirmation, light-correlated excursion, missing
      product), each described inline below.
+
+`generate_rca` sits on top of both: given one already-flagged trip, it scores
+a fixed set of root-cause hypotheses (door-opening, equipment failure,
+sensor glitch, mislogged timestamp, compliance gap, ...) against which flags
+fired together, and returns the top N ranked by evidence weight.
+
+This is a standalone module -- no FastAPI/pydantic dependency -- so it can be
+run directly against the aggregated export:
+
+    python -m app.services.anomaly_detection "path/to/Merged_Temperature_Light.xlsx"
 """
 from __future__ import annotations
 
 import re
+import sys
+from collections import defaultdict
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -250,7 +263,7 @@ def compute_flags(df: pd.DataFrame, group_cols: tuple[str, ...] = GROUP_COLS, pe
 # rather than the one-row-per-trip, _Temperature/_Light-suffixed shape the
 # rest of this module expects (see the module docstring). These two
 # functions detect that shape and reshape it into the expected one, so
-# the rest of this module can be reused unchanged either way.
+# `run_anomaly_detection` below can be reused unchanged either way.
 
 SENSOR_TYPE_COL = "Sensor Type"
 _TEMPERATURE_METRIC_COLS = [
@@ -299,3 +312,178 @@ def widen_by_sensor_type(df: pd.DataFrame, serial_col: str, trip_col: str) -> pd
             wide[col] = wide[col].where(wide[col].notna(), wide[dup])
             wide = wide.drop(columns=[dup])
     return wide
+
+
+def run_anomaly_detection(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalizes headers, then runs both layers and returns the input
+    frame with the duration-outlier columns and all flag_* columns appended."""
+    df = _normalize_columns(df)
+    duration = compute_lane_duration_outliers(df)
+    flags = compute_flags(df)
+    return pd.concat([df, duration, flags], axis=1)
+
+
+# -----------------------------------------------------------------------
+# 3. Root-cause hypothesis layer
+# -----------------------------------------------------------------------
+
+THERMAL_FLAG_COLUMNS = [
+    "flag_1_too_warm_avg",
+    "flag_2_too_cold_avg",
+    "flag_3_non_conforming_transport",
+    "flag_4_high_variability",
+    "flag_5_severe_heat_excursion",
+    "flag_6_severe_cold_excursion",
+]
+
+
+@dataclass
+class RcaHypothesis:
+    hypothesis: str
+    score: int
+    confidence: str  # "High" | "Medium" | "Low"
+    rationale: list[str] = field(default_factory=list)
+
+
+def _confidence_band(score: int) -> str:
+    if score >= 5:
+        return "High"
+    if score >= 3:
+        return "Medium"
+    return "Low"
+
+
+def generate_rca(trip: pd.Series, top_n: int = 5) -> list[RcaHypothesis]:
+    """Scores a fixed set of root-cause hypotheses against whichever flags
+    fired together on this one trip (a row from run_anomaly_detection's
+    output, or any dict-like with the same flag_*/duration_outlier* keys),
+    and returns the top `top_n` ranked by evidence weight. Each hypothesis
+    accumulates points from every matching rule below; a trip with no signal
+    at all still gets the baseline "likely benign variability" hypothesis so
+    the caller never sees an empty list."""
+
+    def flagged(col: str) -> bool:
+        return bool(trip.get(col, False))
+
+    candidates: dict[str, list[tuple[int, str]]] = defaultdict(list)
+
+    # -- Possible door-opening event -------------------------------------
+    if flagged("flag_8_light_correlated_excursion"):
+        candidates["Possible door-opening event"].append(
+            (3, "Max Value_Light is an outlier vs. this lane/product's peers (Flag 8)")
+        )
+        if flagged("flag_1_too_warm_avg") or flagged("flag_5_severe_heat_excursion"):
+            candidates["Possible door-opening event"].append(
+                (2, "The light excursion coincides with a heat excursion -- consistent with a brief warm-up during an opening")
+            )
+        if flagged("flag_4_high_variability"):
+            candidates["Possible door-opening event"].append(
+                (1, "Temperature variability is elevated, consistent with a short-lived event rather than sustained failure")
+            )
+
+    # -- Refrigeration / equipment failure (heat side) --------------------
+    if trip.get("flag_3_side") == "heat":
+        candidates["Refrigeration/equipment failure (sustained cooling loss)"].append(
+            (3, "Even the coldest reading of the trip (Min Value_Temperature) never returned into range (Flag 3, heat side)")
+        )
+    if flagged("flag_1_too_warm_avg"):
+        candidates["Refrigeration/equipment failure (sustained cooling loss)"].append(
+            (2, "Trip average temperature exceeds its own configured high limit (Flag 1)")
+        )
+    if flagged("flag_5_severe_heat_excursion"):
+        candidates["Refrigeration/equipment failure (sustained cooling loss)"].append(
+            (2, "Time-weighted heat excursion (Value Minutes Above High) is a severe outlier for this lane/product (Flag 5)")
+        )
+    if flagged("flag_7_mkt_confirmation"):
+        candidates["Refrigeration/equipment failure (sustained cooling loss)"].append(
+            (2, "Mean Kinetic Temperature also exceeds the high limit, confirming sustained (not momentary) exposure (Flag 7)")
+        )
+
+    # -- Overcooling / setpoint error (cold side) --------------------------
+    if trip.get("flag_3_side") == "cold":
+        candidates["Overcooling / setpoint error (cold side failure)"].append(
+            (3, "Even the warmest reading of the trip (Max Value_Temperature) never returned into range (Flag 3, cold side)")
+        )
+    if flagged("flag_2_too_cold_avg"):
+        candidates["Overcooling / setpoint error (cold side failure)"].append(
+            (2, "Trip average temperature is below its own configured low limit (Flag 2)")
+        )
+    if flagged("flag_6_severe_cold_excursion"):
+        candidates["Overcooling / setpoint error (cold side failure)"].append(
+            (2, "Time-weighted cold excursion (Value Minutes Below Low) is a severe outlier for this lane/product (Flag 6)")
+        )
+
+    # -- Sensor malfunction / erroneous reading ----------------------------
+    if trip.get("flag_3_side") == "heat" and not flagged("flag_7_mkt_confirmation"):
+        candidates["Sensor malfunction / erroneous reading"].append(
+            (2, "Instantaneous extremes claim the trip never returned in range, but the weighted MKT stat disagrees "
+                "(Flag 3 without Flag 7) -- a common sensor-noise signature")
+        )
+    if flagged("flag_4_high_variability") and not flagged("flag_1_too_warm_avg") and not flagged("flag_2_too_cold_avg"):
+        candidates["Sensor malfunction / erroneous reading"].append(
+            (2, "Variability is an outlier (Flag 4) even though the trip average stays within limits -- consistent with "
+                "spiky sensor noise rather than a real thermal event")
+        )
+
+    # -- Trip metadata error (mislogged departure/arrival timestamp) ------
+    if trip.get("duration_outlier"):
+        candidates["Trip metadata error (mislogged departure/arrival timestamp)"].append(
+            (3, f"Segment duration is a statistical outlier for its lane ({trip.get('duration_outlier_status', 'flagged')})")
+        )
+        if not any(flagged(c) for c in THERMAL_FLAG_COLUMNS):
+            candidates["Trip metadata error (mislogged departure/arrival timestamp)"].append(
+                (2, "No corroborating thermal excursion -- an isolated duration anomaly points to a logistics "
+                    "data-entry error rather than a cold-chain event")
+            )
+
+    # -- Compliance / metadata gap (non-thermal) ---------------------------
+    if flagged("flag_9_missing_product"):
+        candidates["Missing metadata (compliance gap, not a thermal event)"].append(
+            (3, "Product field is blank (Flag 9) -- a data-completeness issue, unrelated to sensor readings")
+        )
+
+    # -- Baseline fallback so the result is never empty --------------------
+    candidates["Likely benign variability (no strong root-cause signal)"].append(
+        (1, "Low-confidence baseline -- included when no stronger evidence is present")
+    )
+
+    results = [
+        RcaHypothesis(hypothesis=name, score=sum(w for w, _ in items), confidence=_confidence_band(sum(w for w, _ in items)),
+                      rationale=[reason for _, reason in items])
+        for name, items in candidates.items()
+    ]
+    results.sort(key=lambda r: r.score, reverse=True)
+    return results[:top_n]
+
+
+# -----------------------------------------------------------------------
+# CLI: run against a real aggregated export and print a summary
+# -----------------------------------------------------------------------
+
+if __name__ == "__main__":
+    path = sys.argv[1] if len(sys.argv) > 1 else str(
+        __import__("pathlib").Path.home() / "Downloads" / "Merged_Temperature_Light_2024-2025.xlsx"
+    )
+    print(f"Loading {path} ...")
+    raw = pd.read_excel(path)
+    result = run_anomaly_detection(raw)
+
+    print(f"\n{len(result)} trips scored.\n")
+    print("Flag counts:")
+    for col in FLAG_COLUMNS:
+        print(f"  {col}: {int(result[col].sum())}")
+    print(f"  duration_outlier: {int(result['duration_outlier'].sum())}")
+    print(f"  (Insufficient History lanes: {int((result['duration_outlier_status'] == 'Insufficient History').sum())} trips)")
+
+    result["_total_flags"] = result[FLAG_COLUMNS].sum(axis=1) + result["duration_outlier"].astype(int)
+    top_anomalies = result.sort_values("_total_flags", ascending=False).head(5)
+
+    print("\nTop 5 most-flagged trips -- RCA hypotheses:\n")
+    for _, trip in top_anomalies.iterrows():
+        label = f"Trip {trip.get('Trip ID', '?')} ({trip.get('Serial Number', '?')})"
+        print(f"=== {label} -- {int(trip['_total_flags'])} signal(s) ===")
+        for h in generate_rca(trip):
+            print(f"  [{h.confidence:>6} | score {h.score}] {h.hypothesis}")
+            for reason in h.rationale:
+                print(f"      - {reason}")
+        print()

@@ -1,0 +1,81 @@
+{
+    "family":  "pmai-backend",
+    "taskRoleArn":  "arn:aws:iam::372544872383:role/pmai-task-role",
+    "executionRoleArn":  "arn:aws:iam::372544872383:role/pmai-task-exec-role",
+    "networkMode":  "awsvpc",
+    "containerDefinitions":  [
+                                 {
+                                     "name":  "backend",
+                                     "image":  "372544872383.dkr.ecr.eu-north-1.amazonaws.com/pm-ai-backend:latest",
+                                     "cpu":  0,
+                                     "portMappings":  [
+                                                          {
+                                                              "containerPort":  8000,
+                                                              "hostPort":  8000,
+                                                              "protocol":  "tcp",
+                                                              "name":  "backend-8000-tcp",
+                                                              "appProtocol":  "http"
+                                                          }
+                                                      ],
+                                     "essential":  true,
+                                     "environment":  [
+                                                         {
+                                                             "name":  "CORS_ORIGINS",
+                                                             "value":  "https://enhanced-with-agents.d2at5cf1ml7ymy.amplifyapp.com"
+                                                         },
+                                                         {
+                                                             "name":  "TRANSLATE_REGION",
+                                                             "value":  "eu-north-1"
+                                                         }
+                                                     ],
+                                     "environmentFiles":  [
+
+                                                          ],
+                                     "mountPoints":  [
+
+                                                     ],
+                                     "volumesFrom":  [
+
+                                                     ],
+                                     "secrets":  [
+                                                     {
+                                                         "name":  "OPENROUTER_API_KEY",
+                                                         "valueFrom":  "arn:aws:secretsmanager:eu-north-1:372544872383:secret:pmai/openrouter-Ff30jK"
+                                                     }
+                                                 ],
+                                     "ulimits":  [
+
+                                                 ],
+                                     "logConfiguration":  {
+                                                              "logDriver":  "awslogs",
+                                                              "options":  {
+                                                                              "awslogs-group":  "/ecs/pmai-backend",
+                                                                              "awslogs-create-group":  "true",
+                                                                              "awslogs-region":  "eu-north-1",
+                                                                              "awslogs-stream-prefix":  "ecs"
+                                                                          },
+                                                              "secretOptions":  [
+
+                                                                                ]
+                                                          },
+                                     "systemControls":  [
+
+                                                        ]
+                                 }
+                             ],
+    "volumes":  [
+
+                ],
+    "placementConstraints":  [
+
+                             ],
+    "requiresCompatibilities":  [
+                                    "FARGATE"
+                                ],
+    "cpu":  "1024",
+    "memory":  "4096",
+    "runtimePlatform":  {
+                            "cpuArchitecture":  "X86_64",
+                            "operatingSystemFamily":  "LINUX"
+                        }
+}

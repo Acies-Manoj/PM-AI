@@ -1,5 +1,5 @@
 import { PlannerSkippedContext, hasBrief } from "./context/plannerSkipped";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import WelcomePage from "./pages/WelcomePage";
 import UploadPage from "./pages/UploadPage";
@@ -8,12 +8,13 @@ import AuditPage from "./pages/AuditPage";
 import FeaturesPage from "./pages/FeaturesPage";
 import AnalysisPage from "./pages/AnalysisPage";
 import ReportPage from "./pages/ReportPage";
-import { AuditApiError, resolveIssue, revertIssue, runAudit, uploadOnly } from "./api/audit";
+import { AuditApiError, resolveIssue, revertIssue, runAudit, sessionExists, uploadOnly } from "./api/audit";
 import type { AuditReport as AuditReportData } from "./api/audit";
 import { isAudited } from "./constants/uploadSlots";
 import type { UploadSlotId } from "./types/upload";
 import { EMPTY_BRIEF } from "./components/ClientBriefInput";
 import type { BriefState } from "./components/ClientBriefInput";
+import { loadFiles, loadSession, saveFiles, saveSession } from "./utils/sessionPersistence";
 
 export type FilesState = Record<UploadSlotId, File | null>;
 export type UploadedSessionIdsState = Partial<Record<UploadSlotId, string>>;
@@ -30,12 +31,19 @@ const EMPTY_FILES: FilesState = {
   analysisProfile: null,
 };
 
+// Restored once, synchronously, so the first render already has the PM's work back.
+const SAVED = loadSession();
+
 function App() {
   const [files, setFiles] = useState<FilesState>(EMPTY_FILES);
-  const [brief, setBrief] = useState<BriefState>(EMPTY_BRIEF);
-  const [uploadedSessionIds, setUploadedSessionIds] = useState<UploadedSessionIdsState>({});
-  const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
-  const [auditReports, setAuditReports] = useState<AuditReportsState>({});
+  const [brief, setBrief] = useState<BriefState>(SAVED.brief ?? EMPTY_BRIEF);
+  const [uploadedSessionIds, setUploadedSessionIds] = useState<UploadedSessionIdsState>(SAVED.uploadedSessionIds ?? {});
+  const [plannerSessionId, setPlannerSessionId] = useState<string | null>(SAVED.plannerSessionId ?? null);
+  const [auditReports, setAuditReports] = useState<AuditReportsState>(SAVED.auditReports ?? {});
+  // False until the uploaded files are back from IndexedDB and the saved backend
+  // sessions have been checked -- pages must not render against half-restored state.
+  const [restored, setRestored] = useState(false);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [auditLoading, setAuditLoading] = useState<AuditLoadingState>({});
   const [auditErrors, setAuditErrors] = useState<AuditErrorsState>({});
   const [resolvingIssueId, setResolvingIssueId] = useState<ResolvingState>({});
@@ -43,6 +51,50 @@ function App() {
   const [reuploadError, setReuploadError] = useState<string | null>(null);
 
   const plannerSkipped = !hasBrief(brief);
+
+  // Restore on load: bring the uploaded files back, then make sure the backend still
+  // has the sessions we remember. It keeps them in memory, so after a backend restart
+  // every saved session id is dead -- in that case drop the stale ids/reports (keeping
+  // the files and the brief) and say so, rather than leaving every page broken.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const storedFiles = await loadFiles();
+      if (cancelled) return;
+      setFiles((prev) => ({ ...prev, ...storedFiles }));
+
+      const ids = new Set<string>(
+        [...Object.values(SAVED.uploadedSessionIds ?? {}), ...Object.values(SAVED.auditReports ?? {}).map((r) => r?.session_id)].filter(
+          (id): id is string => Boolean(id)
+        )
+      );
+      const checks = await Promise.all([...ids].map((id) => sessionExists(id)));
+      if (cancelled) return;
+      if (checks.some((alive) => alive === false)) {
+        setUploadedSessionIds({});
+        setPlannerSessionId(null);
+        setAuditReports({});
+        setSessionNotice(
+          "The backend was restarted, so your earlier session is gone. Your files and brief are still here -- press Upload & Continue to start again."
+        );
+      }
+      setRestored(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Save on every change (after restoring, so the empty initial state can't overwrite it).
+  useEffect(() => {
+    if (!restored) return;
+    saveSession({ brief, uploadedSessionIds, plannerSessionId, auditReports });
+  }, [restored, brief, uploadedSessionIds, plannerSessionId, auditReports]);
+
+  useEffect(() => {
+    if (!restored) return;
+    void saveFiles(files);
+  }, [restored, files]);
 
   const handleUploadComplete = (sessionIds: UploadedSessionIdsState) => {
     setUploadedSessionIds(sessionIds);
@@ -153,9 +205,21 @@ function App() {
     }
   };
 
+  if (!restored) {
+    return <div className="app-restoring">Restoring your session…</div>;
+  }
+
   return (
     <BrowserRouter>
       <PlannerSkippedContext.Provider value={plannerSkipped}>
+      {sessionNotice && (
+        <div className="session-notice" role="status">
+          <span>{sessionNotice}</span>
+          <button type="button" onClick={() => setSessionNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
       <Routes>
         <Route path="/" element={<WelcomePage />} />
         <Route

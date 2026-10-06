@@ -8,42 +8,57 @@ from pptx.util import Inches, Pt
 
 from app.config import APP_DIR
 
-SLIDE_W = Inches(10)
+# 16:9 widescreen (13.333in x 7.5in) -- the same slide size as the PM's reference
+# deck, so a generated report opens and prints exactly like theirs.
+SLIDE_W = Inches(13.333)
 SLIDE_H = Inches(7.5)
-# The heading is plain left-aligned text on a white slide (no full-width
-# color band -- that reads as an AI-generated filler element), so this is
-# just the vertical space it and the caption underneath it need, not a
-# shape height.
-HEADER_HEIGHT = Inches(0.5)
-CHART_TOP = Inches(0.95)
 
-# Matches the Carrier PowerPoint template's own font list.
-FONT_BODY = "Franklin Gothic Medium Cond"  # captions, footer, summary copy -- 12pt
-FONT_TITLE = "Franklin Gothic Demi Cond"   # each slide's own heading only -- 24pt
+# Layout grid. Title top-left, a one/two-line explanation directly under it, the chart
+# full width below, a small caption under the chart, the footer along the bottom and the
+# logo top-right. Everything left/right aligns to MARGIN_X / CONTENT_W.
+MARGIN_X = Inches(0.67)
+CONTENT_W = Inches(12.0)                 # MARGIN_X .. MARGIN_X + CONTENT_W (12.67in)
+TITLE_TOP = Inches(0.32)
+TITLE_W = Inches(10.3)                   # stops short of the logo
+TITLE_H = Inches(0.7)
+EXPLAIN_TOP = Inches(1.12)               # one/two-line explanation under the title
+EXPLAIN_H = Inches(0.75)
+EXPLAIN_PT = 18
+BODY_TOP = Inches(2.0)                   # chart / table area
+BODY_BOTTOM = Inches(6.5)
+CAPTION_TOP = Inches(6.58)               # small grey caption under the chart (drill-down filter)
+CAPTION_H = Inches(0.3)
+FOOTER_Y = Inches(7.08)
+FOOTER_PT = 10
+FOOTER_HEX = "5C8AA5"                    # the steel-blue footer text of the Carrier footer sample
+EXPLAIN_MAX_CHARS = 190                  # about two lines at 18pt across 12in
+
+# Arial throughout, like the reference deck's theme.
+FONT_BODY = "Arial"
+FONT_TITLE = "Arial"
 PROGRAM_TITLE = "Program Manager AI — Cold Chain Analysis"
 PROPRIETARY_TEXT = "Proprietary and Confidential"
 
-SIDE_BAND_WIDTH = Inches(0.12)  # solid navy strip along the slide's right edge, matching the Carrier template
-
-# Dark-navy frame just inside the slide edges -- every content slide (Slide 2
-# onward) gets one; the cover/title slide doesn't.
-BORDER_MARGIN = Inches(0.08)
-BORDER_WEIGHT = Pt(1.75)
-
-# Every chart text element (legend/tick labels, data-label numbers, axis
-# titles) uses the same size -- one uniform 10pt (sz="1000" in the raw OOXML)
-# across the whole chart, by explicit standing choice, rather than the
-# previous staggered per-role sizes.
-CHART_FONT_PT = 10
+# Chart text: one size for ticks/legend/axis titles, a touch smaller for data labels.
+CHART_FONT_PT = 11
 CHART_DATA_LABEL_FONT_PT = 10
-CHART_AXIS_TITLE_FONT_PT = 10
+CHART_AXIS_TITLE_FONT_PT = 11
 
 ASSETS_DIR = APP_DIR / "assets"
 LOGO_PATH = ASSETS_DIR / "carrier-logo.png"
-LOGO_WIDTH = Inches(0.7)
-LOGO_HEIGHT = Inches(0.28)  # matches the logo's own aspect ratio (700x279)
-TITLE_LOGO_WIDTH = Inches(1.6)   # the title slide's own larger mark -- same 2.5:1 aspect ratio
-TITLE_LOGO_HEIGHT = Inches(0.64)
+# Top-right, right edge on the content margin (the reference deck's logo sits in the
+# same corner). The logo's own aspect ratio is 700x279 (2.5:1).
+LOGO_WIDTH = Inches(1.32)
+LOGO_HEIGHT = Inches(0.526)
+LOGO_LEFT = MARGIN_X + CONTENT_W - LOGO_WIDTH
+LOGO_TOP = Inches(0.4)
+TITLE_LOGO_WIDTH = Inches(2.0)
+TITLE_LOGO_HEIGHT = Inches(0.797)
+
+# Cover slide: built from this layout of assets/carrier-template.pptx (logo top-left, title
+# block, photo grid and three colour blocks on the right).
+COVER_LAYOUT_NAME = "Cover 1, example 1"
+COVER_TOP_BLOCK_HEX = "0A2EF5"          # the sample's blue top block (the template ships it black)
 
 # The permanent, built-in base for every report -- report_generator.build_report
 # falls back to this whenever no template was explicitly uploaded to
@@ -51,19 +66,20 @@ TITLE_LOGO_HEIGHT = Inches(0.64)
 # fresh session with nothing uploaded still gets this exact look.
 DEFAULT_TEMPLATE_PATH = ASSETS_DIR / "carrier-template.pptx"
 
-# Hex values below mirror frontend/src/styles/theme.css so the exported deck
-# reads as the same product as the web app.
-BAR_COLOR_HEX = "152C73"       # --carrier-blue
-LINE_COLOR_HEX = "1891F6"      # --carrier-light-blue
+# Brand colours. #010198 is the Carrier blue the client specified; the rest of the
+# palette is the reference deck's own accent set (light blue, slate, green, amber).
+BAR_COLOR_HEX = "010198"       # primary: titles, rule, first series
+LINE_COLOR_HEX = "1891F6"      # secondary: line series / second bar series
 WHITE_HEX = "FFFFFF"
-DARK_TEXT_HEX = "1B2333"       # --color-text
-MUTED_TEXT_HEX = "5B6478"      # --color-text-muted
-REFERENCE_LINE_COLOR_HEX = "C62828"  # --color-error
-GRIDLINE_COLOR_HEX = "D9DCE3"  # light, low-contrast -- gridlines/axis lines frame the plot without competing with the data
+DARK_TEXT_HEX = "1B2333"
+MUTED_TEXT_HEX = "5B6478"
+PANEL_HEX = "F3F5FA"           # commentary panel background
+REFERENCE_LINE_COLOR_HEX = "C62828"
+GRIDLINE_COLOR_HEX = "D9DCE3"  # light, low-contrast -- gridlines frame the plot without competing with the data
 
 # Categorical slots for a chart with more than one series -- ordered so
 # adjacent slots stay distinguishable.
-BAR_PALETTE_HEX = ["152C73", "1891F6", "6F42C1", "0F8B8D", "8A5A10", "1A8F5E"]
+BAR_PALETTE_HEX = ["010198", "1891F6", "617080", "61B549", "F6D009", "BAC0D0"]
 
 Y_AXIS_SHIPMENT_COUNT_LABEL = "Shipments"
 

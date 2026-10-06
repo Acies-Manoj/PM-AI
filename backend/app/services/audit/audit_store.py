@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 
 import pandas as pd
+from fastapi import HTTPException
 
 from app.schemas import AnalysisResult, AuditIssue, FeatureResult, OverallAnalysisReport
 
@@ -90,3 +91,10 @@ class AuditStore:
 
 
 store = AuditStore()
+
+
+def get_or_404(session_id: str) -> AuditSession:
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Audit session not found.")
+    return session

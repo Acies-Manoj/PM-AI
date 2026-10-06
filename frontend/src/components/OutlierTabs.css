@@ -171,40 +171,6 @@
   text-align: right;
 }
 
-/* ── Flat outlier table (Segment Outlier tab) ───────────────────────────── */
-
-.outlier-tab__table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: var(--radius-md, 10px);
-}
-
-.outlier-tab__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.outlier-tab__table th,
-.outlier-tab__table td {
-  text-align: left;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--color-border, #e2e8f0);
-  white-space: nowrap;
-}
-
-.outlier-tab__table th {
-  background: var(--color-surface-raised, #f8f9fa);
-  font-weight: 700;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--color-text-muted, #64748b);
-}
-
-.outlier-tab__table tbody tr:hover {
-  background: var(--color-surface-raised, #f8f9fa);
-}
 
 /* ── Trip table shared by the Temperature Outlier product modal ─────────── */
 

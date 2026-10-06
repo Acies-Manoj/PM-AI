@@ -27,6 +27,7 @@ import pandas as pd
 from app.config import DATA_DIR, DRILLDOWN_AGENT_MODEL, model_for
 from app.services.analysis import analysis_agent, analysis_drilldown as dd, analysis_semantics
 from app.services.analysis.analysis_columns import as_labels
+from app.prompts import analysis_paths as _prompts
 
 logger = logging.getLogger(__name__)
 
@@ -37,44 +38,7 @@ MAX_STEP_COLUMNS = 3
 MAX_PATH_CHARTS = 12
 AGGS = ("mean", "sum", "median", "max", "min")
 
-_SYSTEM = (
-    "You design a complete DRILL-DOWN PATH for one analysis in a cold-chain shipment analytics tool. "
-    "You are given the analysis (what it groups by, and its result) and a SEMANTIC MODEL of the data: what every "
-    "column means, the columns you may group by (groupable_columns), the measures you may use (measures, each with "
-    "the aggregations that make sense for it), how columns roll up (hierarchies), typical drill_patterns, "
-    "measure_guidance and known data_issues. Engineered feature columns are marked engineered_feature.\n\n"
-    "Design 2 or 3 further steps that walk from the broad result down to the specific, the way an analyst would, e.g.:\n"
-    "  Product chart -> best product -> all its Origins -> top 3 Origins -> their Carriers -> top 2 Carriers -> the full "
-    "path (Country of Origin, Origin, Carrier).\n\n"
-    "Each step has:\n"
-    '- "columns": 1 to 3 columns to break the focus down by (the X axis). Use ONLY columns from groupable_columns.\n'
-    '- "pick": which values of the PREVIOUS chart\'s first column to carry into this step: {"mode": "top" or "bottom", '
-    '"n": 1 to 6, "by": the previous chart\'s measure column label, or null for its first measure}. The first step picks '
-    "from the analysis's own chart (e.g. the best product = top 1).\n"
-    '- "split": true = a SEPARATE chart for each picked value (e.g. one carrier chart for each of the top 3 origins); '
-    "false = one combined chart. Each branch then continues on its own, so the next step picks its own top values inside "
-    "each chart. Use true when you pick 2 to 4 values that each deserve their own view.\n"
-    '- "measure": what each bar shows: "count" (trips), "pct_in_spec" (only if in_spec_available), or an aggregation '
-    '("mean", "sum", "median", "max" or "min") of one measure column, set in "measure_column". The aggregation MUST be '
-    "one of that measure's allowed_aggs.\n"
-    '- "title": a short plain-English name for the step. "reason": one sentence on why this is the next best question.\n\n'
-    "Rules:\n"
-    "- Go from broad to specific. Follow the hierarchies (a parent such as Country of Origin comes before its child Origin, "
-    "never the other way round) and prefer a drill_pattern that fits the analysis.\n"
-    "- Choose the measure that answers the question, from ALL the measures, including the engineered features: for quality "
-    "questions use % in spec, hours out of spec, alarm or excursion flags and temperature statistics; for journey questions "
-    "use the duration measures; use plain counts only for volume. Vary the measure across steps when it helps.\n"
-    "- Respect data_issues. Never group by a column that is not in groupable_columns.\n"
-    "- Do not repeat a column in an earlier step. ONLY the FINAL step may show the whole path by combining the columns "
-    "used before it (e.g. Country of Origin, Origin, Carrier): the 'path view' for the values picked so far.\n"
-    "- Keep it readable: prefer columns with few distinct values for later steps.\n"
-    "- Total charts = the charts of every step added up, and splitting a step that picks 3 values triples every step after it. "
-    "Keep the whole path to at most {max_charts} charts.\n"
-    "- At most {max_steps} steps. Do not return a path whose columns are in avoid_paths.\n\n"
-    'Return ONLY JSON: {"name": "short path name", "rationale": "one or two sentences on why this path", "steps": '
-    '[{"title": "...", "columns": ["..."], "pick": {"mode": "top", "n": 3, "by": null}, "measure": "count", '
-    '"split": false, "measure_column": null, "reason": "..."}]}'
-)
+_SYSTEM = _prompts.SYSTEM
 
 
 # --- storage -----------------------------------------------------------------------------------------

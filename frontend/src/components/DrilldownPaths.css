@@ -26,16 +26,6 @@
   color: var(--color-text-muted);
 }
 
-.drilldown-paths__working {
-  margin: 0;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: var(--carrier-blue-tint);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--carrier-blue);
-}
-
 .drilldown-path {
   border: 1px solid var(--color-border);
   border-radius: 12px;

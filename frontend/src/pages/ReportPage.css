@@ -365,13 +365,6 @@
   color: var(--color-text-muted);
 }
 
-.report-page__summary-text {
-  margin: 10px 0 0;
-  font-size: 13.5px;
-  line-height: 1.6;
-  color: var(--color-text);
-}
-
 .report-page__summary-bullets {
   margin: 10px 0 0;
   padding-left: 20px;

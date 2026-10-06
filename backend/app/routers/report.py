@@ -16,7 +16,7 @@ from app.schemas import (
     SupportedLanguagesResponse,
 )
 from app.services.analysis import analysis_repository
-from app.services.audit.audit_store import AuditSession, store
+from app.services.audit.audit_store import AuditSession, get_or_404
 from app.services.report import final_summary_agent, report_generator, translation_service
 
 router = APIRouter(prefix="/api/report", tags=["report"])
@@ -35,11 +35,7 @@ def get_supported_languages() -> SupportedLanguagesResponse:
     return SupportedLanguagesResponse(languages=languages)
 
 
-def _get_session_or_404(session_id: str) -> AuditSession:
-    session = store.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Audit session not found.")
-    return session
+_get_session_or_404 = get_or_404
 
 
 MAX_SUBTITLE_CHARS = 110

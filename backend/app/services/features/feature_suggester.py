@@ -23,55 +23,17 @@ import re
 from collections.abc import Iterable
 
 import pandas as pd
-from openai import OpenAI
 
+from app.services.common import groq_client
 from app.services.common.groq_client import strip_json_fence
-from app.config import DEFAULT_MAX_TOKENS, OPENROUTER_API_KEY, OPENROUTER_MODEL, model_for
+from app.config import DEFAULT_MAX_TOKENS, OPENROUTER_MODEL, model_for
 from app.services.common import token_usage
 from app.services.planner import planner_dependencies
+from app.prompts import feature_suggester as _prompts
 
 MAX_SUGGESTIONS = 5
 
-SYSTEM_PROMPT = f"""You are a data engineer proposing new engineered columns \
-for an operational cold-chain shipment dataset, to help a program manager \
-build KPIs and reports. You'll be given the current column names, dtypes, \
-and a few sample values per column, plus the features that already exist.
-
-Propose up to {MAX_SUGGESTIONS} NEW feature ideas that would be genuinely useful for \
-cold-chain reporting (e.g. transit duration, percentage breakdowns of time \
-in/out of spec, seasonality, lane- or carrier-level aggregates). Do not \
-repeat or trivially rephrase an existing feature (e.g. "Transit Duration" \
-vs. "Time in Transit" for the same calculation is the SAME idea under a \
-different name -- skip it). A near-match with a different grouping \
-dimension IS different ("Shipment Count by Carrier" is not "Shipment Count \
-by Origin and Carrier"). Every suggestion MUST reference only columns \
-that appear in the given column list -- never invent a column name.
-
-A feature is a reusable CALCULATED BUILDING BLOCK: it describes only the \
-value to compute (inputs, grouping dimensions, output). It must NOT contain \
-ranking, sorting, top/bottom-N, comparison, chart or narrative logic -- \
-those belong to an analysis that consumes the feature. Do not propose a \
-feature for a plain one-off aggregation that an analysis can do straight \
-from the raw columns (e.g. count of Trip ID by Carrier); propose features \
-for derived, business-defined or reused calculations.
-
-Respond with ONLY a JSON object of this exact shape, no markdown, no \
-commentary:
-{{"suggestions": [
-  {{
-    "name": "short title, e.g. 'Time in Transit'",
-    "description": "one plain-English sentence on why this is useful",
-    "output_column": "short column name for the new field",
-    "calculation_intent": "a precise, unambiguous plain-English description of exactly how to compute this from the columns below",
-    "input_columns": ["exact column name(s) this calculation reads"]
-  }}
-]}}"""
-
-
-def _client() -> OpenAI:
-    if not OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY is not set. Add your key from https://openrouter.ai/keys to backend/.env")
-    return OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
+SYSTEM_PROMPT = _prompts.build_system_prompt(MAX_SUGGESTIONS)
 
 
 def _columns_block(df: pd.DataFrame) -> str:
@@ -106,7 +68,7 @@ def suggest_features(df: pd.DataFrame, existing_entries: Iterable[dict] = ()) ->
     repository's current entries, shown to the model so it proposes
     genuinely new ideas and used to filter out any repeats it still makes."""
     existing_entries = list(existing_entries)
-    client = _client()
+    client = groq_client.get_client()
     user_prompt = (
         f"Columns:\n{_columns_block(df)}\n\n"
         f"Existing features (do not repeat these):\n{_existing_block(existing_entries)}\n\n"

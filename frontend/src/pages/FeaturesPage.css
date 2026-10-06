@@ -12,12 +12,6 @@
   flex: 1;
 }
 
-.features-page__loading {
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-  padding: 10px 0;
-}
-
 .features-page__error {
   margin: 0 0 16px;
   font-size: 12.5px;
@@ -35,15 +29,6 @@
   background: var(--color-bg-subtle, #f4f6f8);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
-}
-
-.features-page__defs-summary {
-  margin: 0 0 20px;
-  font-size: 12.5px;
-  color: var(--carrier-blue);
-  background: var(--carrier-blue-tint);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
 }
 
 /* -- card shell ----------------------------------------------------- */
@@ -380,20 +365,6 @@
 .features-page__summary-name {
   font-weight: 700;
   line-height: 1;
-}
-
-.features-page__required-tag {
-  flex-shrink: 0;
-  white-space: nowrap;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--carrier-blue);
-  background: var(--carrier-blue-tint);
-  border-radius: 999px;
-  padding: 2px 8px;
-  line-height: 1.2;
 }
 
 .features-page__summary-col {

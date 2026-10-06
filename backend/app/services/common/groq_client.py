@@ -55,6 +55,42 @@ def chat_text(
 
 
 
+def call(
+    client: OpenAI,
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    model: str,
+    json_mode: bool,
+    temperature: float,
+    call_name: str,
+    max_tokens: int | None = None,
+) -> str:
+    """Same json_mode-with-fallback call wrapper feature_agent.py and
+    analysis_agent.py each used to hand-roll -- the model and client are the
+    caller's own (different agents use different default models and, for
+    analysis_agent, a longer timeout/retry count), so only the call shape
+    itself is shared here."""
+    kwargs: dict = {
+        "model": model,
+        "max_tokens": max_tokens or DEFAULT_MAX_TOKENS,
+        "temperature": temperature,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+    }
+    if json_mode:
+        try:
+            response = client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
+        except Exception:
+            response = client.chat.completions.create(**kwargs)
+    else:
+        response = client.chat.completions.create(**kwargs)
+    token_usage.record(call_name, model, response)
+    return response.choices[0].message.content or ""
+
+
 def strip_json_fence(text: str) -> str:
     """Models such as Claude often wrap JSON in ```json fences; return the bare JSON."""
     t = (text or "").strip()

@@ -1,4 +1,3 @@
-import json
 import logging
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -12,7 +11,8 @@ from app.schemas import (
     FeatureRepositoryResponse,
     SuggestFeatureEntriesResponse,
 )
-from app.services.audit.audit_store import store as audit_store
+from app.routers._definitions_upload import upload_definitions
+from app.services.audit.audit_store import get_or_404
 from app.services.features import feature_definitions_store as defs_store
 from app.services.features import feature_designer, feature_repository, feature_suggester
 
@@ -22,27 +22,13 @@ logger = logging.getLogger(__name__)
 
 @router.post("/definitions", response_model=FeatureDefinitionsSummary)
 async def upload_feature_definitions(file: UploadFile = File(...)) -> FeatureDefinitionsSummary:
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=422, detail="Uploaded file is empty.")
-
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail=f"Not valid JSON: {exc}") from exc
-
-    try:
-        features = defs_store.validate(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    filename = file.filename or "customer_kpi_profile.json"
-    defs_store.store.set(filename, features)
-
-    return FeatureDefinitionsSummary(
-        filename=filename,
-        feature_count=len(features),
-        feature_names=[f["name"] for f in features],
+    return await upload_definitions(
+        file, defs_store, "customer_kpi_profile.json",
+        lambda filename, features: FeatureDefinitionsSummary(
+            filename=filename,
+            feature_count=len(features),
+            feature_names=[f["name"] for f in features],
+        ),
     )
 
 
@@ -57,11 +43,7 @@ def get_feature_definitions() -> FeatureDefinitionsSummary:
     )
 
 
-def _get_session_or_404(session_id: str):
-    session = audit_store.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Audit session not found.")
-    return session
+_get_session_or_404 = get_or_404
 
 
 @router.get("/repository/{session_id}", response_model=FeatureRepositoryResponse)

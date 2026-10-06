@@ -8,5 +8,3 @@ export interface UploadSlotConfig {
   accept: string;
   acceptLabel: string;
 }
-
-export type UploadStatus = "empty" | "selected" | "error";

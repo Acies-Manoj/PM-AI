@@ -8,7 +8,6 @@ export const LOADING = {
     "Working out each formula…",
     "Drafting the analyses…",
   ],
-  plannerMore: ["Looking for ideas you haven't seen yet…", "Checking them against your columns…", "Working out the formulas…"],
   audit: [
     "Reading every column…",
     "Looking for empty and constant columns…",
@@ -22,11 +21,7 @@ export const LOADING = {
     "Calculating the new columns…",
     "Checking the results look right…",
   ],
-  featuresDefinitions: ["Reading the feature definitions…"],
-  featureSuggest: ["Studying your columns…", "Thinking of useful calculations…", "Checking they are new…"],
-  analysisDefinitions: ["Reading the analysis definitions…"],
   analysisRepository: ["Loading your analyses…", "Matching them to your data…"],
-  analysisSuggest: ["Studying your data…", "Thinking of analyses worth running…", "Checking they are new…"],
   analysisRun: ["Thinking through the approach…", "Calculating the numbers…", "Choosing the right chart…", "Writing the insight…"],
   summary: ["Reading the finished analyses…", "Spotting the key findings…", "Writing the summary…"],
   proposals: ["Looking at what stands out…", "Comparing your columns…", "Shaping the drill-downs…", "Picking the most useful ones…"],
@@ -45,7 +40,6 @@ export const LOADING = {
   outliers: ["Checking journey durations…", "Checking temperature readings…", "Flagging outliers…"],
   rows: ["Loading the affected rows…"],
   preview: ["Loading a preview of your data…"],
-  draftLogic: ["Reading your description…", "Working out the logic…", "Checking it against your columns…"],
 } as const;
 
 export type LoadingKind = keyof typeof LOADING;

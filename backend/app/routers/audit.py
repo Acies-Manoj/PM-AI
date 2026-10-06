@@ -10,7 +10,7 @@ from app.config import DATA_DIR
 from app.schemas import AuditIssue, AuditReport, FeatureReport, ResolveRequest, UpdateTripValueRequest
 from app.services.audit import data_audit
 from app.services.audit.audit_agent import generate_audit_analysis
-from app.services.audit.audit_store import AuditSession, store
+from app.services.audit.audit_store import AuditSession, get_or_404, store
 from app.services.audit.column_profiler import profile_dataframe
 from app.services.audit.excel_parser import load_spreadsheet
 from app.services.features import feature_engineering, feature_repository
@@ -57,11 +57,7 @@ def _to_feature_report(session: AuditSession) -> FeatureReport:
     )
 
 
-def _get_session_or_404(session_id: str) -> AuditSession:
-    session = store.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Audit session not found.")
-    return session
+_get_session_or_404 = get_or_404
 
 
 class UploadOnlyResponse(BaseModel):

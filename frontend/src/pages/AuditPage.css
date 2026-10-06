@@ -142,14 +142,6 @@
   cursor: not-allowed;
 }
 
-.audit-page__audit-loading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-  padding: 10px 4px;
-}
 
 .audit-page__audit-loading::before {
   content: "";
@@ -225,17 +217,6 @@
   font-size: 12.5px;
   color: var(--color-text-muted);
   text-align: right;
-}
-
-.audit-page__success {
-  margin-top: 20px;
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  border: 1px solid var(--color-success);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
-  font-size: 13.5px;
-  line-height: 1.5;
 }
 
 .audit-page__empty {

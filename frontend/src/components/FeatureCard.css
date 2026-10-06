@@ -65,18 +65,6 @@
   color: var(--color-text);
 }
 
-.feature-card__formula {
-  margin: 2px 0 0;
-  font-size: 11.5px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  color: var(--accent-purple);
-  background: var(--accent-purple-bg);
-  border-radius: var(--radius-sm);
-  padding: 5px 8px;
-  align-self: flex-start;
-  word-break: break-word;
-}
-
 .feature-card__code-block {
   display: flex;
   flex-direction: column;
@@ -274,19 +262,6 @@
   color: var(--color-success-text, #1e7e4d);
   font-size: 12.5px;
   line-height: 1.5;
-}
-
-.feature-card__required-badge {
-  white-space: nowrap;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--carrier-blue);
-  background: var(--carrier-blue-tint);
-  border-radius: 999px;
-  padding: 2px 8px;
-  line-height: 1.2;
 }
 
 .feature-card__needed-by {

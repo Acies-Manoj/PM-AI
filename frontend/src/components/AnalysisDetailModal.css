@@ -245,39 +245,6 @@
   list-style: none;
 }
 
-.analysis-detail__drilldown-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  background: var(--color-surface);
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.analysis-detail__drilldown-item:hover {
-  border-color: var(--carrier-blue);
-}
-
-.analysis-detail__drilldown-item--selected {
-  border-color: var(--carrier-blue);
-  background: var(--carrier-blue-tint);
-}
-
-.analysis-detail__drilldown-select {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: none;
-  background: none;
-  padding: 0;
-  cursor: pointer;
-  margin-top: 1px;
-}
-
 .analysis-detail__drilldown-index {
   flex-shrink: 0;
   width: 20px;
@@ -292,82 +259,12 @@
   font-weight: 800;
 }
 
-.analysis-detail__drilldown-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding-top: 1px;
-}
-
-.analysis-detail__drilldown-desc {
-  margin: 0;
-  font-size: 11.5px;
-  color: var(--color-text-muted);
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.analysis-detail__drilldown-checkbox {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 1.5px solid var(--color-border);
-  background: var(--color-surface);
-}
-
-.analysis-detail__drilldown-checkbox--checked {
-  border-color: var(--carrier-blue);
-  background: var(--carrier-blue);
-  background-image: linear-gradient(45deg, transparent 40%, #fff 40%, #fff 55%, transparent 55%),
-    linear-gradient(-45deg, transparent 55%, #fff 55%, #fff 70%, transparent 70%);
-}
-
 .analysis-detail__drilldown-name {
   flex: 1;
   min-width: 0;
   font-size: 12.5px;
   font-weight: 700;
   color: var(--color-text);
-}
-
-/* Inside the "text" column (Suggested Drill-downs), the name is just the
-   first line above the description -- not a flex item pushing anything. */
-.analysis-detail__drilldown-text .analysis-detail__drilldown-name {
-  flex: initial;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.analysis-detail__drilldown-explored-tag {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--color-success);
-  background: var(--color-success-bg);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
-
-.analysis-detail__drilldown-ai-tag {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--color-primary, #1a2b6b);
-  background: rgba(26, 43, 107, 0.1);
-  border-radius: 999px;
-  padding: 2px 8px;
-  margin-left: 6px;
 }
 
 .analysis-detail__empty-drilldown {
@@ -409,65 +306,6 @@
 .analysis-detail__add-drilldown-btn:hover {
   background: var(--carrier-light-blue);
   border-color: var(--carrier-light-blue);
-}
-
-.analysis-detail__selected-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  background: var(--color-surface);
-}
-
-.analysis-detail__drilldown-action-btn {
-  flex-shrink: 0;
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-  background: var(--accent-purple);
-  border: 1px solid var(--accent-purple);
-  color: #fff;
-}
-
-.analysis-detail__drilldown-action-btn:disabled {
-  opacity: 0.7;
-  cursor: default;
-}
-
-.analysis-detail__drilldown-action-btn svg {
-  width: 13px;
-  height: 13px;
-}
-
-.analysis-detail__remove-btn {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: none;
-  font-size: 16px;
-  line-height: 1;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  border-radius: 50%;
-}
-
-.analysis-detail__remove-btn:hover {
-  color: var(--color-error);
-  background: var(--color-error-bg);
 }
 
 .analysis-detail__suggest-more-btn {

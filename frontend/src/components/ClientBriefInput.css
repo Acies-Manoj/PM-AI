@@ -125,16 +125,6 @@
   color: #2e7d32;
 }
 
-.cb__badge--foreign {
-  background: #fff3e0;
-  color: #e65100;
-}
-
-.cb__badge--deepl {
-  background: #e3f2fd;
-  color: #1565c0;
-}
-
 .cb__badge--warn {
   background: #fff8e1;
   color: #f57f17;

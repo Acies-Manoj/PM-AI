@@ -9,38 +9,6 @@
   padding: 32px 24px 64px;
 }
 
-/* Context block */
-.planner-page__context {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 20px 24px;
-  margin-bottom: 28px;
-}
-
-.planner-page__context-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-  margin-bottom: 6px;
-}
-
-.planner-page__context-text {
-  font-size: 14.5px;
-  color: var(--color-text);
-  line-height: 1.6;
-  margin: 0 0 12px;
-}
-
-.planner-page__objective {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  font-style: italic;
-  margin: 0;
-}
-
 /* Tabs */
 .planner-page__tabs {
   display: flex;
@@ -209,7 +177,6 @@
 
 .planner-page__badge--type-feature { background: #f0ecff; color: #6b2fb3; }
 .planner-page__badge--type-analysis { background: #e8f7ee; color: #2a7a3b; }
-.planner-page__badge--required { background: #e8f0ff; color: #1a6fb3; border: 1px solid #1a6fb3; }
 .planner-page__badge--type-configuration { background: #fbf0dc; color: #8a5a10; }
 
 .planner-page__badge--status-new { background: var(--color-bg); color: var(--color-text-muted); border: 1px solid var(--color-border); }
@@ -295,41 +262,6 @@
   color: #a13c2a;
 }
 
-/* Confidence */
-.planner-page__confidence {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.planner-page__confidence-num {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--color-text-muted);
-}
-
-.planner-page__confidence-bar {
-  width: 36px;
-  height: 4px;
-  background: var(--color-border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.planner-page__confidence-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--carrier-blue);
-}
-
-.planner-page__confidence-label {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
 /* Card footer: reason + actions */
 .planner-page__card-foot {
   display: flex;
@@ -387,22 +319,6 @@
 .planner-page__btn-reject--active {
   background: var(--color-border);
   color: var(--color-text);
-}
-
-/* Validation warnings */
-.planner-page__warnings {
-  margin: 0 20px 12px;
-  padding: 10px 14px;
-  background: #fff7e6;
-  border-radius: 6px;
-  border-left: 3px solid #f0a500;
-}
-
-.planner-page__warnings p {
-  margin: 0;
-  font-size: 12.5px;
-  color: #7a4f00;
-  line-height: 1.5;
 }
 
 .planner-page__clarifications {
@@ -474,15 +390,6 @@
   flex-wrap: wrap;
 }
 
-.planner-page__tally {
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-.planner-page__tally strong {
-  color: var(--color-success);
-}
-
 .planner-page__nav-btns {
   display: flex;
   gap: 10px;
@@ -531,22 +438,6 @@
   color: #c0392b;
   font-size: 13.5px;
   margin-bottom: 20px;
-}
-
-.planner-page__spinner {
-  display: inline-block;
-  width: 18px;
-  height: 18px;
-  border: 2.5px solid var(--color-border);
-  border-top-color: var(--carrier-blue);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  vertical-align: middle;
-  margin-right: 8px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 .planner-page__spec {

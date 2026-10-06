@@ -116,12 +116,3 @@
   cursor: not-allowed;
 }
 
-.upload-page__save-error {
-  margin: 0 0 16px;
-  font-size: 13px;
-  color: #c62828;
-  background: #ffebee;
-  border: 1px solid #ef9a9a;
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
-}

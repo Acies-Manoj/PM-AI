@@ -76,10 +76,12 @@ def _strip_code_fence(text: str) -> str:
 
 
 def _strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("```", 2)[-1] if stripped.count("```") >= 2 else stripped
-        stripped = stripped[4:].strip() if stripped.lower().startswith("json") else stripped
+    stripped = re.sub(r"^```[a-zA-Z]*\s*(.*?)\s*```$", r"\1", (text or "").strip(), flags=re.DOTALL)
+    if not stripped.startswith(("{", "[")):
+        starts = [i for i in (stripped.find("{"), stripped.find("[")) if i != -1]
+        end = max(stripped.rfind("}"), stripped.rfind("]"))
+        if starts and end > min(starts):
+            stripped = stripped[min(starts): end + 1]
     return stripped
 
 

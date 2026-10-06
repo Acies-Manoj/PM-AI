@@ -12,6 +12,7 @@ from openai import OpenAI
 from app.config import DATA_DIR, OPENROUTER_API_KEY, PLANNER_AGENT_MODEL, model_for
 from app.services.analysis import analysis_agent
 from app.services.common import token_usage
+from app.services.common.groq_client import strip_json_fence
 from app.services.features import feature_agent
 from app.services.planner import planner_dependencies
 
@@ -280,13 +281,10 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
 
     raw = response.choices[0].message.content or ""
 
-    # Strip any accidental markdown fences
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```", 2)[-1] if raw.count("```") >= 2 else raw
-        raw = raw.lstrip("json").strip()
-        if raw.endswith("```"):
-            raw = raw[: raw.rfind("```")].strip()
+    # Claude wraps JSON in ```json fences (and sometimes adds prose around it).
+    raw = strip_json_fence(raw)
+    if not raw.startswith("{") and "{" in raw and "}" in raw:
+        raw = raw[raw.index("{"): raw.rindex("}") + 1]
 
     result = json.loads(raw)
     if "recommendations" not in result or not isinstance(result["recommendations"], list):

@@ -463,6 +463,20 @@ export async function uploadOnly(source: string, file: File): Promise<UploadOnly
   return response.json();
 }
 
+/** Whether the backend still knows this session: true/false, or null when the
+ * backend can't be reached at all (so the caller doesn't discard work just
+ * because the server is momentarily down). The backend keeps sessions in memory,
+ * so a restart makes every earlier session id a 404. */
+export async function sessionExists(sessionId: string): Promise<boolean | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}`);
+    if (response.status === 404) return false;
+    return response.ok ? true : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Run the audit agent on an already-uploaded session. */
 export async function runAudit(sessionId: string): Promise<AuditReport> {
   const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/run`, {

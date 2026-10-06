@@ -283,10 +283,13 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     # Strip any accidental markdown fences
     raw = raw.strip()
     if raw.startswith("```"):
-        raw = raw.split("```", 2)[-1] if raw.count("```") >= 2 else raw
-        raw = raw.lstrip("json").strip()
-        if raw.endswith("```"):
-            raw = raw[: raw.rfind("```")].strip()
+        # "```json\n{...}\n```".split("```", 2) -> ["", "json\n{...}\n", ""]; the
+        # payload is the middle part (an unclosed fence has only two parts).
+        raw = raw.split("```", 2)[1]
+        raw = raw.removeprefix("json").strip()
+    # Fall back to the outermost JSON object if the model added prose around it.
+    if not raw.startswith("{") and "{" in raw and "}" in raw:
+        raw = raw[raw.index("{"): raw.rindex("}") + 1]
 
     result = json.loads(raw)
     if "recommendations" not in result or not isinstance(result["recommendations"], list):

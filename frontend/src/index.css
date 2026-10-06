@@ -1,1 +1,31 @@
 @import "./styles/theme.css";
+
+/* -- session restore ---------------------------------------------------------- */
+.app-restoring {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.session-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #fff6e0;
+  border-bottom: 1px solid #f0d58a;
+  color: #6b4b00;
+  font-size: 13px;
+}
+
+.session-notice button {
+  background: none;
+  border: 1px solid #c9a24a;
+  border-radius: 6px;
+  padding: 4px 12px;
+  color: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}

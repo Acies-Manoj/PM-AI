@@ -78,8 +78,9 @@ def _strip_code_fence(text: str) -> str:
 def _strip_json_fence(text: str) -> str:
     stripped = text.strip()
     if stripped.startswith("```"):
-        stripped = stripped.split("```", 2)[-1] if stripped.count("```") >= 2 else stripped
-        stripped = stripped[4:].strip() if stripped.lower().startswith("json") else stripped
+        # The payload is the part between the fences (split gives ["", body, ""]).
+        stripped = stripped.split("```", 2)[1]
+        stripped = stripped[4:].strip() if stripped.lower().startswith("json") else stripped.strip()
     return stripped
 
 

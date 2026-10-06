@@ -10,9 +10,12 @@ from fastapi.responses import Response
 
 from app.schemas import (
     EntryTranslation,
+    ReportExportRequest,
     LanguageOption,
     ReportSummaryResponse,
     ReportTranslationsResponse,
+    TranslateTextsRequest,
+    TranslateTextsResponse,
     SupportedLanguagesResponse,
 )
 from app.services.analysis import analysis_repository
@@ -233,3 +236,61 @@ def download_report(
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/{session_id}/export")
+def export_report(session_id: str, body: ReportExportRequest):
+    """Like GET /download, but for a deck the PM edited in the Report preview: the slide order, any edited
+    titles/explanations/captions, the cover text and the summary bullets all come from the request body.
+    Slides the PM deleted are simply not in `body.slides`."""
+    session = _get_session_or_404(session_id)
+    if body.language != "en" and body.language not in translation_service.SUPPORTED_LANGUAGES:
+        raise HTTPException(status_code=422, detail=f"'{body.language}' isn't a supported report language.")
+
+    entry_ids = [s.entry_id for s in body.slides]
+    overrides = {s.entry_id: s.chart_type for s in body.slides if s.chart_type}
+    entries = _report_ready_entries(session, session_id, entry_ids, overrides)
+    if not entries:
+        raise HTTPException(
+            status_code=422,
+            detail="No completed analyses to include in the report -- run some on the Analysis page first.",
+        )
+    edits = {s.entry_id: s for s in body.slides}
+    for entry in entries:
+        edit = edits.get(entry["id"])
+        if edit is None:
+            continue
+        if edit.heading is not None:
+            entry["edit_heading"] = edit.heading.strip() or None
+        if edit.explanation is not None:
+            entry["edit_explanation"] = edit.explanation
+        if edit.caption is not None:
+            entry["edit_caption"] = edit.caption
+
+    if body.summary_bullets is not None:
+        summary_bullets = [b.strip() for b in body.summary_bullets if b.strip()]
+    else:
+        try:
+            summary_bullets = final_summary_agent.generate_summary(entries)
+        except Exception:
+            summary_bullets = ["Final summary is unavailable right now."]
+
+    pptx_bytes = report_generator.build_report(
+        session.filename, session.df, entries, summary_bullets, body.language,
+        cover_title=(body.cover_title or "").strip() or None, cover_subtitle=body.cover_subtitle,
+    )
+    filename = f"{report_generator.REPORT_NAME}.pptx"
+    return Response(
+        content=pptx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/translate", response_model=TranslateTextsResponse)
+def translate_texts(body: TranslateTextsRequest) -> TranslateTextsResponse:
+    """Translates free text for the Report page -- used for the closing-summary bullets, so the preview and
+    the export both show the summary in the chosen language. Falls back to the original text on any failure."""
+    if body.language != "en" and body.language not in translation_service.SUPPORTED_LANGUAGES:
+        raise HTTPException(status_code=422, detail=f"'{body.language}' isn't a supported report language.")
+    return TranslateTextsResponse(translations=translation_service.translate_many(body.texts, body.language))

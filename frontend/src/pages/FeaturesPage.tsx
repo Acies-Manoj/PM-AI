@@ -1,6 +1,7 @@
 import ThinkingLoader, { Spinner } from "../components/ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useState } from "react";
+import { useStoredState } from "../state/sessionStore";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
@@ -56,27 +57,28 @@ const SOURCE_GROUP_LABELS: { source: FeatureRepositoryEntry["source"]; label: st
 
 export default function FeaturesPage({ files, auditReports }: FeaturesPageProps) {
   const navigate = useNavigate();
-  const [reports, setReports] = useState<FeatureReportsState>({});
-  const [loading, setLoading] = useState<LoadingState>({});
+  const [reports, setReports] = useStoredState<FeatureReportsState>("features.reports", {});
+  const [loading, setLoading] = useStoredState<LoadingState>("features.loading", {});
+  // Errors stay page-local on purpose: a failed compute is retried on the next visit.
   const [errors, setErrors] = useState<ErrorsState>({});
-  const [previews, setPreviews] = useState<PreviewsState>({});
-  const [previewOpen, setPreviewOpen] = useState<PreviewOpenState>({});
+  const [previews, setPreviews] = useStoredState<PreviewsState>("features.previews", {});
+  const [previewOpen, setPreviewOpen] = useStoredState<PreviewOpenState>("features.previewOpen", {});
 
-  const [repositories, setRepositories] = useState<RepositoryState>({});
-  const [suggestLoading, setSuggestLoading] = useState<LoadingState>({});
+  const [repositories, setRepositories] = useStoredState<RepositoryState>("features.repositories", {});
+  const [suggestLoading, setSuggestLoading] = useStoredState<LoadingState>("features.suggestLoading", {});
   const [suggestError, setSuggestError] = useState<ErrorsState>({});
-  const [applyingEntryId, setApplyingEntryId] = useState<BusyIdState>({});
+  const [applyingEntryId, setApplyingEntryId] = useStoredState<BusyIdState>("features.applyingEntryId", {});
   const [showAddKpiForm, setShowAddKpiForm] = useState<LoadingState>({});
-  const [addingKpi, setAddingKpi] = useState<LoadingState>({});
+  const [addingKpi, setAddingKpi] = useStoredState<LoadingState>("features.addingKpi", {});
   const [showSuggestionsModal, setShowSuggestionsModal] = useState<LoadingState>({});
 
-  const [defsError, setDefsError] = useState<string | null>(null);
-  const [defsLoading, setDefsLoading] = useState(false);
+  const [defsError, setDefsError] = useStoredState<string | null>("features.defsError", null);
+  const [defsLoading, setDefsLoading] = useStoredState("features.defsLoading", false);
   // True once we've either attempted the Customer KPI Profile upload (success
   // or failure) or confirmed there isn't one -- gates the first compute so
   // predefined features are included when they're available, without ever
   // requiring the file to exist.
-  const [defsAttempted, setDefsAttempted] = useState(false);
+  const [defsAttempted, setDefsAttempted] = useStoredState("features.defsAttempted", false);
 
   const [openFeature, setOpenFeature] = useState<{ slotId: UploadSlotId; featureId: string } | null>(null);
 

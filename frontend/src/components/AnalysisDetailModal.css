@@ -23,11 +23,24 @@
 }
 
 
+/* Sits close under the description (the modal's own gap is larger than these two want), badges centred on one line. */
 .analysis-detail__meta-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  margin-top: -6px;
+  margin-bottom: 8px; /* breathing room before the Key Insight box */
+}
+
+.analysis-detail__method-badge,
+.analysis-detail__chart-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 1;
 }
 
 .analysis-detail__method-badge {
@@ -416,4 +429,87 @@
 
 .analysis-detail__group-axes {
   color: #6d3fc0;
+}
+
+/* -- collapsible "View agent generated code" ------------------------------------ */
+
+.analysis-detail__code {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analysis-detail__code-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--carrier-blue);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.analysis-detail__code-toggle:hover {
+  border-color: var(--carrier-blue);
+  background: var(--carrier-blue-tint);
+}
+
+.analysis-detail__code-arrow {
+  display: flex;
+  transition: transform 0.15s ease;
+}
+
+.analysis-detail__code-arrow svg {
+  width: 14px;
+  height: 14px;
+}
+
+.analysis-detail__code-arrow--open {
+  transform: rotate(90deg);
+}
+
+.analysis-detail__code-note {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+/* -- drill-down paths: a button in the Analysis tab that opens the planner inline ------------------ */
+
+.analysis-detail__paths {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.analysis-detail__paths-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent-purple);
+  background: var(--color-surface);
+  border: 1px solid var(--accent-purple);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.analysis-detail__paths-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.analysis-detail__paths-toggle:hover,
+.analysis-detail__paths-toggle[aria-expanded="true"] {
+  background: var(--accent-purple-bg);
 }

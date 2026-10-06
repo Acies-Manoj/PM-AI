@@ -102,7 +102,10 @@ INTERPRET_SYSTEM = """You are the interpretation step of the Analysis Agent. You
 computed analysis table and its chart type. Write a short, plain-English \
 interpretation covering the standout value(s), any clear pattern, and why \
 it might matter to a program manager. Do NOT invent any number that isn't \
-in the table. Write 2-4 plain sentences, no markdown, no bullet lists.
+in the table. Write 1-2 plain sentences, at most about 35 words in total \
+(it must read in 2-3 short lines), no markdown, no bullet lists. Give the \
+standout finding and, only if room allows, one contrast -- no closing \
+remark about "importance" or "monitoring".
 
 Lead with the standout finding itself, not a description of the chart. \
 NEVER start with "This chart shows...", "The chart illustrates...", "The \

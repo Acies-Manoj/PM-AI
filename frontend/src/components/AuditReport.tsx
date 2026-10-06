@@ -64,8 +64,6 @@ export default function AuditReport({
 
   const qualityIssues = useMemo(() => report.issues, [report.issues]);
 
-  const [bulkApplying, setBulkApplying] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const [columnQuery, setColumnQuery] = useState("");
   const [columnDropdownOpen, setColumnDropdownOpen] = useState(false);
   const columnSearchRef = useRef<HTMLDivElement | null>(null);
@@ -144,24 +142,6 @@ export default function AuditReport({
     setColumnDropdownOpen(false);
   };
 
-  const pendingInActiveTab = useMemo(
-    () => visibleIssues.filter((i) => i.requires_decision && i.status === "pending"),
-    [visibleIssues]
-  );
-
-  const applyAllRecommendations = async () => {
-    const toApply = pendingInActiveTab;
-    setBulkApplying(true);
-    setBulkProgress({ done: 0, total: toApply.length });
-    for (const issue of toApply) {
-      const decisionId = issue.recommended_action ?? "keep";
-      const selectedItems = issue.selectable_items.length > 0 ? issue.selectable_items : undefined;
-      await onResolve(issue.id, decisionId, selectedItems);
-      setBulkProgress((p) => ({ ...p, done: p.done + 1 }));
-    }
-    setBulkApplying(false);
-  };
-
   const segmentFlagged = outlierData?.segment.flagged_trips ?? null;
   const tempBreaches =
     outlierData != null
@@ -197,7 +177,6 @@ export default function AuditReport({
                 role="tab"
                 aria-selected={activeTab === "quality"}
                 className={`audit-report__tab ${activeTab === "quality" ? "audit-report__tab--active" : ""}`}
-                disabled={bulkApplying}
                 onClick={() => onTabChange("quality")}
               >
                 Overall Checks
@@ -210,8 +189,7 @@ export default function AuditReport({
                     role="tab"
                     aria-selected={activeTab === "segment"}
                     className={`audit-report__tab ${activeTab === "segment" ? "audit-report__tab--active" : ""}`}
-                    disabled={bulkApplying}
-                    onClick={() => onTabChange("segment")}
+                        onClick={() => onTabChange("segment")}
                   >
                     Segment Outlier
                     {segmentFlagged !== null && (
@@ -223,8 +201,7 @@ export default function AuditReport({
                     role="tab"
                     aria-selected={activeTab === "temperature"}
                     className={`audit-report__tab ${activeTab === "temperature" ? "audit-report__tab--active" : ""}`}
-                    disabled={bulkApplying}
-                    onClick={() => onTabChange("temperature")}
+                        onClick={() => onTabChange("temperature")}
                   >
                     Temperature Outliers
                     {tempBreaches !== null && (
@@ -239,8 +216,7 @@ export default function AuditReport({
                   role="tab"
                   aria-selected={activeTab === "summary"}
                   className={`audit-report__tab ${activeTab === "summary" ? "audit-report__tab--active" : ""}`}
-                  disabled={bulkApplying}
-                  onClick={() => onTabChange("summary")}
+                    onClick={() => onTabChange("summary")}
                 >
                   Summary
                   <span className="audit-report__tab-count">{resolvedCount}</span>
@@ -271,8 +247,7 @@ export default function AuditReport({
                     className="audit-report__col-search-input"
                     placeholder="Search by column…"
                     value={columnQuery}
-                    disabled={bulkApplying}
-                    onFocus={() => setColumnDropdownOpen(true)}
+                        onFocus={() => setColumnDropdownOpen(true)}
                     onChange={(e) => {
                       setColumnQuery(e.target.value);
                       setColumnDropdownOpen(true);
@@ -288,7 +263,7 @@ export default function AuditReport({
                       ✕
                     </button>
                   )}
-                  {columnDropdownOpen && !bulkApplying && matchingColumns.length > 0 && (
+                  {columnDropdownOpen && matchingColumns.length > 0 && (
                     <ul className="audit-report__col-dropdown" role="listbox">
                       {matchingColumns.map((col) => (
                         <li key={col}>
@@ -306,18 +281,6 @@ export default function AuditReport({
                     </ul>
                   )}
                 </div>
-                {(bulkApplying || pendingInActiveTab.length > 0) && (
-                  <button
-                    type="button"
-                    className="audit-report__bulk-btn"
-                    disabled={bulkApplying}
-                    onClick={applyAllRecommendations}
-                  >
-                    {bulkApplying
-                      ? `Applying ${bulkProgress.done} of ${bulkProgress.total}…`
-                      : `Apply AI Recommendations (${pendingInActiveTab.length})`}
-                  </button>
-                )}
               </div>
             )}
           </div>

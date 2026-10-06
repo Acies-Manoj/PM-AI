@@ -5,6 +5,7 @@ import type { OutliersResponse, ProductTemperatureResult, ProductTemperatureTrip
 import { updateTripValue } from "../api/audit";
 import { IconChevronRight, IconSearch } from "./icons";
 import EditableNumberCell from "./EditableNumberCell";
+import ExcelTable from "./ExcelTable";
 import "./OutlierTabs.css";
 
 const Plot = createPlotlyComponent(Plotly);
@@ -24,6 +25,10 @@ const COLOR_LOW = "#1891F6";
 const COLOR_IDEAL = "#10B981";
 const COLOR_HIGH = "#C0392B";
 const COLOR_SELECTED = "#F59E0B";
+
+// Columns of the affected-trips table (the Flags count is no longer shown). TRIP_REF carries each row's trip.
+const TRIP_COLUMNS = ["Serial Number", "Trip ID", "Mean Temp", "Status"];
+const TRIP_REF = "__trip";
 
 function statusLabel(status: ProductTemperatureTrip["status"]): string {
   return status === "too_warm" ? "Too Warm" : status === "too_cold" ? "Too Cold" : "In Spec";
@@ -187,69 +192,46 @@ function AffectedTripsPanel({
             )}
           </div>
 
-          <div className="temp-chart__table-wrap temp-chart__table-wrap--tall">
-            <table className="outlier-lane-card__table">
-              <thead>
-                <tr>
-                  <th>Serial Number</th>
-                  <th>Trip ID</th>
-                  <th>Flags</th>
-                  <th>Mean Temp</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTrips.map((t, idx) => {
-                  const key = tripKey(t);
-                  const isSelected = key === selectedKey;
-                  return (
-                    <tr
-                      key={`${idx}::${key}`}
-                      ref={(el) => {
-                        if (el) rowRefs.current.set(key, el);
-                        else rowRefs.current.delete(key);
-                      }}
-                      className={isSelected ? "temp-chart__row temp-chart__row--selected" : "temp-chart__row"}
-                      onClick={() => onRowClick(t)}
-                    >
-                      <td>{t.serial ?? "—"}</td>
-                      <td>{t.trip_id ?? "—"}</td>
-                      <td>{t.flag_count}</td>
-                      <td>
-                        {t.serial != null && t.trip_id != null ? (
-                          <EditableNumberCell
-                            value={t.mean_temp}
-                            suffix="°"
-                            onSave={async (next) => {
-                              const updated = await updateTripValue(sessionId, {
-                                serial: t.serial!,
-                                tripId: t.trip_id!,
-                                field: "mean_temp",
-                                value: next,
-                              });
-                              onUpdated(updated);
-                            }}
-                          />
-                        ) : t.mean_temp != null ? (
-                          `${t.mean_temp}°`
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td>{statusLabel(t.status)}</td>
-                    </tr>
-                  );
-                })}
-                {filteredTrips.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="outlier-tab__table-empty">
-                      No trips match "{query}".
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ExcelTable
+            columns={TRIP_COLUMNS}
+            rows={filteredTrips.map((t) => ({
+              "Serial Number": t.serial,
+              "Trip ID": t.trip_id,
+              "Mean Temp": t.mean_temp,
+              Status: statusLabel(t.status),
+              [TRIP_REF]: t,
+            }))}
+            frozen={["Serial Number", "Trip ID", "Mean Temp"]}
+            highlight="Mean Temp"
+            emptyText={query ? `No trips match "${query}".` : "No trips match the filters."}
+            isRowSelected={(row) => tripKey(row[TRIP_REF] as ProductTemperatureTrip) === selectedKey}
+            onRowClick={(row) => onRowClick(row[TRIP_REF] as ProductTemperatureTrip)}
+            rowRef={(row, el) => {
+              const key = tripKey(row[TRIP_REF] as ProductTemperatureTrip);
+              if (el) rowRefs.current.set(key, el);
+              else rowRefs.current.delete(key);
+            }}
+            renderCell={(col, row) => {
+              if (col !== "Mean Temp") return undefined;
+              const t = row[TRIP_REF] as ProductTemperatureTrip;
+              if (t.serial == null || t.trip_id == null) return t.mean_temp != null ? `${t.mean_temp}°` : "—";
+              return (
+                <EditableNumberCell
+                  value={t.mean_temp}
+                  suffix="°"
+                  onSave={async (next) => {
+                    const updated = await updateTripValue(sessionId, {
+                      serial: t.serial!,
+                      tripId: t.trip_id!,
+                      field: "mean_temp",
+                      value: next,
+                    });
+                    onUpdated(updated);
+                  }}
+                />
+              );
+            }}
+          />
         </>
       )}
     </div>

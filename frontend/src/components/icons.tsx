@@ -65,6 +65,13 @@ export const IconDownload = () => (
   </svg>
 );
 
+export const IconEye = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+    <circle cx="12" cy="12" r="2.8" stroke="currentColor" strokeWidth="1.6" />
+  </svg>
+);
+
 export const IconChevronDown = () => (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -202,5 +209,29 @@ export const IconGripVertical = () => (
     <circle cx="15" cy="6" r="1.4" fill="currentColor" />
     <circle cx="15" cy="12" r="1.4" fill="currentColor" />
     <circle cx="15" cy="18" r="1.4" fill="currentColor" />
+  </svg>
+);
+
+export const IconTrash = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4.5 7h15M9.5 7V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2m-8 0 .8 11a2 2 0 0 0 2 1.9h4.4a2 2 0 0 0 2-1.9L17.5 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const IconUndo = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const IconRedo = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="m15 14 5-5-5-5m5 5H10a6 6 0 0 0 0 12h3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const IconChevronUp = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="m6 15 6-6 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );

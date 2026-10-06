@@ -129,12 +129,34 @@
 
 /* -- language picker ----------------------------------------------------- */
 
+/* Language picker on the left; each source's Preview / Download buttons on the right. */
+.report-page__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-bottom: 18px;
+}
+
+.report-page__export-host {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.report-page__export-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
 .report-page__language-picker {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 18px;
 }
 
 .report-page__language-picker label {
@@ -413,13 +435,50 @@
   border-color: var(--carrier-light-blue);
 }
 
+/* -- preview + download actions ------------------------------------------ */
+
+.report-page__export-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.report-page__preview-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  padding: 10px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  background: var(--color-surface);
+  border: 1px solid var(--carrier-blue);
+  color: var(--carrier-blue);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.report-page__preview-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.report-page__preview-btn:hover:not(:disabled) {
+  background: var(--carrier-blue-tint);
+}
+
+.report-page__preview-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* -- download button ---------------------------------------------------- */
 
 .report-page__download-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
   border-radius: var(--radius-sm);
   padding: 10px 20px;
   font-size: 13.5px;
@@ -452,7 +511,10 @@
 
 .report-page__actions {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 8px;
 }
 

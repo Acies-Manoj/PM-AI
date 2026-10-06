@@ -43,6 +43,7 @@ class _Suggestion(BaseModel):
 
     name: str = Field(min_length=1, max_length=120)
     description: str = ""
+    business_question: str = ""
     calculation_intent: str = Field(min_length=1)
     input_columns: list[str] = Field(min_length=1)
 

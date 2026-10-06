@@ -8,9 +8,11 @@ interface ModalProps {
   headerExtra?: ReactNode;
   /** When this changes the body scrolls back to the top (e.g. the modal now shows a different item). */
   resetScrollKey?: string;
+  /** Extra class on the panel, for a modal that needs its own width. */
+  panelClassName?: string;
 }
 
-export default function Modal({ title, onClose, children, headerExtra, resetScrollKey }: ModalProps) {
+export default function Modal({ title, onClose, children, headerExtra, resetScrollKey, panelClassName }: ModalProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: 0 });
@@ -26,7 +28,7 @@ export default function Modal({ title, onClose, children, headerExtra, resetScro
 
   return (
     <div className="modal__overlay" onClick={onClose}>
-      <div className="modal__panel" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal__panel${panelClassName ? ` ${panelClassName}` : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <h3 className="modal__title">{title}</h3>
           <div className="modal__head-right">

@@ -1,6 +1,7 @@
 import ThinkingLoader, { Spinner } from "../components/ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
+import { useStoredRef, useStoredState } from "../state/sessionStore";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
@@ -15,7 +16,7 @@ import AddAnalysisForm from "../components/AddAnalysisForm";
 import OverallAnalysisCard from "../components/OverallAnalysisCard";
 import { ancestorTrail, buildLevelTree } from "../utils/drilldownTree";
 import { sourceTag } from "../utils/analysisSourceTag";
-import { IconDoc, IconGrid, IconChevronLeft, IconChevronRight, IconBarChart, IconLayers, IconSparkle, IconPlus } from "../components/icons";
+import { IconDoc, IconGrid, IconChevronLeft, IconChevronRight, IconBarChart, IconLayers, IconSparkle, IconClipboard } from "../components/icons";
 import {
   acceptAnalysisEntry,
   addCustomAnalysis,
@@ -90,39 +91,39 @@ const SOURCE_GROUP_LABELS: { source: AnalysisSource; label: string }[] = [
 export default function AnalysisPage({ files, auditReports }: AnalysisPageProps) {
   const navigate = useNavigate();
 
-  const [featureReports, setFeatureReports] = useState<FeatureReportsState>({});
+  const [featureReports, setFeatureReports] = useStoredState<FeatureReportsState>("analysis.featureReports", {});
   const [featureCheckLoading, setFeatureCheckLoading] = useState<LoadingState>({});
   const [featureCheckFailed, setFeatureCheckFailed] = useState<LoadingState>({});
 
-  const [repositories, setRepositories] = useState<RepositoryState>({});
-  const [repoLoading, setRepoLoading] = useState<LoadingState>({});
+  const [repositories, setRepositories] = useStoredState<RepositoryState>("analysis.repositories", {});
+  const [repoLoading, setRepoLoading] = useStoredState<LoadingState>("analysis.repoLoading", {});
   const [repoError, setRepoError] = useState<ErrorsState>({});
 
-  const [runningIds, setRunningIds] = useState<Record<string, boolean>>({});
-  const [runFailures, setRunFailures] = useState<Record<string, string | undefined>>({});
+  const [runningIds, setRunningIds] = useStoredState<Record<string, boolean>>("analysis.runningIds", {});
+  const [runFailures, setRunFailures] = useStoredState<Record<string, string | undefined>>("analysis.runFailures", {});
   // Entries the auto-runner has already started once -- it never starts the
   // same entry twice; a failed run is retried only from the card.
-  const autoStarted = useRef<Set<string>>(new Set());
+  const autoStarted = useStoredRef<{ current: Set<string> }>("analysis.autoStarted", () => ({ current: new Set<string>() }));
   // Required-feature actions per analysis entry: what's running, and errors.
-  const [featureBusy, setFeatureBusy] = useState<Record<string, string | undefined>>({});
+  const [featureBusy, setFeatureBusy] = useStoredState<Record<string, string | undefined>>("analysis.featureBusy", {});
   const [featureErrors, setFeatureErrors] = useState<Record<string, string | undefined>>({});
   // Per slot: the set of finished analyses the last summary was generated
   // for, so the summary regenerates only when that set actually changes.
-  const summarizedFor = useRef<Partial<Record<UploadSlotId, string>>>({});
-  const [suggestLoading, setSuggestLoading] = useState<LoadingState>({});
+  const summarizedFor = useStoredRef<{ current: Partial<Record<UploadSlotId, string>> }>("analysis.summarizedFor", () => ({ current: {} }));
+  const [suggestLoading, setSuggestLoading] = useStoredState<LoadingState>("analysis.suggestLoading", {});
   const [suggestError, setSuggestError] = useState<ErrorsState>({});
-  const [applyingEntryId, setApplyingEntryId] = useState<BusyIdState>({});
+  const [applyingEntryId, setApplyingEntryId] = useStoredState<BusyIdState>("analysis.applyingEntryId", {});
   const [showAddForm, setShowAddForm] = useState<LoadingState>({});
-  const [addingAnalysis, setAddingAnalysis] = useState<LoadingState>({});
+  const [addingAnalysis, setAddingAnalysis] = useStoredState<LoadingState>("analysis.addingAnalysis", {});
   const [showSuggestionsModal, setShowSuggestionsModal] = useState<LoadingState>({});
   // Ids the PM has explicitly hidden from an entry's Selected Drill-downs
   // list -- frontend-only. "Selected" itself is derived straight from real
   // repository data (triggered suggestions + existing chain levels), never
   // hand-tracked, so it can't fall out of sync with what actually exists.
-  const [dismissedDrilldowns, setDismissedDrilldowns] = useState<Record<string, Set<string>>>({});
+  const [dismissedDrilldowns, setDismissedDrilldowns] = useStoredState<Record<string, Set<string>>>("analysis.dismissedDrilldowns", {});
 
-  const [overallReports, setOverallReports] = useState<OverallReportsState>({});
-  const [overallLoading, setOverallLoading] = useState<LoadingState>({});
+  const [overallReports, setOverallReports] = useStoredState<OverallReportsState>("analysis.overallReports", {});
+  const [overallLoading, setOverallLoading] = useStoredState<LoadingState>("analysis.overallLoading", {});
   const [overallError, setOverallError] = useState<ErrorsState>({});
 
   const [openEntry, setOpenEntry] = useState<{ slotId: UploadSlotId; entryId: string } | null>(null);
@@ -130,19 +131,19 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const [openSelectedSignal, setOpenSelectedSignal] = useState(0);
 
   // Toolbar state -- search/sort/filter/pagination, per audited slot.
-  const [search, setSearch] = useState<Partial<Record<UploadSlotId, string>>>({});
-  const [sort, setSort] = useState<Partial<Record<UploadSlotId, AnalysisSortKey>>>({});
-  const [categoryFilter, setCategoryFilter] = useState<Partial<Record<UploadSlotId, string[]>>>({});
-  const [statusFilter, setStatusFilter] = useState<Partial<Record<UploadSlotId, AnalysisStatusFilter[]>>>({});
-  const [page, setPage] = useState<Partial<Record<UploadSlotId, number>>>({});
+  const [search, setSearch] = useStoredState<Partial<Record<UploadSlotId, string>>>("analysis.search", {});
+  const [sort, setSort] = useStoredState<Partial<Record<UploadSlotId, AnalysisSortKey>>>("analysis.sort", {});
+  const [categoryFilter, setCategoryFilter] = useStoredState<Partial<Record<UploadSlotId, string[]>>>("analysis.categoryFilter", {});
+  const [statusFilter, setStatusFilter] = useStoredState<Partial<Record<UploadSlotId, AnalysisStatusFilter[]>>>("analysis.statusFilter", {});
+  const [page, setPage] = useStoredState<Partial<Record<UploadSlotId, number>>>("analysis.page", {});
 
   const [defsError, setDefsError] = useState<string | null>(null);
-  const [defsLoading, setDefsLoading] = useState(false);
+  const [defsLoading, setDefsLoading] = useStoredState("analysis.defsLoading", false);
   // True once we've either attempted the Analysis Profile upload (success or
   // failure) or confirmed there isn't one -- gates the first repository fetch
   // so predefined analyses are included when available, without ever
   // requiring the file to exist.
-  const [defsAttempted, setDefsAttempted] = useState(false);
+  const [defsAttempted, setDefsAttempted] = useStoredState("analysis.defsAttempted", false);
 
   const auditedReady = AUDITED_SLOTS.filter((id) => files[id] && auditReports[id]?.status === "reviewed");
   const hasAnalysisProfileFile = !!files.analysisProfile;
@@ -150,9 +151,15 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   // Step 0: confirm feature engineering has actually run for each audited
   // slot -- an analysis can group by engineered columns, so it needs that
   // step done first.
+  // Server-derived data (the feature report, the analysis repository) can be
+  // changed by the Features page between visits, so each visit refetches it once
+  // while the cached copy stays on screen -- no flash of an empty page.
+  const refreshedThisVisit = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     for (const id of auditedReady) {
-      if (featureReports[id] || featureCheckLoading[id] || featureCheckFailed[id]) continue;
+      if (featureCheckLoading[id] || featureCheckFailed[id] || refreshedThisVisit.current.has(`feature:${id}`)) continue;
+      refreshedThisVisit.current.add(`feature:${id}`);
       const sessionId = auditReports[id]!.session_id;
       setFeatureCheckLoading((prev) => ({ ...prev, [id]: true }));
       fetchFeatureReport(sessionId)
@@ -193,7 +200,8 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   useEffect(() => {
     if (!defsAttempted) return;
     for (const id of slotsReady) {
-      if (repositories[id] || repoLoading[id] || repoError[id]) continue;
+      if (repoLoading[id] || repoError[id] || refreshedThisVisit.current.has(`repo:${id}`)) continue;
+      refreshedThisVisit.current.add(`repo:${id}`);
       const sessionId = auditReports[id]!.session_id;
       setRepoLoading((prev) => ({ ...prev, [id]: true }));
       refreshRepository(id, sessionId)
@@ -501,7 +509,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
         <PageHeader
           icon={<IconBarChart />}
           title="Analysis"
-          subtitle="The Analysis Agent drafts a formula, writes the code, picks a chart, and interprets the result for each analysis below -- predefined, planner-approved, custom, and AI-suggested -- automatically, as soon as each one is added."
+          subtitle="Each analysis below is computed automatically as soon as it is added, with a chart and a plain-language interpretation of the result. They come from your Analysis Profile, the Planner, AI suggestions, or ones you add yourself."
         />
 
         {defsLoading && <ThinkingLoader variant="inline" messages={[`Reading ${files.analysisProfile!.name}…`]} />}
@@ -565,12 +573,11 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
               <div className="analysis-page__card-head">
                 <div className="analysis-page__card-head-left">
                   <h2 className="analysis-page__slot-title">{slot.title}</h2>
-                  <span className="analysis-page__pill">ANALYSIS REPOSITORY</span>
                 </div>
                 <span className="analysis-page__filename">{files[id]!.name}</span>
               </div>
 
-              {repoLoading[id] && <ThinkingLoader messages={LOADING.analysisRepository} />}
+              {repoLoading[id] && !repositories[id] && <ThinkingLoader messages={LOADING.analysisRepository} />}
               {repoError[id] && <p className="analysis-page__error">{repoError[id]}</p>}
 
               <div className="analysis-page__stat-row">
@@ -709,46 +716,58 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                 onRetry={() => runOverallAnalysis(id)}
               />
 
-              <div className="analysis-page__cta-row">
-                <div className="analysis-page__cta">
-                  <span className="analysis-page__cta-icon analysis-page__cta-icon--purple">
-                    <IconSparkle />
-                  </span>
-                  <div className="analysis-page__cta-text">
-                    <span className="analysis-page__cta-title">AI Analysis Suggestions</span>
-                    <span className="analysis-page__cta-desc">Let the agent propose analysis tables from this data's columns.</span>
+              <div className="analysis-page__panels-grid">
+                <div className="analysis-page__ai-panel">
+                  <div className="analysis-page__panel-head-text">
+                    <span className="analysis-page__panel-icon analysis-page__panel-icon--purple">
+                      <IconSparkle />
+                    </span>
+                    <div>
+                      <h3 className="analysis-page__ai-panel-title">AI Analysis Suggestions</h3>
+                      <p className="analysis-page__ai-panel-hint">
+                        The agent looks at this data's columns and proposes analysis tables it can
+                        compute -- you choose which ones to add.
+                      </p>
+                    </div>
                   </div>
                   <button
                     type="button"
-                    className="analysis-page__cta-btn analysis-page__cta-btn--primary"
+                    className="analysis-page__btn analysis-page__btn--primary analysis-page__panel-btn"
                     disabled={!!suggestLoading[id]}
                     onClick={() => {
                       if (pendingSuggestions.length === 0) runSuggest(id);
                       setShowSuggestionsModal((prev) => ({ ...prev, [id]: true }));
                     }}
                   >
+                    <IconSparkle />{" "}
                     {suggestLoading[id]
                       ? <><Spinner />Thinking…</>
                       : pendingSuggestions.length > 0
                         ? `View Suggestions (${pendingSuggestions.length})`
                         : "Suggest Analyses"}
                   </button>
+                  {suggestError[id] && <p className="analysis-page__error analysis-page__panel-error">{suggestError[id]}</p>}
                 </div>
 
-                <div className="analysis-page__cta">
-                  <span className="analysis-page__cta-icon analysis-page__cta-icon--blue">
-                    <IconPlus />
-                  </span>
-                  <div className="analysis-page__cta-text">
-                    <span className="analysis-page__cta-title">Add a Custom Analysis</span>
-                    <span className="analysis-page__cta-desc">Define your own group-by + aggregation logic from this data's columns.</span>
+                <div className="analysis-page__custom-panel">
+                  <div className="analysis-page__panel-head-text">
+                    <span className="analysis-page__panel-icon analysis-page__panel-icon--blue">
+                      <IconClipboard />
+                    </span>
+                    <div>
+                      <h3 className="analysis-page__custom-panel-title">Add a Custom Analysis</h3>
+                      <p className="analysis-page__custom-panel-hint">
+                        Define your own group-by + aggregation logic straight from this data's
+                        columns -- no need to edit and re-upload the Analysis Profile file.
+                      </p>
+                    </div>
                   </div>
                   <button
                     type="button"
-                    className="analysis-page__cta-btn"
+                    className="analysis-page__btn analysis-page__btn--secondary analysis-page__panel-btn"
                     onClick={() => setShowAddForm((prev) => ({ ...prev, [id]: true }))}
                   >
-                    + Add Custom
+                    + Add Custom Analysis
                   </button>
                 </div>
               </div>

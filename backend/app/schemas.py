@@ -637,3 +637,36 @@ class EntryTranslation(BaseModel):
 
 class ReportTranslationsResponse(BaseModel):
     translations: dict[str, EntryTranslation]
+
+
+class ReportSlideEdit(BaseModel):
+    """One slide in an exported deck: which analysis, and any text the PM edited in the Report preview
+    (None = keep the generated text)."""
+
+    entry_id: str
+    chart_type: str | None = None
+    heading: str | None = None  # the title text, without its slide number
+    explanation: str | None = None
+    caption: str | None = None
+
+
+class ReportExportRequest(BaseModel):
+    """The deck exactly as arranged in the Report preview: slides in order (deleted ones simply absent),
+    plus any edited cover text and summary bullets."""
+
+    slides: list[ReportSlideEdit]
+    language: str = "en"
+    cover_title: str | None = None
+    cover_subtitle: str | None = None
+    summary_bullets: list[str] | None = None
+
+
+class TranslateTextsRequest(BaseModel):
+    language: str
+    texts: list[str]
+
+
+class TranslateTextsResponse(BaseModel):
+    """{original text: translated text} -- a text that couldn't be translated maps to itself."""
+
+    translations: dict[str, str]

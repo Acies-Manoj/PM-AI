@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AuditIssue } from "../api/audit";
-import { IconChevronRight, IconSparkle } from "./icons";
+import { IconChevronRight } from "./icons";
 import OutlierBoxPlot from "./OutlierBoxPlot";
 import IssueRowsModal from "./IssueRowsModal";
 import "./AuditIssueCard.css";
@@ -75,8 +75,6 @@ export default function AuditIssueCard({
 
   const dropOption = issue.options.find((o) => o.id === "drop_selected");
   const keepOption = issue.options.find((o) => o.id === "keep");
-  const recommendedOption = issue.options.find((o) => o.id === issue.recommended_action);
-  const showAiTile = issue.status !== "resolved" && (recommendedOption || issue.recommendation);
 
   return (
     <div className={`audit-issue audit-issue--${issue.severity} ${isResolved ? "audit-issue--resolved" : ""}`}>
@@ -121,18 +119,6 @@ export default function AuditIssueCard({
           <span className="audit-issue__affected">
             {issue.affected_row_count} {unit}
           </span>
-          {showAiTile && (
-            <p
-              className={`audit-issue__tile-hint ${
-                issue.recommended_action === "keep" ? "audit-issue__tile-hint--keep" : ""
-              }`}
-            >
-              <span className="audit-issue__tile-hint-icon">
-                <IconSparkle />
-              </span>
-              {recommendedOption?.label ?? issue.recommendation}
-            </p>
-          )}
         </button>
       )}
 
@@ -157,21 +143,6 @@ export default function AuditIssueCard({
               {issue.chart && (
                 <div className="audit-issue__chart-panel">
                   <OutlierBoxPlot chart={issue.chart} />
-                </div>
-              )}
-
-              {showAiTile && (
-                <div className={`audit-issue__ai-tile ${issue.recommended_action === "keep" ? "audit-issue__ai-tile--keep" : ""}`}>
-                  <span className="audit-issue__ai-tile-icon">
-                    <IconSparkle />
-                  </span>
-                  <div className="audit-issue__ai-tile-body">
-                    <span className="audit-issue__ai-tile-heading">
-                      {issue.recommended_action === "keep" ? "AI Suggests" : "AI Recommended"}
-                      {recommendedOption && <span className="audit-issue__ai-tile-action">{recommendedOption.label}</span>}
-                    </span>
-                    {issue.recommendation && <span className="audit-issue__ai-tile-note">{issue.recommendation}</span>}
-                  </div>
                 </div>
               )}
 
@@ -222,9 +193,7 @@ export default function AuditIssueCard({
                     {dropOption && (
                       <button
                         type="button"
-                        className={`audit-issue__btn audit-issue__btn--primary ${
-                          issue.recommended_action === dropOption.id ? "audit-issue__btn--recommended" : ""
-                        }`}
+                        className={`audit-issue__btn audit-issue__btn--primary`}
                         disabled={resolving || checked.size === 0}
                         onClick={() => resolveAndClose(dropOption.id, Array.from(checked))}
                       >
@@ -234,9 +203,7 @@ export default function AuditIssueCard({
                     {keepOption && (
                       <button
                         type="button"
-                        className={`audit-issue__btn audit-issue__btn--secondary ${
-                          issue.recommended_action === keepOption.id ? "audit-issue__btn--recommended" : ""
-                        }`}
+                        className={`audit-issue__btn audit-issue__btn--secondary`}
                         disabled={resolving}
                         onClick={() => resolveAndClose(keepOption.id)}
                       >
@@ -251,9 +218,7 @@ export default function AuditIssueCard({
                     <button
                       key={opt.id}
                       type="button"
-                      className={`audit-issue__btn ${opt.id === "keep" ? "audit-issue__btn--secondary" : "audit-issue__btn--primary"} ${
-                        issue.recommended_action === opt.id ? "audit-issue__btn--recommended" : ""
-                      }`}
+                      className={`audit-issue__btn ${opt.id === "keep" ? "audit-issue__btn--secondary" : "audit-issue__btn--primary"}`}
                       disabled={resolving}
                       onClick={() => resolveAndClose(opt.id)}
                     >

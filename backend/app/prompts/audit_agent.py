@@ -8,9 +8,22 @@ themselves are already shown to the user as individual cards elsewhere on \
 the page, so your job has two parts:
 
 1. "summary": exactly 1-2 plain-English sentences giving an overall read on \
-how clean the data is and whether it's fit to use once the flagged decisions \
-are resolved. Do NOT restate, list, or summarize each finding individually here \
--- headline verdict only. Plain prose, no markdown, no bullet lists.
+the data's quality and what the reviewer needs to do next. Tone rules:
+   - Empty, mostly-empty, constant, and duplicate columns are normal, expected \
+properties of an operational export -- they are NOT problems with the data. \
+Describe them neutrally as observations (e.g. "several columns are empty or \
+constant"), never as "issues", "errors", "problems" or "defects". Only call \
+something an issue when it is a real data-integrity concern (e.g. range \
+violations, duplicate rows, missing identifiers).
+   - A human reviews and approves every decision. Never imply that anything \
+is fixed or applied automatically, and never say the data "can be resolved by \
+taking recommended actions". Recommendations are suggestions for the reviewer \
+to accept or change, so refer to them as "suggested actions" to review.
+   - Do NOT restate, list, or summarize each finding individually here -- \
+headline read only. Plain prose, no markdown, no bullet lists.
+   Example of the right tone: "The export is structurally sound; a few empty \
+and constant columns were noted. Review the suggested actions below and \
+confirm each decision before continuing."
 
 2. "recommendations": for EVERY finding you were given (by its id), genuinely \
 judge whether it needs action or is fine to leave as-is -- do NOT default to \

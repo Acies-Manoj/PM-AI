@@ -1,0 +1,403 @@
+.report-editor__panel {
+  max-width: 1320px;
+  height: 92vh;
+}
+
+.report-editor__panel .modal__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px 16px 16px;
+}
+
+/* -- toolbar ------------------------------------------------------------ */
+
+.report-editor__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.report-editor__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--carrier-blue);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.report-editor__tool svg {
+  width: 15px;
+  height: 15px;
+}
+
+.report-editor__tool:hover:not(:disabled) {
+  background: var(--carrier-blue-tint);
+}
+
+.report-editor__tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.report-editor__sep {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+  margin: 0 4px;
+}
+
+.report-editor__count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* -- three columns: rail | stage | inspector ---------------------------------- */
+
+.report-editor {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr) 290px;
+  gap: 16px;
+  padding-top: 14px;
+}
+
+.report-editor__rail,
+.report-editor__inspector,
+.report-editor__stage {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* -- rail ------------------------------------------------------------------ */
+
+.report-editor__thumbs {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.report-editor__thumb {
+  position: relative;
+  padding-left: 22px;
+}
+
+.report-editor__thumb-num {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 18px;
+  text-align: right;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.report-editor__thumb-art {
+  display: block;
+  width: 100%;
+  padding: 0;
+  background: #fff;
+  border: 2px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.report-editor__thumb-art:hover {
+  border-color: var(--carrier-light-blue);
+}
+
+.report-editor__thumb.is-active .report-editor__thumb-art {
+  border-color: var(--carrier-blue);
+  box-shadow: 0 0 0 2px var(--carrier-blue-tint-2);
+}
+
+.report-editor__thumb.is-dragging {
+  opacity: 0.4;
+}
+
+/* A line where the dragged slide will land. */
+.report-editor__thumb.drop-before::before,
+.report-editor__thumb.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--carrier-light-blue);
+}
+
+.report-editor__thumb.drop-before::before {
+  top: -8px;
+}
+
+.report-editor__thumb.drop-after::after {
+  bottom: -8px;
+}
+
+/* Tick box on every slide: ticked = in the report (the default). */
+.report-editor__check {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--carrier-blue);
+  cursor: pointer;
+  background: #fff;
+}
+
+.report-editor__check:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Unticked: still there to open, edit or re-tick, but visibly out of the report. */
+.report-editor__thumb.is-off .report-editor__thumb-art {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+.report-editor__include {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.report-editor__include input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--carrier-blue);
+}
+
+/* -- stage ----------------------------------------------------------------- */
+
+.report-editor__stage {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4px;
+}
+
+.report-editor__slide {
+  width: 100%;
+  max-width: 920px;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.report-editor__pending {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+  background: #fff;
+}
+
+/* -- inspector ------------------------------------------------------------- */
+
+.report-editor__inspector {
+  padding: 2px 4px 0 14px;
+  border-left: 1px solid var(--color-border);
+}
+
+.report-editor__inspector-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--carrier-blue);
+}
+
+.report-editor__field {
+  margin-bottom: 14px;
+}
+
+.report-editor__field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.report-editor__label {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--color-text-muted);
+}
+
+.report-editor__reset {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--carrier-light-blue);
+  cursor: pointer;
+}
+
+.report-editor__input {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.report-editor__input:focus {
+  outline: 2px solid var(--carrier-blue-tint-2);
+  border-color: var(--carrier-blue);
+}
+
+.report-editor__textarea {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.report-editor__hint {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.report-editor__hint--warn {
+  color: #92400e;
+}
+
+.report-editor__error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--color-error);
+}
+
+.report-editor__bullets {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-editor__bullets li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.report-editor__icon-btn {
+  flex-shrink: 0;
+  display: flex;
+  padding: 7px;
+  color: var(--color-error);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.report-editor__icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.report-editor__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-editor__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--carrier-blue);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.report-editor__btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.report-editor__btn:hover:not(:disabled) {
+  border-color: var(--carrier-blue);
+}
+
+.report-editor__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* -- narrow screens: stack, rail becomes a strip ----------------------------------- */
+
+@media (max-width: 1000px) {
+  .report-editor__panel .modal__body {
+    overflow-y: auto;
+  }
+
+  .report-editor {
+    grid-template-columns: minmax(0, 1fr);
+    flex: none;
+  }
+
+  .report-editor__rail,
+  .report-editor__inspector,
+  .report-editor__stage {
+    overflow: visible;
+  }
+
+  .report-editor__thumbs {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .report-editor__thumb {
+    flex: 0 0 150px;
+  }
+
+  .report-editor__inspector {
+    border-left: none;
+    padding-left: 0;
+  }
+}

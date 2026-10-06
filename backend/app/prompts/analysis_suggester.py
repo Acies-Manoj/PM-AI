@@ -27,6 +27,7 @@ commentary:
   {{
     "name": "short title, e.g. 'Shipments by Carrier'",
     "description": "one plain-English sentence on why this is useful",
+    "business_question": "the decision-maker question this answers, lower case, no question mark, under 15 words, e.g. 'which carrier is worst for compliance'",
     "calculation_intent": "a precise, unambiguous plain-English description of exactly what to group/aggregate from the columns below",
     "input_columns": ["exact column name(s) this analysis reads"]
   }}

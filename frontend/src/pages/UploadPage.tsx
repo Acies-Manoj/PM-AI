@@ -149,7 +149,7 @@ export default function UploadPage({
           <p className="upload-page__lede">
             Provide the SensiWatch export to begin. ColdStream data, threshold references, and
             customer KPI documents are optional but improve triage and reporting accuracy. SensiWatch
-            and ColdStream files are reviewed by the data audit agent on the next page.
+            and ColdStream files go through the data audit on the next page.
           </p>
         </div>
 

@@ -25,6 +25,7 @@ _JSON_SCHEMA = """{
       "name": "string",
       "type": "analysis | feature | configuration",
       "description": "string",
+      "business_question": "string (analyses only)",
       "status": "existing | create_new | needs_clarification",
       "required_fields": ["exact catalog column names"],
       "missing_fields": ["fields not available in the catalog"],
@@ -165,6 +166,7 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     for rec in result["recommendations"]:
         rec.setdefault("name", "Untitled recommendation")
         rec.setdefault("description", "")
+        rec.setdefault("business_question", "")
         rec.setdefault("reason", "")
         rec.setdefault("required_fields", [])
         rec.setdefault("missing_fields", [])

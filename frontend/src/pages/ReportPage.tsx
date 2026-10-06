@@ -1,18 +1,22 @@
 import ThinkingLoader from "../components/ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
 import StatTile from "../components/StatTile";
 import AnalysisChart from "../components/AnalysisChart";
+import ReportEditorModal from "../components/ReportEditorModal";
+import type { DeckState, SlideEdit } from "../utils/deck";
+import { useStoredRef, useStoredState } from "../state/sessionStore";
 import {
   IconChevronDown,
   IconChevronLeft,
   IconClipboard,
-  IconDoc,
   IconDownload,
+  IconEye,
   IconGripVertical,
   IconLayers,
   IconSparkle,
@@ -23,7 +27,8 @@ import {
   fetchReportTranslations,
   fetchSupportedReportLanguages,
   AuditApiError,
-  downloadReportUrl,
+  exportReport,
+  translateTexts,
   type AnalysisRepositoryEntry,
   type EntryTranslation,
   type LanguageOption,
@@ -68,34 +73,55 @@ function shortenInterpretation(text: string): string {
 export default function ReportPage({ files, auditReports }: ReportPageProps) {
   const navigate = useNavigate();
 
-  const [repositories, setRepositories] = useState<RepositoriesState>({});
-  const [loading, setLoading] = useState<LoadingState>({});
+  // Everything the PM chose (selection, order, language, expanded charts) lives in the
+  // shared store so it survives leaving this page; the analysis repository itself is
+  // refetched on each visit (stale-while-revalidate) since the Analysis page can change it.
+  const [repositories, setRepositories] = useStoredState<RepositoriesState>("report.repositories", {});
+  const [loading, setLoading] = useStoredState<LoadingState>("report.loading", {});
+  const refreshedThisVisit = useRef<Set<string>>(new Set());
+  // Where each source's Preview / Download buttons render: the top bar and the bottom bar of the page.
+  const [exportTop, setExportTop] = useState<HTMLDivElement | null>(null);
+  const [exportBottom, setExportBottom] = useState<HTMLDivElement | null>(null);
+  const [editorSlot, setEditorSlot] = useState<UploadSlotId | null>(null);
+  const [exporting, setExporting] = useState<LoadingState>({});
+  // What the PM changed in the editor: slide text, cover text, and whether the summary was hand-written.
+  const [edits, setEdits] = useStoredState<Record<string, SlideEdit>>("report.edits", {});
+  const [cover, setCover] = useStoredState<Partial<Record<UploadSlotId, DeckState["cover"]>>>("report.cover", {});
+  const [summaryEdited, setSummaryEdited] = useStoredState<Partial<Record<UploadSlotId, boolean>>>("report.summaryEdited", {});
+  // The summary has three sources: what the generator wrote (English), its translation into the picked language,
+  // and what the PM typed. The PM's text wins; otherwise the translation when one matches the language.
+  const [summaryText, setSummaryText] = useStoredState<Partial<Record<UploadSlotId, string[]>>>("report.summaryText", {});
+  const [summaryTranslated, setSummaryTranslated] = useStoredState<
+    Partial<Record<UploadSlotId, { language: string; source: string; bullets: string[] }>>
+  >("report.summaryTranslated", {});
+  const summaryEditedRef = useRef(summaryEdited);
+  summaryEditedRef.current = summaryEdited;
   const [errors, setErrors] = useState<ErrorsState>({});
-  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useStoredState<Record<string, boolean>>("report.selected", {});
 
   // The PM's own chosen slide order (drag-reorderable) -- frontend-only
   // until download time, when it's sent to the backend so the exported
   // .pptx matches this preview's order exactly.
-  const [slideOrder, setSlideOrder] = useState<Partial<Record<UploadSlotId, string[]>>>({});
+  const [slideOrder, setSlideOrder] = useStoredState<Partial<Record<UploadSlotId, string[]>>>("report.slideOrder", {});
   const [draggingId, setDraggingId] = useState<string | null>(null);
   // Charts start collapsed -- a slide is mostly checkbox/name/chart-type
   // until the PM asks to actually see the chart.
-  const [expandedCharts, setExpandedCharts] = useState<Record<string, boolean>>({});
+  const [expandedCharts, setExpandedCharts] = useStoredState<Record<string, boolean>>("report.expandedCharts", {});
 
   // The Report's own closing-slide bullet points -- synthesized from the
   // included slides' interpretations (see final_summary_agent.py), NOT the
   // Analysis page's KPI-highlights Summary. Bullets, not one paragraph, to
   // match the reference deck's own bullet-point closing slide.
-  const [summaryBullets, setSummaryBullets] = useState<Partial<Record<UploadSlotId, string[]>>>({});
-  const [summaryLoading, setSummaryLoading] = useState<LoadingState>({});
+  const [summaryBullets, setSummaryBullets] = useStoredState<Partial<Record<UploadSlotId, string[]>>>("report.summaryBullets", {});
+  const [summaryLoading, setSummaryLoading] = useStoredState<LoadingState>("report.summaryLoading", {});
   const [summaryError, setSummaryError] = useState<ErrorsState>({});
 
   const [languages, setLanguages] = useState<LanguageOption[]>([{ code: "en", name: "English" }]);
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useStoredState("report.language", "en");
   // Translated {entryId: {name, interpretation}} per slot, for whichever
   // language is picked -- mirrors what build_report puts on each slide, so
   // this on-screen list matches the .pptx before the PM ever downloads it.
-  const [translations, setTranslations] = useState<Partial<Record<UploadSlotId, Record<string, EntryTranslation>>>>({});
+  const [translations, setTranslations] = useStoredState<Partial<Record<UploadSlotId, Record<string, EntryTranslation>>>>("report.translations", {});
 
   const auditedReady = AUDITED_SLOTS.filter((id) => files[id] && auditReports[id]?.status === "reviewed");
 
@@ -117,7 +143,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
   // (or no) translations in place rather than blocking the preview.
   useEffect(() => {
     if (language === "en") {
-      setTranslations({});
+      setTranslations((prev) => (Object.keys(prev).length === 0 ? prev : {}));
       return;
     }
     for (const id of auditedReady) {
@@ -133,7 +159,8 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
 
   useEffect(() => {
     for (const id of auditedReady) {
-      if (repositories[id] || loading[id]) continue;
+      if (loading[id] || refreshedThisVisit.current.has(id)) continue;
+      refreshedThisVisit.current.add(id);
       const sessionId = auditReports[id]!.session_id;
       setLoading((prev) => ({ ...prev, [id]: true }));
       fetchAnalysisRepository(sessionId)
@@ -186,13 +213,19 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
     setSummaryLoading((prev) => ({ ...prev, [id]: true }));
     setSummaryError((prev) => ({ ...prev, [id]: undefined }));
     fetchReportSummary(sessionId, entryIds)
-      .then((res) => setSummaryBullets((prev) => ({ ...prev, [id]: res.bullets })))
-      .catch((err) =>
+      .then((res) => {
+        // A summary the PM wrote by hand while this was loading must not be overwritten.
+        if (!summaryEditedRef.current[id]) setSummaryBullets((prev) => ({ ...prev, [id]: res.bullets }));
+      })
+      .catch((err) => {
+        // Forget the signature so the next visit / selection change retries instead of
+        // treating this selection as already summarized.
+        summarizedFor.current[id] = undefined;
         setSummaryError((prev) => ({
           ...prev,
           [id]: err instanceof AuditApiError ? err.message : "Could not reach the summary agent.",
-        }))
-      )
+        }));
+      })
       .finally(() => setSummaryLoading((prev) => ({ ...prev, [id]: false })));
   };
 
@@ -200,7 +233,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
   // entry-id list actually changes -- keyed by a signature of that exact
   // list so toggling a checkbox or reordering slides refreshes it, but
   // re-renders for unrelated reasons don't re-request it.
-  const summarizedFor = useRef<Partial<Record<UploadSlotId, string>>>({});
+  const summarizedFor = useStoredRef<{ current: Partial<Record<UploadSlotId, string>> }>("report.summarizedFor", () => ({ current: {} }));
   useEffect(() => {
     for (const id of auditedReady) {
       const order = slideOrder[id] ?? [];
@@ -210,14 +243,50 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
         (repositories[id] ?? []).filter((e) => doneIds.has(e.id) && selected[e.id] && !isStaleEntry(e, byId)),
         order
       ).map((n) => n.entry.id);
-      if (orderedSelectedDoneIds.length === 0) continue;
+      if (orderedSelectedDoneIds.length === 0 || summaryEdited[id]) continue;
       const signature = orderedSelectedDoneIds.join("|");
       if (summarizedFor.current[id] === signature || summaryLoading[id]) continue;
       summarizedFor.current[id] = signature;
       runReportSummary(id, orderedSelectedDoneIds);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repositories, auditedReady, slideOrder, selected]);
+  }, [repositories, auditedReady, slideOrder, selected, summaryEdited]);
+
+  // Hand the summary back to the generator: forgetting its signature makes the effect above rebuild it.
+  const regenerateSummary = (id: UploadSlotId) => {
+    summarizedFor.current[id] = undefined;
+    setSummaryEdited((prev) => ({ ...prev, [id]: false }));
+    setSummaryText((prev) => ({ ...prev, [id]: undefined }));
+  };
+
+  // Translate the generated summary whenever the language (or the summary) changes. English needs nothing.
+  useEffect(() => {
+    if (language === "en") return;
+    for (const id of auditedReady) {
+      const source = summaryBullets[id];
+      if (!source || summaryEdited[id]) continue;
+      const key = source.join("|");
+      const have = summaryTranslated[id];
+      if (have && have.language === language && have.source === key) continue;
+      translateTexts(language, source)
+        .then((map) =>
+          setSummaryTranslated((prev) => ({ ...prev, [id]: { language, source: key, bullets: source.map((b) => map[b] ?? b) } }))
+        )
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language, summaryBullets, summaryEdited]);
+
+  // The summary exactly as it should read now: the PM's own text, else the translation, else the generated English.
+  const bulletsFor = (id: UploadSlotId): string[] | null => {
+    if (summaryEdited[id]) return summaryText[id] ?? [];
+    const generated = summaryBullets[id];
+    if (!generated) return null;
+    const translated = summaryTranslated[id];
+    return language !== "en" && translated?.language === language && translated.source === generated.join("|")
+      ? translated.bullets
+      : generated;
+  };
 
   const toggleSelected = (entryId: string) => setSelected((prev) => ({ ...prev, [entryId]: !prev[entryId] }));
 
@@ -314,6 +383,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           }
         />
 
+        <div className="report-page__toolbar">
         <div className="report-page__language-picker">
           <label htmlFor="report-language">Report language</label>
           <select id="report-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
@@ -323,11 +393,8 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
               </option>
             ))}
           </select>
-          {language !== "en" && (
-            <span className="report-page__language-hint">
-              Slide headings, interpretations, and footer text are translated -- chart data and column/category values are not.
-            </span>
-          )}
+        </div>
+        <div className="report-page__export-host" ref={setExportTop} />
         </div>
 
         {slotsWithResults.map((id) => {
@@ -350,7 +417,55 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           const slideNumbers = new Map(includedTree.map((n) => [n.entry.id, n.number]));
           const selectedEntries = includedTree.map((n) => n.entry);
           const selectedIds = selectedEntries.map((e) => e.id);
-          const rowCount = auditReports[id]!.row_count;
+          const deck: DeckState = {
+            selected,
+            order,
+            edits,
+            cover: cover[id] ?? {},
+            bullets: bulletsFor(id),
+            bulletsEdited: !!summaryEdited[id],
+          };
+          const applyDeck = (next: DeckState) => {
+            setSelected(next.selected);
+            setSlideOrder((prev) => ({ ...prev, [id]: next.order }));
+            setEdits(next.edits);
+            setCover((prev) => ({ ...prev, [id]: next.cover }));
+            setSummaryEdited((prev) => ({ ...prev, [id]: next.bulletsEdited }));
+            // Only text the PM typed is stored; the generated summary stays as the generator wrote it.
+            if (next.bulletsEdited) setSummaryText((prev) => ({ ...prev, [id]: next.bullets ?? [] }));
+          };
+          const download = async () => {
+            setExporting((prev) => ({ ...prev, [id]: true }));
+            setErrors((prev) => ({ ...prev, [id]: undefined }));
+            try {
+              const blob = await exportReport(auditReports[id]!.session_id, {
+                slides: selectedEntries.map((e) => ({
+                  entry_id: e.id,
+                  chart_type: defaultChartType(e),
+                  heading: edits[e.id]?.heading,
+                  explanation: edits[e.id]?.explanation,
+                  caption: edits[e.id]?.caption,
+                })),
+                language,
+                cover_title: cover[id]?.title,
+                cover_subtitle: cover[id]?.subtitle,
+                // The summary exactly as shown (and possibly edited), so the file matches the preview.
+                summary_bullets: bulletsFor(id),
+              });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = "Program Manager AI Report.pptx";
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              setErrors((prev) => ({ ...prev, [id]: err instanceof AuditApiError ? err.message : "Could not build the report." }));
+            } finally {
+              setExporting((prev) => ({ ...prev, [id]: false }));
+            }
+          };
 
           return (
             <section className="report-page__card" key={id}>
@@ -365,10 +480,33 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
               {errors[id] && <p className="report-page__error">{errors[id]}</p>}
 
               <div className="report-page__stat-row">
-                <StatTile icon={<IconDoc />} color="blue" value={rowCount.toLocaleString()} label="Rows" />
-                <StatTile icon={<IconLayers />} color="teal" value={doneEntries.length} label="Analysis Tables" />
+                <StatTile icon={<IconLayers />} color="teal" value={doneEntries.length} label="Analyses" />
                 {aiSuggestedCount > 0 && (
                   <StatTile icon={<IconSparkle />} color="purple" value={aiSuggestedCount} label="AI Suggested" />
+                )}
+              </div>
+
+              <div className="report-page__summary-card">
+                <h3 className="report-page__summary-title">
+                  <IconSparkle /> Final Summary
+                </h3>
+                {summaryError[id] ? (
+                  <div className="report-page__summary-error-row">
+                    <p className="report-page__summary-error">{summaryError[id]}</p>
+                    <button type="button" className="report-page__summary-retry" onClick={() => runReportSummary(id, selectedIds)}>
+                      Try again
+                    </button>
+                  </div>
+                ) : summaryLoading[id] && !bulletsFor(id) ? (
+                  <ThinkingLoader messages={LOADING.reportSummary} />
+                ) : bulletsFor(id) ? (
+                  <ul className="report-page__summary-bullets">
+                    {bulletsFor(id)!.map((bullet, i) => (
+                      <li key={i}>{bullet}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="report-page__summary-status">Select at least one analysis to generate the final summary.</p>
                 )}
               </div>
 
@@ -376,7 +514,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
               <ul className="report-page__included-list">
                 {tree.map(({ entry, depth }) => {
                   const entryTranslation = translations[id]?.[entry.id];
-                  const displayName = entryTranslation?.name ?? entry.name;
+                  const displayName = edits[entry.id]?.heading || (entryTranslation?.name ?? entry.name);
                   const displayInterpretation = entryTranslation?.interpretation ?? entry.interpretation;
                   const stale = staleIds.has(entry.id);
                   const slideNumber = slideNumbers.get(entry.id);
@@ -441,50 +579,56 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
                 <li className="report-page__included-summary">Final summary</li>
               </ul>
 
-              <div className="report-page__summary-card">
-                <h3 className="report-page__summary-title">
-                  <IconSparkle /> Final Summary
-                </h3>
-                {summaryError[id] ? (
-                  <div className="report-page__summary-error-row">
-                    <p className="report-page__summary-error">{summaryError[id]}</p>
-                    <button type="button" className="report-page__summary-retry" onClick={() => runReportSummary(id, selectedIds)}>
-                      Try again
+              {(() => {
+                const exportRow = (
+                  <div className="report-page__export-row">
+                    {slotsWithResults.length > 1 && <span className="report-page__export-label">{slot.title}</span>}
+                    <button
+                      type="button"
+                      className="report-page__preview-btn"
+                      disabled={doneEntries.length === 0}
+                      onClick={() => setEditorSlot(id)}
+                    >
+                      <IconEye />
+                      Preview &amp; edit slides
+                    </button>
+                    <button
+                      type="button"
+                      className={`report-page__download-btn ${selectedIds.length === 0 || exporting[id] ? "report-page__download-btn--disabled" : ""}`}
+                      disabled={selectedIds.length === 0 || !!exporting[id]}
+                      onClick={download}
+                    >
+                      <IconDownload />
+                      {selectedIds.length === 0
+                        ? "Select at least one analysis"
+                        : exporting[id]
+                          ? "Building report…"
+                          : "Download Report"}
                     </button>
                   </div>
-                ) : summaryLoading[id] && !summaryBullets[id] ? (
-                  <ThinkingLoader messages={LOADING.reportSummary} />
-                ) : summaryBullets[id] ? (
-                  <ul className="report-page__summary-bullets">
-                    {summaryBullets[id]!.map((bullet, i) => (
-                      <li key={i}>{bullet}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="report-page__summary-status">Select at least one analysis to generate the final summary.</p>
-                )}
-              </div>
+                );
+                return (
+                  <>
+                    {exportTop && createPortal(exportRow, exportTop)}
+                    {exportBottom && createPortal(exportRow, exportBottom)}
+                  </>
+                );
+              })()}
 
-              <a
-                className={`report-page__download-btn ${selectedIds.length === 0 ? "report-page__download-btn--disabled" : ""}`}
-                href={
-                  selectedIds.length > 0
-                    ? downloadReportUrl(
-                        auditReports[id]!.session_id,
-                        selectedEntries.map((e) => ({ entryId: e.id, chartType: defaultChartType(e) })),
-                        language
-                      )
-                    : undefined
-                }
-                aria-disabled={selectedIds.length === 0}
-                onClick={(e) => {
-                  if (selectedIds.length === 0) e.preventDefault();
-                }}
-                download
-              >
-                <IconDownload />
-                {selectedIds.length === 0 ? "Select at least one analysis" : `Download Report (${selectedIds.length} slides + summary)`}
-              </a>
+              {editorSlot === id && (
+                <ReportEditorModal
+                  entries={doneEntriesRaw}
+                  staleIds={staleIds}
+                  translations={translations[id]}
+                  deck={deck}
+                  coverDefaults={{ title: "Cold Chain Analysis", subtitle: files[id]!.name.replace(/\.(xlsx|xlsm|xls|csv)$/i, "") }}
+                  summaryLoading={!!summaryLoading[id]}
+                  summaryError={summaryError[id]}
+                  onChange={applyDeck}
+                  onRegenerateSummary={() => regenerateSummary(id)}
+                  onClose={() => setEditorSlot(null)}
+                />
+              )}
             </section>
           );
         })}
@@ -493,6 +637,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           <button type="button" className="report-page__btn report-page__btn--secondary report-page__nav-btn" onClick={() => navigate("/analysis")}>
             <IconChevronLeft /> Back to Analysis
           </button>
+          <div className="report-page__export-host" ref={setExportBottom} />
         </div>
       </main>
     </div>

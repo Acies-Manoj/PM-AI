@@ -1041,3 +1041,47 @@ export async function updateTripValue(
   }
   return response.json();
 }
+
+// One slide of an exported deck as arranged in the Report editor: which analysis, plus any text the PM
+// edited (omitted = keep the generated text). Mirrors backend ReportSlideEdit.
+export interface ReportExportSlide {
+  entry_id: string;
+  chart_type?: string | null;
+  heading?: string;
+  explanation?: string;
+  caption?: string;
+}
+
+export interface ReportExportBody {
+  slides: ReportExportSlide[];
+  language: string;
+  cover_title?: string;
+  cover_subtitle?: string;
+  summary_bullets?: string[] | null;
+}
+
+/** Builds the .pptx for a deck the PM edited (order, deletions, text) and returns it as a Blob. */
+export async function exportReport(sessionId: string, body: ReportExportBody): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/api/report/${sessionId}/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.blob();
+}
+
+/** Translates free text (the Report's summary bullets) -- anything that can't be translated comes back unchanged. */
+export async function translateTexts(language: string, texts: string[]): Promise<Record<string, string>> {
+  const response = await fetch(`${API_BASE_URL}/api/report/translate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language, texts }),
+  });
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return (await response.json()).translations;
+}

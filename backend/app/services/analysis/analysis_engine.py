@@ -36,7 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
-from app.services.analysis import analysis_agent, analysis_cache, analysis_dependencies, analysis_designer, analysis_filters, analysis_templates
+from app.services.analysis import analysis_agent, analysis_cache, analysis_codegen, analysis_dependencies, analysis_designer, analysis_filters, analysis_templates
 from app.services.analysis.analysis_agent import AnalysisComputation
 from app.services.analysis.analysis_filters import FilterSelection
 from app.services.analysis.analysis_templates import TemplateError
@@ -68,6 +68,9 @@ def _run_template(
         chart_type=chart_type, roles=output.roles, narrate=narrate, computation_mode="template",
     )
     computation.template = template
+    # No agent wrote code for this run, so show the pandas equivalent of the template -- for reading only; it is
+    # never cached or replayed (the cache keeps `template`, not this text).
+    computation.generated_code = analysis_codegen.for_template(template, df)
     return computation
 
 

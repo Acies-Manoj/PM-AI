@@ -36,6 +36,9 @@ A FEATURE describes ONLY a calculation: its inputs, its grouping dimensions (if 
 
 Do not add an analysis just because a feature could be charted. "Calculate transit time" alone is a feature only.
 
+--- BUSINESS QUESTION ---
+Every "analysis" recommendation also carries "business_question": the one decision-maker question the chart answers, phrased the way a Program Manager would ask it, in lower case, no question mark (e.g. "which carrier is worst for compliance", "is compliance improving or worsening as the season ramps up"). Keep it under 15 words and specific to this analysis; never just repeat the name. Leave it "" for features and configurations.
+
 --- STATUS ---
 "existing": the request is already covered (cite the id in the reason; for analyses also "existing_analysis_id").
 "create_new": not covered and needs creating.
@@ -71,6 +74,7 @@ Correct output:
       "name": "Top Carriers by Origin",
       "type": "analysis",
       "description": "Within each origin, rank carriers by shipment count and show each carrier's % in spec.",
+      "business_question": "which carriers perform best and worst at each origin",
       "status": "create_new",
       "required_fields": ["Origin", "Carrier", "Trip ID"],
       "missing_fields": [],
@@ -118,6 +122,7 @@ Return ONLY a valid JSON object, no markdown, no other text:
       "name": "string",
       "type": "analysis | feature | configuration",
       "description": "string",
+      "business_question": "analyses only: the business question this answers, in lower case without a question mark, e.g. 'which carrier is worst for compliance' (empty for other types)",
       "status": "existing | create_new | needs_clarification",
       "required_fields": ["exact catalog column names"],
       "missing_fields": ["fields not available in the catalog"],

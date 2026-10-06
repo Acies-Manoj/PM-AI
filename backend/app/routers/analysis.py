@@ -495,12 +495,11 @@ def _focus_pool(session: AuditSession, entry: dict, result: AnalysisResult, dime
 
 @router.post("/repository/{session_id}/entries/{entry_id}/drilldown/propose", response_model=list[DrilldownProposal])
 def propose_drilldowns(session_id: str, entry_id: str, more: bool = False) -> list[DrilldownProposal]:
-    """10-15 AI-suggested next drill-downs (dimension, focus, top/bottom N,
-    metric), validated against the data -- generated once and cached on the
-    entry's result; every later call (opening this entry again) returns the
-    same cached list with no LLM cost. Passing `more=true` (the single
-    "Suggest with AI" button, once a batch already exists) asks for an
-    additional batch that can't repeat what's cached, and appends it."""
+    """The best AI-suggested next drill-downs (dimension, focus, metric), validated and ranked against
+    the data (analysis_drilldown_agent.rank_proposals) -- at most TOTAL_CAP in all. Generated once and
+    cached on the entry's result; every later call (opening this entry again) returns the same cached
+    list with no LLM cost. Passing `more=true` (the "AI" button) asks for additional ideas that can't
+    repeat what's cached, up to the cap, and appends them."""
     session = _get_session_or_404(session_id)
     entry = analysis_repository.get_entry(session_id, entry_id)
     result = session.analysis_results.get(entry_id)
@@ -510,6 +509,9 @@ def propose_drilldowns(session_id: str, entry_id: str, more: bool = False) -> li
     if cached and not more:
         return result.guided_proposals
     if _level_of(entry) >= analysis_drilldown.MAX_CHAIN_LEVEL:
+        return result.guided_proposals
+    room = analysis_drilldown_agent.TOTAL_CAP - len(cached)
+    if room <= 0:  # "AI" again would only pile on more: the list already holds the best ideas
         return result.guided_proposals
     dimension, where = _parent_scope(session, entry)
     if dimension is None:
@@ -523,7 +525,7 @@ def propose_drilldowns(session_id: str, entry_id: str, more: bool = False) -> li
     new_proposals = analysis_drilldown_agent.propose(
         session.df, entry, dimension, where, [o["value"] for o in options],
         result.result_table or [], result.interpretation, avoid=cached or None,
-        feature_columns=features, pinned=pinned,
+        feature_columns=features, pinned=pinned, limit=min(analysis_drilldown_agent.MAX_PROPOSALS, room),
     )
     result.guided_proposals = result.guided_proposals + [DrilldownProposal(**p) for p in new_proposals]
     return result.guided_proposals

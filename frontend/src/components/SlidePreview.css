@@ -1,0 +1,144 @@
+/* On-screen replica of an exported slide. The slide is 13.333in x 7.5in, so
+   100cqw = 13.333in and 1in = 7.5cqw; every offset below is the exporter's own inch value
+   (backend/app/services/report/report_style.py) times 7.5. */
+
+.slide-preview {
+  --sp-navy: #010198;
+  --sp-text: #1b2333;
+  --sp-muted: #5b6478;
+  --sp-footer: #5c8aa5;
+
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  container-type: inline-size;
+  background: #fff;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--sp-text);
+}
+
+.slide-preview > * {
+  position: absolute;
+  margin: 0;
+}
+
+/* -- header: title block + logo ---------------------------------------------- */
+.slide-preview__title {
+  left: 5.025cqw;
+  top: 2.4cqw;
+  width: 77.25cqw;
+  height: 5.25cqw;
+  display: flex;
+  align-items: center;
+  color: var(--sp-navy);
+  font-weight: 700;
+  line-height: 1.15;
+}
+.slide-preview__title--xl { font-size: 2.917cqw; } /* 28pt */
+.slide-preview__title--lg { font-size: 2.5cqw; }   /* 24pt */
+.slide-preview__title--md { font-size: 2.083cqw; } /* 20pt */
+.slide-preview__title--sm { font-size: 1.875cqw; } /* 18pt */
+
+.slide-preview__logo {
+  left: 85.125cqw;
+  top: 3cqw;
+  width: 9.9cqw;
+  height: auto;
+}
+
+/* -- explanation, chart, caption ----------------------------------------------- */
+.slide-preview__explanation {
+  left: 5.025cqw;
+  top: 8.4cqw;
+  width: 90cqw;
+  height: 5.625cqw;
+  font-size: 1.875cqw; /* 18pt */
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.slide-preview__body {
+  left: 5.025cqw;
+  top: 15cqw;
+  width: 90cqw;
+  height: 33.75cqw; /* 2.0in .. 6.5in */
+}
+
+.slide-preview__caption {
+  left: 5.025cqw;
+  top: 49.35cqw;
+  width: 90cqw;
+  font-size: 1.146cqw; /* 11pt */
+  font-style: italic;
+  color: var(--sp-muted);
+}
+
+/* -- footer -------------------------------------------------------------------- */
+.slide-preview__footer {
+  top: 53.1cqw;
+  font-size: 1.042cqw; /* 10pt */
+  color: var(--sp-footer);
+  white-space: nowrap;
+}
+.slide-preview__footer--left { left: 5.025cqw; }
+.slide-preview__footer--right { right: 5.025cqw; }
+
+/* -- summary slide ------------------------------------------------------------- */
+.slide-preview__bullets {
+  left: 5.025cqw;
+  top: 9.15cqw;
+  width: 90cqw;
+  margin: 0;
+  padding-left: 2.2cqw;
+  color: var(--sp-text);
+  line-height: 1.25;
+}
+.slide-preview__bullets li { margin-bottom: 1.6cqw; }
+.slide-preview__bullets li::marker { color: var(--sp-navy); }
+.slide-preview__bullets--lg { font-size: 1.875cqw; } /* 18pt */
+.slide-preview__bullets--md { font-size: 1.667cqw; } /* 16pt */
+.slide-preview__bullets--sm { font-size: 1.458cqw; } /* 14pt */
+
+/* -- cover: the template artwork (picture) with live text over it ---------------- */
+.slide-preview__cover-art {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+.slide-preview__cover-title {
+  left: 3.52cqw;
+  top: 12.6cqw;
+  width: 35.2cqw;
+  height: 15.5cqw;
+  display: flex;
+  align-items: flex-end;
+  font-size: 4.375cqw; /* 42pt */
+  font-weight: 400;
+  line-height: 1.12;
+  color: #0a2ef5;
+}
+.slide-preview__cover-sub {
+  left: 3.52cqw;
+  top: 31.5cqw;
+  width: 35.2cqw;
+  font-size: 1.875cqw; /* 18pt */
+  line-height: 1.2;
+  color: #152c73;
+}
+
+/* -- thumbnails: the slide drawn at 1000px, scaled down as one picture ---------------------- */
+.thumb-scaler {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+.thumb-scaler__inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1000px;
+  transform-origin: 0 0;
+}

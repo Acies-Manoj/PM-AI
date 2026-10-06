@@ -1,6 +1,6 @@
 import ThinkingLoader from "../components/ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
@@ -11,6 +11,7 @@ import AuditSummaryPanel from "../components/AuditSummaryPanel";
 import OutlierCorrectionStep from "../components/OutlierCorrectionStep";
 import { IconShieldSearch, IconDownload } from "../components/icons";
 import { downloadCleansedFileUrl } from "../api/audit";
+import { useStoredState } from "../state/sessionStore";
 import { AUDITED_SLOTS, UPLOAD_SLOTS } from "../constants/uploadSlots";
 import type { UploadSlotId } from "../types/upload";
 import type { AuditErrorsState, AuditLoadingState, AuditReportsState, FilesState, ResolvingState, UploadedSessionIdsState } from "../App";
@@ -51,51 +52,43 @@ export default function AuditPage({
   reuploadError,
 }: AuditPageProps) {
   const navigate = useNavigate();
-  const [activeTabs, setActiveTabs] = useState<Partial<Record<UploadSlotId, Tab>>>({});
+  // Held in the shared store (not local state) so leaving this page and coming
+  // back keeps the PM where they were instead of replaying the outlier step.
+  const [activeTabs, setActiveTabs] = useStoredState<Partial<Record<UploadSlotId, Tab>>>("audit.activeTabs", {});
   const cardRefs = useRef<Partial<Record<UploadSlotId, HTMLElement | null>>>({});
 
   // The SensiWatch card shows three persistent tabs -- "Outliers Check" (duration/
   // temperature outlier review), "Standard Check" (the usual Standard Checks /
   // Human Decision flow), and "Summary" (what changed overall). Standard Check and
   // Summary stay disabled until the outlier review has been resolved or explicitly
-  // skipped for the CURRENT session.
-  const [wizardActiveTab, setWizardActiveTab] = useState<"outliers" | "standard" | "summary">("outliers");
-  const [sensiwatchStandardUnlocked, setSensiwatchStandardUnlocked] = useState(false);
-  const lastSensiwatchSessionId = useRef<string | undefined>(undefined);
+  // skipped for the CURRENT session. The unlock is remembered against that session
+  // id, so a new or re-uploaded file (new id) starts back at the outlier step.
+  const [storedWizardTab, setWizardActiveTab] = useStoredState<"outliers" | "standard" | "summary" | null>(
+    "audit.wizardTab",
+    null
+  );
+  const [unlockedForSession, setUnlockedForSession] = useStoredState<string | null>("audit.sensiwatchUnlockedFor", null);
+  const sensiwatchSessionId = uploadedSessionIds[WIZARD_SLOT];
+  const sensiwatchStandardUnlocked = !!sensiwatchSessionId && unlockedForSession === sensiwatchSessionId;
+  const wizardActiveTab = storedWizardTab ?? "outliers";
 
-  const submittedIds = useRef<Set<UploadSlotId>>(new Set());
+  // An audit runs once per upload: never when a report already exists (it
+  // holds the PM's resolved decisions), one is in flight, or it already failed.
+  const needsAudit = (id: UploadSlotId) =>
+    !!uploadedSessionIds[id] && !auditReports[id] && !auditLoading[id] && !auditErrors[id];
 
   useEffect(() => {
     for (const id of AUDITED_SLOTS) {
       if (id === WIZARD_SLOT) continue; // deferred until the outlier step is passed -- see below
-      if (!uploadedSessionIds[id]) continue;
-      if (submittedIds.current.has(id)) continue;
-      submittedIds.current.add(id);
-      onRunAudit(id);
+      if (needsAudit(id)) onRunAudit(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uploadedSessionIds]);
-
-  // A new (or freshly re-uploaded) SensiWatch session always starts back at
-  // the outlier-review step, even if a previous session for this slot had
-  // already reached Standard Checks.
-  useEffect(() => {
-    const id = uploadedSessionIds[WIZARD_SLOT];
-    if (id && id !== lastSensiwatchSessionId.current) {
-      lastSensiwatchSessionId.current = id;
-      setWizardActiveTab("outliers");
-      setSensiwatchStandardUnlocked(false);
-      submittedIds.current.delete(WIZARD_SLOT);
-    }
-  }, [uploadedSessionIds]);
+  }, [uploadedSessionIds, auditReports, auditLoading, auditErrors]);
 
   const advanceSensiwatchToStandard = () => {
-    setSensiwatchStandardUnlocked(true);
+    setUnlockedForSession(sensiwatchSessionId ?? null);
     setWizardActiveTab("standard");
-    if (!submittedIds.current.has(WIZARD_SLOT)) {
-      submittedIds.current.add(WIZARD_SLOT);
-      onRunAudit(WIZARD_SLOT);
-    }
+    if (needsAudit(WIZARD_SLOT)) onRunAudit(WIZARD_SLOT);
   };
 
   const auditedSlotsWithFiles = AUDITED_SLOTS.filter((id) => uploadedSessionIds[id]);
@@ -132,7 +125,7 @@ export default function AuditPage({
         <PageHeader
           icon={<IconShieldSearch />}
           title="Data Audit"
-          subtitle="The data audit agent has reviewed your tabular uploads below. Resolve any outstanding questions before continuing."
+          subtitle="Automated data quality checks have been run on your tabular uploads below. Review each finding and confirm any outstanding decisions before continuing."
         />
 
         {auditedSlotsWithFiles.map((id) => {
@@ -219,7 +212,7 @@ export default function AuditPage({
                   ) : (
                     <>
                       {auditLoading[id] && (
-                        <ThinkingLoader messages={LOADING.audit} hint="The audit agent is reviewing this file." intervalMs={3500} showElapsed />
+                        <ThinkingLoader messages={LOADING.audit} hint="Data quality checks are running on this file." intervalMs={3500} showElapsed />
                       )}
 
                       {auditErrors[id] && <p className="audit-page__audit-error">{auditErrors[id]}</p>}
@@ -252,7 +245,7 @@ export default function AuditPage({
               ) : (
                 <>
                   {auditLoading[id] && (
-                    <ThinkingLoader messages={LOADING.audit} hint="The audit agent is reviewing this file." intervalMs={3500} showElapsed />
+                    <ThinkingLoader messages={LOADING.audit} hint="Data quality checks are running on this file." intervalMs={3500} showElapsed />
                   )}
 
                   {auditErrors[id] && <p className="audit-page__audit-error">{auditErrors[id]}</p>}

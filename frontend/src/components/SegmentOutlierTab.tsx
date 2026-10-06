@@ -3,6 +3,7 @@ import type { LaneResult, OutliersResponse, SegmentOutliersResult } from "../api
 import { updateTripValue } from "../api/audit";
 import { IconChevronRight, IconSearch } from "./icons";
 import EditableNumberCell from "./EditableNumberCell";
+import ExcelTable from "./ExcelTable";
 import "./OutlierTabs.css";
 
 interface Props {
@@ -15,12 +16,6 @@ const STATUS_LABELS: Record<LaneResult["status_type"], string> = {
   own_lane: "Own-Lane Fence",
   insufficient: "Insufficient History",
 };
-
-function formatCell(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
 
 // Same fuzzy match backend/app/services/audit/outlier_detectors.py's
 // _find_col uses -- finds this lane's own Serial/Trip ID/Segment Length
@@ -164,48 +159,31 @@ export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props)
                   : "."}{" "}
                 {durationCol && "Click a Segment Days value below to correct it."}
               </p>
-              <div className="temp-chart__table-wrap temp-chart__table-wrap--tall">
-                <table className="outlier-lane-card__table">
-                  <thead>
-                    <tr>
-                      {data.columns.map((col) => (
-                        <th key={col}>{col}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {openLane.outlier_rows.map((row, idx) => {
-                      const serial = serialCol ? row[serialCol] : null;
-                      const tripId = tripCol ? row[tripCol] : null;
-                      const canEdit = durationCol != null && serial != null && tripId != null;
-                      return (
-                        <tr key={idx}>
-                          {data.columns.map((col) =>
-                            col === durationCol && canEdit ? (
-                              <td key={col}>
-                                <EditableNumberCell
-                                  value={toNumberOrNull(row[col])}
-                                  onSave={async (next) => {
-                                    const updated = await updateTripValue(sessionId, {
-                                      serial: String(serial),
-                                      tripId: tripId as string | number,
-                                      field: "segment_days",
-                                      value: next,
-                                    });
-                                    onUpdated(updated);
-                                  }}
-                                />
-                              </td>
-                            ) : (
-                              <td key={col}>{formatCell(row[col])}</td>
-                            )
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <ExcelTable
+                columns={data.columns}
+                rows={openLane.outlier_rows}
+                frozen={[serialCol, tripCol, durationCol].filter((c): c is string => c != null)}
+                highlight={durationCol ?? undefined}
+                renderCell={(col, row) => {
+                  const serial = serialCol ? row[serialCol] : null;
+                  const tripId = tripCol ? row[tripCol] : null;
+                  if (col !== durationCol || serial == null || tripId == null) return undefined;
+                  return (
+                    <EditableNumberCell
+                      value={toNumberOrNull(row[col])}
+                      onSave={async (next) => {
+                        const updated = await updateTripValue(sessionId, {
+                          serial: String(serial),
+                          tripId: tripId as string | number,
+                          field: "segment_days",
+                          value: next,
+                        });
+                        onUpdated(updated);
+                      }}
+                    />
+                  );
+                }}
+              />
             </div>
           </div>
         </div>

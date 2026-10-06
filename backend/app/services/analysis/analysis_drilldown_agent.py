@@ -9,12 +9,11 @@ comes back, the caller falls back to the deterministic default.
 """
 from __future__ import annotations
 
-import hashlib
-import itertools
 import json
 import logging
 import re
 
+import numpy as np
 import pandas as pd
 
 from app.config import DRILLDOWN_AGENT_MODEL, model_for
@@ -24,12 +23,10 @@ from app.prompts import analysis_drilldown_agent as _prompts
 
 logger = logging.getLogger(__name__)
 
-MAX_PROPOSALS = 25
-# A batch should reach this many (fewer only in "suggest more" mode, or on tiny data).
-MIN_PROPOSALS = 20
-MIN_PROPOSALS_MORE = 10
-# Wanted number of proposals by X-axis column count (1 col = 2-variable chart ... 4 cols = 5-variable chart).
-_WANT_BY_COLUMNS = {1: 3, 2: 5, 3: 5, 4: 4}
+# The most suggestions a drill-down ever holds, across the first batch and every "suggest more".
+TOTAL_CAP = 15
+# One batch asks the model for about this many; they are then scored against the data and the best are kept.
+MAX_PROPOSALS = 12
 # Columns worth drilling into: categorical with a manageable number of values.
 _MIN_VALUES, _MAX_VALUES = 2, 200
 _MAX_PROPOSAL_DIMENSIONS = 4
@@ -123,85 +120,106 @@ def _validated(raw: dict, df: pd.DataFrame, children: list[str], allowed_focus: 
     }
 
 
-def _counts_by_columns(proposals: list[dict]) -> dict[int, int]:
-    counts: dict[int, int] = {}
-    for p in proposals:
-        n = len(p["child_dimensions"])
-        counts[n] = counts.get(n, 0) + 1
-    return counts
+# -- ranking against the data ---------------------------------------------------------------------
+# Groups with fewer rows than this are too noisy to judge a difference by.
+_MIN_ROWS_TO_TRUST = 5
+# A chart reads well up to about this many groups; far past it, it is a wall of bars.
+_READABLE_GROUPS, _CROWDED_GROUPS = 15, 40
+# Spread (in points of % in spec) that counts as "clearly different groups"; for other measures, the
+# coefficient of variation that does.
+_FULL_SPREAD_POINTS, _FULL_CV = 15.0, 0.5
+# Each earlier pick that already uses one of a proposal's columns multiplies its score by this.
+_REPEAT_PENALTY = 0.75
 
 
-def _deficits(proposals: list[dict], total_min: int) -> dict[int, int]:
-    """How many more proposals of each column count are wanted: the per-size
-    quota first, then enough extras (cycling the sizes) to reach `total_min`."""
-    have = _counts_by_columns(proposals)
-    need = {size: max(0, want - have.get(size, 0)) for size, want in _WANT_BY_COLUMNS.items()}
-    missing = total_min - len(proposals) - sum(need.values())
-    for size in itertools.cycle((2, 3, 4, 1)):
-        if missing <= 0:
-            break
-        need[size] += 1
-        missing -= 1
-    return {k: v for k, v in need.items() if v > 0}
+def score_proposal(df: pd.DataFrame, dimension: str, where: list[dict], proposal: dict) -> float:
+    """How worth showing a drill-down is, 0 (nothing to see) to about 1, judged on the real data.
+
+    score = readability x coverage x (0.2 + information) x simplicity
+      readability  -- 1 for up to 15 groups, less for a crowded chart, 0 for fewer than two groups
+      coverage     -- share of the rows sitting in groups big enough to trust
+      information  -- how much the groups differ: the spread of their % in spec / mean, or, for a plain
+                      count, how concentrated the volume is (a few groups carrying most of it)
+      simplicity   -- fewer columns are easier to read"""
+    dims = proposal["child_dimensions"]
+    try:
+        scope = dd._apply(df, where + [dd.focus_condition(dimension, proposal["focus_values"])])
+    except Exception:
+        return 0.0
+    if scope.empty or any(c not in scope.columns for c in dims):
+        return 0.0
+
+    keys = pd.DataFrame({f"k{i}": as_labels(scope[c]) for i, c in enumerate(dims)})
+    key_cols = list(keys.columns)
+    metric, column = proposal.get("metric"), proposal.get("metric_column")
+    if metric == "pct_in_spec" and dd.find_in_spec_column(df):
+        values = pd.to_numeric(scope[dd.find_in_spec_column(df)], errors="coerce")
+    elif metric == "mean" and column in scope.columns:
+        values = pd.to_numeric(scope[column], errors="coerce")
+    else:
+        values = None
+
+    sizes = keys.groupby(key_cols, dropna=False).size()
+    groups = len(sizes)
+    if groups < 2:
+        return 0.0
+    readability = 1.0 if groups <= _READABLE_GROUPS else (0.6 if groups <= _CROWDED_GROUPS else 0.3)
+    trusted = sizes[sizes >= _MIN_ROWS_TO_TRUST]
+    coverage = float(trusted.sum() / sizes.sum())
+    if len(trusted) < 2:
+        return 0.05 * readability
+
+    if values is None:
+        share = trusted / trusted.sum()
+        entropy = float(-(share * np.log(share)).sum())
+        information = 0.9 * (1.0 - entropy / float(np.log(len(trusted))))  # equal-sized groups: nothing to see
+    else:
+        frame = keys.assign(v=values.values)
+        means = frame.groupby(key_cols, dropna=False)["v"].mean().reindex(trusted.index).dropna()
+        if len(means) < 2:
+            return 0.05 * readability
+        weights = trusted.reindex(means.index).astype(float)
+        centre = float((means * weights).sum() / weights.sum())
+        spread = float(np.sqrt((weights * (means - centre) ** 2).sum() / weights.sum()))
+        if metric == "pct_in_spec":
+            points = spread * (100.0 if float(values.max()) <= 1.0 else 1.0)
+            information = min(points / _FULL_SPREAD_POINTS, 1.0)
+        else:
+            information = min((spread / abs(centre) if centre else 0.0) / _FULL_CV, 1.0)
+
+    simplicity = 1.0 / (1.0 + 0.15 * (len(dims) - 1))
+    return readability * coverage * (0.2 + information) * simplicity
 
 
-def _synthesize(
-    facts: list[dict], children: list[str], have_spec: bool, numeric: list[str], focus: list[str],
-    seen: set, needs: dict[int, int], analysis_key,
-) -> list[dict]:
-    """Deterministic ideas built from the lowest-cardinality columns -- used only
-    to fill what the model did not supply, so a batch always reaches its size."""
-    # Lowest-cardinality columns first (they make the most readable charts), but never
-    # drop the rest: with few usable columns the batch still has to reach its size.
-    names = [f["dimension"] for f in sorted(facts, key=lambda f: f["distinct_values"])] or children
-    names = names[:10]
-    measures = [("count", None)]
-    if have_spec:
-        measures.append(("pct_in_spec", None))
-    measures += [("mean", col) for col in [c for c in numeric if _MEASUREMENT.search(c)][:4]]
-    start = focus[0] if focus else "this selection"
-    out: list[dict] = []
-    n = 0
-    for size, need in needs.items():
-        if len(names) < size:
-            continue
-        # A fixed pseudo-random order, so the ideas spread over many columns instead of
-        # all starting with the same two.
-        combos = sorted(itertools.combinations(names, size), key=lambda c: hashlib.md5("|".join(c).encode()).hexdigest())
-        made = 0
-        # Each pass gives every combination a different measure, so scarce columns still
-        # yield distinct analyses (same columns, another question).
-        for combo, shift in ((c, k) for k in range(len(measures)) for c in combos):
-            if made == need:
-                break
-            metric, column = measures[(n + shift) % len(measures)]
-            item = {
-                "child_dimension": combo[0], "child_dimensions": list(combo), "focus_values": focus[:1], "metric": metric,
-                "metric_column": column, "rank": {"mode": "all", "n": 5, "by": "count"},
-                "source": "default",
-            }
-            if analysis_key(item) in seen:
-                continue
-            joined = ", ".join(combo[:-1]) + (" and " if len(combo) > 1 else "") + combo[-1]
-            item["reason"] = {
-                "count": f"How {start} shipments spread across {joined}.",
-                "pct_in_spec": f"Where {start} stays in spec, across {joined}.",
-                "mean": f"How average {column} varies across {joined} for {start}.",
-            }[metric]
-            seen.add(analysis_key(item))
-            out.append(item)
-            made += 1
-            n += 1
-    return out
+def rank_proposals(df: pd.DataFrame, dimension: str, where: list[dict], proposals: list[dict], limit: int) -> list[dict]:
+    """The best `limit` proposals, best first. Greedy: each pick is the highest score after discounting
+    proposals that reuse a column already picked, so the list covers different questions instead of five
+    variations on one. Proposals with nothing to show (score 0) are dropped."""
+    pool = [(score_proposal(df, dimension, where, p), p) for p in proposals]
+    pool = [(sc, p) for sc, p in pool if sc > 0]
+    chosen: list[dict] = []
+    used: dict[str, int] = {}
+    while pool and len(chosen) < limit:
+        def adjusted(item: tuple[float, dict]) -> float:
+            sc, p = item
+            return sc * _REPEAT_PENALTY ** max((used.get(c, 0) for c in p["child_dimensions"]), default=0)
+
+        best = max(pool, key=adjusted)
+        pool.remove(best)
+        chosen.append(best[1])
+        for c in best[1]["child_dimensions"]:
+            used[c] = used.get(c, 0) + 1
+    return chosen
 
 
 def propose(
     df: pd.DataFrame, entry: dict, dimension: str, where: list[dict], allowed_focus: list[str],
     result_table: list[dict], interpretation: str | None, avoid: list[dict] | None = None,
     feature_columns: list[str] | tuple = (), pinned: set[str] | None = None,
+    limit: int = MAX_PROPOSALS,
 ) -> list[dict]:
-    """Up to MAX_PROPOSALS validated proposals for drilling into `entry` in
-    ONE call, falling back to one deterministic default when the model is
+    """Up to `limit` validated proposals for drilling into `entry`, ranked best first (see
+    rank_proposals), from ONE model call, falling back to one deterministic default when the model is
     unavailable or unusable. `avoid` (existing cached proposals, when this is
     a "suggest more" request) is both told to the model and used to hard-
     filter its response, so a repeat can't sneak through even if the model
@@ -246,7 +264,7 @@ def propose(
         payload = json.loads(analysis_agent.strip_json_fence(raw))
         items = payload.get("proposals", []) if isinstance(payload, dict) else []
     except Exception as exc:
-        # No model answer: the batch is built from the data alone below.
+        # No model answer: the single default proposal below is all there is.
         logger.info("drilldown proposal failed, building from the data: %s", exc)
         items = []
 
@@ -260,45 +278,9 @@ def propose(
         if ok and key not in seen:
             seen.add(key)
             proposals.append(ok)
-        if len(proposals) == MAX_PROPOSALS:
+        if len(proposals) >= 2 * MAX_PROPOSALS:  # more than enough to rank; stops a runaway reply
             break
 
-    # The model tends to return few and simple ideas. Reach the wanted size and mix
-    # of chart sizes: ask once more for exactly what is missing, then fill any
-    # remaining gap from the lowest-cardinality columns.
-    total_min = MIN_PROPOSALS_MORE if avoid else MIN_PROPOSALS
-    need = _deficits(proposals, total_min)
-    need = {size: n for size, n in need.items() if size == 1 or len(children) >= size}
-    if need and proposals:
-        try:
-            extra_prompt = json.loads(user)
-            extra_prompt["also_needed"] = {
-                "instruction": "Return ONLY additional proposals with the column counts below; do not repeat the ones already given.",
-                "how_many_by_number_of_columns": {f"{size}_columns": n for size, n in need.items()},
-                "already_have": [{"columns": p["child_dimensions"], "metric": p["metric"]} for p in proposals],
-            }
-            raw = analysis_agent.call_llm(
-                _SYSTEM, json.dumps(extra_prompt, default=str), json_mode=True, temperature=0.5,
-                call_name="drilldown_agent_more", model=model_for("drilldown_agent_more", DRILLDOWN_AGENT_MODEL), max_tokens=8000,
-            )
-            more_items = json.loads(analysis_agent.strip_json_fence(raw)).get("proposals", [])
-        except Exception as exc:
-            logger.info("extra drilldown proposals failed, synthesising: %s", exc)
-            more_items = []
-        for item in more_items if isinstance(more_items, list) else []:
-            ok = _validated(item, df, children, allowed_focus, numeric) if isinstance(item, dict) else None
-            if ok and analysis_key(ok) not in seen:
-                seen.add(analysis_key(ok))
-                proposals.append(ok)
-    need = _deficits(proposals, total_min)
-    need = {size: n for size, n in need.items() if size == 1 or len(children) >= size}
-    if need:
-        proposals += _synthesize(
-            facts, children, dd.find_in_spec_column(df) is not None, numeric, default_focus or allowed_focus,
-            seen, need, analysis_key,
-        )
-    # Over the cap: drop trailing single-column ideas first.
-    while len(proposals) > MAX_PROPOSALS:
-        drop = next((i for i in range(len(proposals) - 1, -1, -1) if len(proposals[i]["child_dimensions"]) == 1), None)
-        proposals.pop(drop if drop is not None else -1)
-    return proposals or (fallback if not avoid else [])
+    # No padding: if only a few ideas are worth showing, that is what the analyst gets.
+    ranked = rank_proposals(df, dimension, where, proposals, limit)
+    return ranked or (fallback if not avoid else [])

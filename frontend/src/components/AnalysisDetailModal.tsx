@@ -1,3 +1,4 @@
+import { briefInsight } from "../utils/insightText";
 import ThinkingLoader from "./ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useRef, useState } from "react";
@@ -16,7 +17,7 @@ import AnalysisFilterBar from "./AnalysisFilterBar";
 import DrilldownPanel from "./DrilldownPanel";
 import DrilldownPaths from "./DrilldownPaths";
 import type { LevelNode } from "../utils/drilldownTree";
-import { IconChevronLeft, IconLayers, IconSparkle } from "./icons";
+import { IconChevronLeft, IconLayers, IconSparkle, IconChevronRight } from "./icons";
 import { CHART_LABELS } from "../utils/analysisLabels";
 import "./AnalysisCard.css";
 import "./AnalysisDetailModal.css";
@@ -58,7 +59,7 @@ interface AnalysisDetailModalProps {
   openSelectedSignal?: number;
 }
 
-type ModalTab = "analysis" | "paths" | "selected";
+type ModalTab = "analysis" | "selected";
 
 export default function AnalysisDetailModal({
   entry,
@@ -88,6 +89,14 @@ export default function AnalysisDetailModal({
   const [filtering, setFiltering] = useState(false);
   const [filterError, setFilterError] = useState<string | null>(null);
   const [modalTab, setModalTab] = useState<ModalTab>("analysis");
+  // The code is collapsed until asked for; each analysis opens it fresh.
+  const [showCode, setShowCode] = useState(false);
+  // Drill-down paths sit inside the Analysis tab, behind a button, instead of being a tab of their own.
+  const [showPaths, setShowPaths] = useState(false);
+  useEffect(() => {
+    setShowCode(false);
+    setShowPaths(false);
+  }, [entry.id]);
   const [dataSubTab, setDataSubTab] = useState<"table" | "chart">("chart");
   // Only the latest filter request may update the view -- an older, slower
   // response must not overwrite a newer selection.
@@ -256,15 +265,6 @@ export default function AnalysisDetailModal({
         </div>
       )}
 
-      {entry.run_status === "done" && (entry.template_summary || entry.chart_recommendation?.reason || entry.computation_mode === "code") && (
-        <p className="analysis-detail__meta-note">
-          {entry.computation_mode === "template"
-            ? entry.template_summary ?? "Computed by a deterministic template."
-            : "Computed by pandas code the Analysis Agent wrote and ran in a sandbox."}
-          {entry.chart_recommendation?.reason ? ` · ${entry.chart_recommendation.reason}` : ""}
-        </p>
-      )}
-
       {entry.interpretation && (
         <div className="analysis-detail__insight">
           <span className="analysis-detail__insight-icon">
@@ -272,7 +272,7 @@ export default function AnalysisDetailModal({
           </span>
           <div className="analysis-detail__insight-body">
             <span className="analysis-detail__insight-label">Key Insight</span>
-            <p className="analysis-detail__insight-text">{entry.interpretation}</p>
+            <p className="analysis-detail__insight-text">{briefInsight(entry.interpretation)}</p>
           </div>
         </div>
       )}
@@ -289,17 +289,6 @@ export default function AnalysisDetailModal({
             >
               Analysis
             </button>
-            {entry.run_status === "done" && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={modalTab === "paths"}
-                className={`analysis-detail__modal-tab${modalTab === "paths" ? " analysis-detail__modal-tab--active" : ""}`}
-                onClick={() => setModalTab("paths")}
-              >
-                <IconSparkle /> Drill-down Paths
-              </button>
-            )}
             <button
               type="button"
               role="tab"
@@ -312,16 +301,7 @@ export default function AnalysisDetailModal({
             </button>
           </div>
 
-          {modalTab === "paths" ? (
-            <DrilldownPaths
-              key={entry.id}
-              onFetch={onFetchPaths}
-              onSuggest={onSuggestPath}
-              onAccept={onAcceptPath}
-              onReject={onRejectPath}
-              onViewSelected={() => setModalTab("selected")}
-            />
-          ) : modalTab === "analysis" ? (
+          {modalTab === "analysis" ? (
             <>
               {canFilter && (
                 <AnalysisFilterBar key={entry.id} filters={entry.filters} busy={filtering} onChange={changeFilters} />
@@ -365,9 +345,28 @@ export default function AnalysisDetailModal({
                 </ul>
               )}
               {shown.generated_code && (
-                <div className="feature-card__code-block">
-                  <span className="feature-card__code-label">Analysis Agent-generated pandas code</span>
-                  <pre className="feature-card__code"><code>{shown.generated_code}</code></pre>
+                <div className="analysis-detail__code">
+                  <button
+                    type="button"
+                    className="analysis-detail__code-toggle"
+                    aria-expanded={showCode}
+                    onClick={() => setShowCode((v) => !v)}
+                  >
+                    <span className={`analysis-detail__code-arrow${showCode ? " analysis-detail__code-arrow--open" : ""}`}>
+                      <IconChevronRight />
+                    </span>
+                    {showCode ? "Hide agent generated code" : "View agent generated code"}
+                  </button>
+                  {showCode && (
+                    <div className="feature-card__code-block">
+                      {shown.computation_mode === "template" && (
+                        <span className="analysis-detail__code-note">
+                          Computed by a deterministic template; this is the equivalent pandas code.
+                        </span>
+                      )}
+                      <pre className="feature-card__code"><code>{shown.generated_code}</code></pre>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -383,6 +382,28 @@ export default function AnalysisDetailModal({
                 )}
                 {drillOptions && !drillOptions.can_drill && drillOptions.reason && (
                   <p className="analysis-detail__empty-drilldown">{drillOptions.reason}</p>
+                )}
+              </div>
+
+              <div className="analysis-detail__paths">
+                <button
+                  type="button"
+                  className="analysis-detail__paths-toggle"
+                  aria-expanded={showPaths}
+                  onClick={() => setShowPaths((v) => !v)}
+                >
+                  <IconSparkle />
+                  {showPaths ? "Hide drill-down paths" : "Plan a drill-down path"}
+                </button>
+                {showPaths && (
+                  <DrilldownPaths
+                    key={entry.id}
+                    onFetch={onFetchPaths}
+                    onSuggest={onSuggestPath}
+                    onAccept={onAcceptPath}
+                    onReject={onRejectPath}
+                    onViewSelected={() => setModalTab("selected")}
+                  />
                 )}
               </div>
             </>

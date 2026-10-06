@@ -283,108 +283,99 @@
   text-align: center;
 }
 
-/* -- bottom CTA row (AI suggestions / add custom) -- kept thin, a single
-   line each, unlike the old tall stacked panels. -- */
+/* -- AI suggestions + custom analysis panels (side by side) -- same layout as
+   the Feature page's panels (FeaturesPage.css) for a consistent pattern. ----- */
 
-.analysis-page__cta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--color-border);
+.analysis-page__panels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+  margin-bottom: 20px;
+  align-items: stretch;
 }
 
-.analysis-page__cta {
-  flex: 1 1 300px;
+.analysis-page__panel-head-text {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 8px 10px 8px 8px;
-  background: var(--color-surface);
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
 }
 
-.analysis-page__cta-icon {
+.analysis-page__panel-icon {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
 }
 
-.analysis-page__cta-icon svg {
+.analysis-page__panel-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.analysis-page__panel-icon--purple { background: var(--accent-purple); }
+.analysis-page__panel-icon--blue { background: var(--carrier-blue); }
+
+.analysis-page__panel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+  width: 100%;
+}
+
+.analysis-page__panel-btn svg {
   width: 14px;
   height: 14px;
 }
 
-.analysis-page__cta-icon--purple { background: var(--accent-purple); }
-.analysis-page__cta-icon--blue { background: var(--carrier-blue); }
+.analysis-page__panel-error {
+  margin: 12px 0 0;
+}
 
-.analysis-page__cta-text {
-  flex: 1;
-  min-width: 0;
+.analysis-page__ai-panel {
+  border: 1px solid var(--accent-purple-bg);
+  background: var(--accent-purple-bg);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
 }
 
-.analysis-page__cta-title {
-  font-size: 12px;
+.analysis-page__ai-panel-title {
+  margin: 0 0 4px;
+  font-size: 14.5px;
   font-weight: 800;
-  color: var(--color-text);
+  color: var(--accent-purple);
 }
 
-.analysis-page__cta-desc {
-  font-size: 10.5px;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.analysis-page__cta-btn {
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-  background: var(--color-surface);
+.analysis-page__custom-panel {
   border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
 }
 
-.analysis-page__cta-btn:hover:not(:disabled) {
-  border-color: var(--carrier-blue);
+.analysis-page__custom-panel-title {
+  margin: 0 0 4px;
+  font-size: 14.5px;
+  font-weight: 800;
   color: var(--carrier-blue);
 }
 
-.analysis-page__cta-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.analysis-page__cta-btn--primary {
-  background: var(--accent-purple);
-  border-color: var(--accent-purple);
-  color: #fff;
-}
-
-.analysis-page__cta-btn--primary:hover:not(:disabled) {
-  background: var(--accent-purple);
-  border-color: var(--accent-purple);
-  color: #fff;
-  opacity: 0.9;
-}
-
-@media (max-width: 720px) {
-  .analysis-page__cta-desc {
-    white-space: normal;
-  }
+.analysis-page__custom-panel-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  max-width: 480px;
+  line-height: 1.5;
 }
 
 /* -- footer buttons ----------------------------- */

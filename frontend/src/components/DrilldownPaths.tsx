@@ -1,3 +1,4 @@
+import { briefInsight } from "../utils/insightText";
 import ThinkingLoader, { Spinner } from "./ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
 import { useCallback, useEffect, useState } from "react";
@@ -201,7 +202,7 @@ function ChartCard({ item, showPath }: { item: DrilldownPathEntry; showPath: boo
       {showPath && item.path && <p className="drilldown-chartcard__path">{item.path}</p>}
       {entry?.run_status === "done" ? (
         <>
-          {entry.interpretation && <p className="drilldown-step__insight">{entry.interpretation}</p>}
+          {entry.interpretation && <p className="drilldown-step__insight">{briefInsight(entry.interpretation)}</p>}
           <div className="drilldown-step__toggle" role="tablist">
             {(["chart", "table"] as const).map((v) => (
               <button

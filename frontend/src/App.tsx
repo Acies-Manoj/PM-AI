@@ -1,5 +1,5 @@
 import { PlannerSkippedContext, hasBrief } from "./context/plannerSkipped";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import WelcomePage from "./pages/WelcomePage";
 import UploadPage from "./pages/UploadPage";
@@ -12,6 +12,7 @@ import { AuditApiError, resolveIssue, revertIssue, runAudit, uploadOnly } from "
 import type { AuditReport as AuditReportData } from "./api/audit";
 import { isAudited } from "./constants/uploadSlots";
 import type { UploadSlotId } from "./types/upload";
+import { resetAllState, resetDownstreamState } from "./state/sessionStore";
 import { EMPTY_BRIEF } from "./components/ClientBriefInput";
 import type { BriefState } from "./components/ClientBriefInput";
 
@@ -44,7 +45,13 @@ function App() {
 
   const plannerSkipped = !hasBrief(brief);
 
+  // Always-current session ids, so an async audit/resolve/revert that finishes
+  // after its file was replaced or removed can tell its result is stale and drop it.
+  const sessionIdsRef = useRef<UploadedSessionIdsState>({});
+  sessionIdsRef.current = uploadedSessionIds;
+
   const handleUploadComplete = (sessionIds: UploadedSessionIdsState) => {
+    resetAllState();
     setUploadedSessionIds(sessionIds);
     setPlannerSessionId(sessionIds.sensiwatch ?? null);
   };
@@ -56,11 +63,13 @@ function App() {
     setAuditErrors((prev) => ({ ...prev, [id]: undefined }));
     try {
       const report = await runAudit(sessionId);
+      if (sessionIdsRef.current[id] !== sessionId) return;
       setAuditReports((prev) => ({ ...prev, [id]: report }));
     } catch (err) {
+      if (sessionIdsRef.current[id] !== sessionId) return;
       setAuditErrors((prev) => ({
         ...prev,
-        [id]: err instanceof AuditApiError ? err.message : "Could not reach the audit agent. Is the backend running?",
+        [id]: err instanceof AuditApiError ? err.message : "Could not run the data audit. Is the backend running?",
       }));
     } finally {
       setAuditLoading((prev) => ({ ...prev, [id]: false }));
@@ -70,21 +79,27 @@ function App() {
   const handleSelect = (id: UploadSlotId, file: File) => {
     setFiles((prev) => ({ ...prev, [id]: file }));
     if (isAudited(id)) {
+      resetAllState();
       setUploadedSessionIds((prev) => ({ ...prev, [id]: undefined }));
       setAuditReports((prev) => ({ ...prev, [id]: undefined }));
       setAuditErrors((prev) => ({ ...prev, [id]: undefined }));
+      setAuditLoading((prev) => ({ ...prev, [id]: false }));
+      setResolvingIssueId((prev) => ({ ...prev, [id]: undefined }));
     }
   };
 
   const handleRemove = (id: UploadSlotId) => {
+    resetAllState();
     setFiles((prev) => ({ ...prev, [id]: null }));
     setUploadedSessionIds((prev) => ({ ...prev, [id]: undefined }));
     setAuditReports((prev) => ({ ...prev, [id]: undefined }));
     setAuditErrors((prev) => ({ ...prev, [id]: undefined }));
     setAuditLoading((prev) => ({ ...prev, [id]: false }));
+    setResolvingIssueId((prev) => ({ ...prev, [id]: undefined }));
   };
 
   const handleClearAll = () => {
+    resetAllState();
     setFiles(EMPTY_FILES);
     setBrief(EMPTY_BRIEF);
     setUploadedSessionIds({});
@@ -92,6 +107,9 @@ function App() {
     setAuditReports({});
     setAuditErrors({});
     setAuditLoading({});
+    setResolvingIssueId({});
+    setReuploadingSensiwatch(false);
+    setReuploadError(null);
   };
 
   const handleResolveIssue = async (
@@ -105,6 +123,9 @@ function App() {
     setResolvingIssueId((prev) => ({ ...prev, [id]: issueId }));
     try {
       const updated = await resolveIssue(report.session_id, issueId, decisionId, selectedItems);
+      if (sessionIdsRef.current[id] !== report.session_id) return;
+      // The audited data changed, so anything built on it is out of date.
+      resetDownstreamState();
       setAuditReports((prev) => ({ ...prev, [id]: updated }));
     } catch (err) {
       setAuditErrors((prev) => ({
@@ -125,6 +146,7 @@ function App() {
     setReuploadError(null);
     try {
       const result = await uploadOnly("sensiwatch", file);
+      resetAllState();
       setFiles((prev) => ({ ...prev, sensiwatch: file }));
       setUploadedSessionIds((prev) => ({ ...prev, sensiwatch: result.session_id }));
       setAuditReports((prev) => ({ ...prev, sensiwatch: undefined }));
@@ -142,6 +164,8 @@ function App() {
     setResolvingIssueId((prev) => ({ ...prev, [id]: issueId }));
     try {
       const updated = await revertIssue(report.session_id, issueId);
+      if (sessionIdsRef.current[id] !== report.session_id) return;
+      resetDownstreamState();
       setAuditReports((prev) => ({ ...prev, [id]: updated }));
     } catch (err) {
       setAuditErrors((prev) => ({

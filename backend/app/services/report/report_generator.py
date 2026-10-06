@@ -24,18 +24,24 @@ empty. `chart_type` picks the slide shape:
     table slide, the same fallback the on-screen AnalysisChart component
     uses when it has no chart_spec
 """
+import copy
 import io
+import math
 import re
+import unicodedata
+from datetime import datetime
 from xml.sax.saxutils import escape
 
 import numpy as np
+from lxml import etree
 import pandas as pd
 from pptx import Presentation
-from pptx.chart.data import CategoryChartData
+from pptx.chart.data import CategoryChartData, XyChartData
 from pptx.dml.color import RGBColor
-from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_LEGEND_POSITION
-from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN
+from pptx.chart.axis import ValueAxis
+from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_LEGEND_POSITION, XL_MARKER_STYLE
+from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
@@ -119,15 +125,17 @@ def _to_number(value) -> float:
 # reuse the same look) -------------------------------------------------------
 
 def style_axes_grid(category_axis, value_axis):
-    """Left value-axis line + bottom category-axis line, both made visible,
-    plus horizontal (value) and vertical (category) major gridlines --
-    frames the plot without a full boxed border."""
+    """Left value-axis line + bottom category-axis line, both made visible, plus
+    light horizontal (value) gridlines only -- like the reference deck's charts,
+    no vertical gridlines competing with the bars."""
     grid_color = RGBColor.from_string(style.GRIDLINE_COLOR_HEX)
+    category_axis.has_major_gridlines = False
+    category_axis.has_minor_gridlines = False
+    value_axis.has_major_gridlines = True
+    value_axis.has_minor_gridlines = False
+    value_axis.major_gridlines.format.line.color.rgb = grid_color
+    value_axis.major_gridlines.format.line.width = Pt(0.75)
     for axis in (category_axis, value_axis):
-        axis.has_major_gridlines = True
-        axis.has_minor_gridlines = False
-        axis.major_gridlines.format.line.color.rgb = grid_color
-        axis.major_gridlines.format.line.width = Pt(0.75)
         axis.format.line.color.rgb = MUTED
         axis.format.line.width = Pt(1)
 
@@ -169,7 +177,21 @@ def _combo_tick_txpr_xml() -> str:
     )
 
 
-def split_into_combo(chart, line_axis_title: str) -> bool:
+def _secondary_major_unit_xml(step: float | None) -> str:
+    return f'<c:crossBetween val="between"/><c:majorUnit val="{step:g}"/>' if step else ''
+
+
+def _secondary_scaling_xml(sec_min: float | None, sec_max: float | None) -> str:
+    bounds = ""
+    if sec_min is not None and sec_max is not None:
+        bounds = f'<c:max val="{sec_max:.6g}"/><c:min val="{sec_min:.6g}"/>'
+    return f'<c:scaling><c:orientation val="minMax"/>{bounds}</c:scaling>'
+
+
+def split_into_combo(
+    chart, line_axis_title: str, sec_min: float | None = None, sec_max: float | None = None,
+    sec_step: float | None = None, sec_format: str = "General;;0",
+) -> bool:
     """Converts a freshly-built 2-series COLUMN_CLUSTERED chart into a real
     dual-axis combo: the 2nd series becomes a line plot on its own secondary
     value axis (visible, right side), paired with a new hidden secondary
@@ -203,17 +225,19 @@ def split_into_combo(chart, line_axis_title: str) -> bool:
     sec_val_ax = parse_xml(
         f'<c:valAx {_CHART_NS}>'
         f'<c:axId val="{sec_val_ax_id}"/>'
-        '<c:scaling><c:orientation val="minMax"/></c:scaling>'
+        + _secondary_scaling_xml(sec_min, sec_max) +
         '<c:delete val="0"/>'
         '<c:axPos val="r"/>'
         + _combo_axis_title_xml(line_axis_title) +
-        '<c:numFmt formatCode="#,##0.##" sourceLinked="0"/>'
+        # The axis starts below zero to leave room for the columns; those negative ticks are hidden.
+        f'<c:numFmt formatCode="{escape(sec_format, {chr(34): "&quot;"})}" sourceLinked="0"/>'
         '<c:majorTickMark val="out"/>'
         '<c:minorTickMark val="none"/>'
         '<c:tickLblPos val="nextTo"/>'
         + _combo_tick_txpr_xml() +
         f'<c:crossAx val="{sec_cat_ax_id}"/>'
         '<c:crosses val="max"/>'
+        + _secondary_major_unit_xml(sec_step) +
         "</c:valAx>"
     )
     sec_cat_ax = parse_xml(
@@ -239,6 +263,33 @@ def split_into_combo(chart, line_axis_title: str) -> bool:
     return True
 
 
+def _flat(connector) -> None:
+    """A python-pptx connector inherits the theme's line effect (a soft shadow);
+    an empty effect list keeps the rule a clean, flat line."""
+    sp_pr = connector._element.spPr
+    if sp_pr.find(qn("a:effectLst")) is None:
+        sp_pr.append(parse_xml('<a:effectLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>'))
+
+
+def _primary_value_axis(chart):
+    """The left (primary) value axis of a combo chart -- `chart.value_axis` returns
+    the right-hand one once a secondary axis has been added."""
+    for el in chart._chartSpace.chart.plotArea.findall(qn("c:valAx")):
+        pos = el.find(qn("c:axPos"))
+        if pos is not None and pos.get("val") == "l":
+            return ValueAxis(el)
+    return chart.value_axis
+
+
+def number_format_for(values, hide_zero: bool = False) -> str:
+    """Whole numbers read '652', not '652.' (what '#,##0.##' prints); anything with decimals gets
+    one decimal place. `hide_zero` blanks zero labels -- on grouped bars most categories have no
+    value for most series, and a row of "0"s only clutters the chart."""
+    nums = [v for v in values if _is_numeric(v)]
+    fmt = "#,##0" if nums and all(float(v).is_integer() for v in nums) else "#,##0.0"
+    return f"{fmt};-{fmt};;" if hide_zero else fmt
+
+
 def style_native_chart(chart, number_format: str, single_series: bool):
     style.set_chart_default_font(chart, style.CHART_DATA_LABEL_FONT_PT, style.FONT_BODY)
     chart.has_title = False
@@ -254,7 +305,9 @@ def style_native_chart(chart, number_format: str, single_series: bool):
     plot.data_labels.number_format_is_linked = False
     plot.data_labels.font.size = Pt(style.CHART_DATA_LABEL_FONT_PT)
     plot.data_labels.font.name = style.FONT_BODY
-    plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+    plot.data_labels.position = (
+        XL_LABEL_POSITION.ABOVE if chart.chart_type == XL_CHART_TYPE.LINE_MARKERS else XL_LABEL_POSITION.OUTSIDE_END
+    )
     for i, series in enumerate(plot.series):
         color = BAR_PALETTE[i % len(BAR_PALETTE)]
         if chart.chart_type == XL_CHART_TYPE.LINE_MARKERS:
@@ -272,7 +325,227 @@ def style_native_chart(chart, number_format: str, single_series: bool):
     chart.value_axis.tick_labels.font.name = style.FONT_BODY
 
 
+def _short_label(value, limit: int = 18) -> str:
+    """Category labels are cut to `limit` characters so long names (carriers, lanes) can't run
+    into their neighbours or the axis title."""
+    text = str(value)
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _axis_plan(categories: list, width_in: float = 12.0) -> tuple[list[str], int]:
+    """(labels, rotation in degrees) for a category axis. If the labels fit flat in the width each
+    category gets they are cut to that length and left horizontal; otherwise they get a clean
+    45-degree slant with a longer cut. Truncation never merges two different categories."""
+    n = max(len(categories), 1)
+    fit = int(width_in / n / 0.085 * 0.9)  # ~0.085in per character at 11pt Arial
+    originals = [str(c) for c in categories]
+    if fit >= 10:
+        labels = [_short_label(c, min(fit, 24)) for c in originals]
+        rotation = 0
+    else:
+        labels = [_short_label(c, 18) for c in originals]
+        rotation = -45
+    if len(set(labels)) < len(set(originals)):  # two long names collapsed into one label
+        labels = [_short_label(c, 30) for c in originals]
+        rotation = -45
+    return labels, rotation
+
+
+def _tidy_category_axis(axis, rotation: int) -> None:
+    """Applies the planned rotation explicitly (not left to the renderer's guess) and keeps the
+    tick font consistent."""
+    axis.tick_labels.font.size = Pt(style.CHART_FONT_PT)
+    axis.tick_labels.font.name = style.FONT_BODY
+    body_pr = axis._element.find(qn("c:txPr")).find(qn("a:bodyPr"))
+    body_pr.set("rot", str(rotation * 60000))
+    body_pr.set("vert", "horz")
+    # Show every category label: left to itself PowerPoint drops every other one when it judges
+    # flat labels too wide. (Schema order: ... lblOffset, tickLblSkip, tickMarkSkip, noMultiLvlLbl.)
+    el = axis._element
+    if el.find(qn("c:tickLblSkip")) is None:
+        skip = parse_xml(f'<c:tickLblSkip {_CHART_NS} val="1"/>')
+        anchor = el.find(qn("c:noMultiLvlLbl"))
+        if anchor is not None:
+            anchor.addprevious(skip)
+        else:
+            el.append(skip)
+
+
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+|(?<=[。！？])\s*")
+_CHART_LEAD_IN = re.compile(
+    r"^(the|this)\s+(chart|graph|data|visuali[sz]ation)\s+(shows?|illustrates?|indicates?|reveals?|highlights?)\s*(that\s+)?",
+    re.IGNORECASE,
+)
+
+
+# The explanation keeps its font size and its full text; the chart below it moves down to make room for however
+# many lines it takes (see ReportBuilder._explanation). A second sentence is only added while it still fits
+# EXPLAIN_PREFERRED_LINES; text beyond EXPLAIN_MAX_LINES is cut with an ellipsis so the chart keeps a usable height.
+EXPLAIN_PREFERRED_LINES = 2
+EXPLAIN_MAX_LINES = 4
+# Fraction of the box width a line may use: real fonts vary a little, so keep some slack against a third line.
+_LINE_FILL = 0.92
+
+
+def _char_em(ch: str) -> float:
+    """Approximate advance width of one character in Arial, in ems. Kept in step with `charEm` in
+    frontend/src/utils/slideText.ts."""
+    if ch == " ":
+        return 0.278
+    if unicodedata.east_asian_width(ch) in ("W", "F"):
+        return 1.0
+    if ch.isdigit():
+        return 0.556
+    if ch.isalpha():
+        cyrillic_or_greek = "Ͱ" <= ch <= "ӿ"
+        if cyrillic_or_greek:
+            return 0.72 if ch.isupper() else 0.56
+        return 0.67 if ch.isupper() else 0.52
+    return 0.35
+
+
+def explanation_lines(text: str, pt: int | None = None) -> int:
+    """How many lines `text` takes at the explanation size across the content width, wrapping at spaces
+    (and between any two Chinese/Japanese/Korean characters)."""
+    pt = pt or style.EXPLAIN_PT
+    cap = (style.CONTENT_W / 12700) * _LINE_FILL / pt  # line width, in ems
+    lines, x = 1, 0.0
+    tokens: list[tuple[str, float]] = []
+    word = ""
+    for ch in text:
+        wide = unicodedata.east_asian_width(ch) in ("W", "F")
+        if ch == " " or wide:
+            if word:
+                tokens.append((word, sum(_char_em(c) for c in word)))
+                word = ""
+            tokens.append((ch, _char_em(ch)))
+        else:
+            word += ch
+    if word:
+        tokens.append((word, sum(_char_em(c) for c in word)))
+    for tok, w in tokens:
+        if tok == " ":
+            x += w if x > 0 else 0
+            continue
+        if x + w > cap and x > 0:
+            lines += 1
+            x = 0.0
+        if w > cap:  # a single very long word
+            lines += int(w // cap)
+            x = w % cap
+        else:
+            x += w
+    return lines
+
+
+def _fit_max_lines(text: str) -> str:
+    """Last resort, for text longer than EXPLAIN_MAX_LINES lines: its longest start that fits, ending in an ellipsis."""
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if explanation_lines(text[:mid] + "…") <= EXPLAIN_MAX_LINES:
+            lo = mid
+        else:
+            hi = mid - 1
+    prefix = text[:lo]
+    if " " in prefix and unicodedata.east_asian_width(prefix[-1]) not in ("W", "F"):
+        prefix = prefix.rsplit(" ", 1)[0]
+    comma = max(prefix.rfind(", "), prefix.rfind("，"), prefix.rfind("、"))
+    if comma > 0 and comma >= len(prefix) * 0.5:
+        clause = prefix[:comma].rstrip(",;:- ，、")
+        return clause + ("。" if unicodedata.east_asian_width(clause[-1:] or " ") in ("W", "F") else ".")
+    return prefix.rstrip(",;:- ，、") + "…"
+
+
+def short_explanation(text: str | None, max_chars: int | None = None) -> str:
+    """The takeaway shown under a slide's title: the first sentence of the analysis' interpretation, plus
+    the second when both still fit two lines. The first sentence is never shortened unless it would take
+    more than EXPLAIN_MAX_LINES lines -- a longer text (a translation, or a wider script) simply takes more
+    lines and the slide gives it the room (see ReportBuilder._explanation). Kept in step with
+    `shortExplanation` in frontend/src/utils/slideText.ts so the on-screen preview reads exactly like the slide."""
+    cleaned = _CHART_LEAD_IN.sub("", (text or "").strip())
+    if not cleaned:
+        return ""
+    cleaned = cleaned[0].upper() + cleaned[1:]
+    sentences = [s for s in _SENTENCE_END.split(cleaned) if s]
+    out = sentences[0]
+    if explanation_lines(out) > EXPLAIN_MAX_LINES:
+        return _fit_max_lines(out)
+    for extra in sentences[1:2]:
+        if explanation_lines(f"{out} {extra}") <= EXPLAIN_PREFERRED_LINES:
+            out = f"{out} {extra}"
+    return out
+
+
+def _template_theme_colors(tpl) -> dict[str, str]:
+    """{scheme colour name: hex} of the template's theme, including the tx1/bg1/tx2/bg2 aliases."""
+    colors: dict[str, str] = {}
+    for rel in tpl.slide_masters[0].part.rels.values():
+        if not rel.reltype.endswith("/theme"):
+            continue
+        root = etree.fromstring(rel.target_part.blob)
+        ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+        scheme = root.find(".//a:clrScheme", ns)
+        for el in scheme if scheme is not None else []:
+            name = el.tag.split("}")[1]
+            child = el[0] if len(el) else None
+            if child is not None:
+                colors[name] = child.get("val") or child.get("lastClr") or "000000"
+    colors.update({"tx1": colors.get("dk1", "000000"), "bg1": colors.get("lt1", "FFFFFF"),
+                   "tx2": colors.get("dk2", "000000"), "bg2": colors.get("lt2", "FFFFFF")})
+    return colors
+
+
+def _nice_ceil(value: float) -> float:
+    """Rounds up to 1, 2 or 5 times a power of ten -- an axis maximum that reads cleanly."""
+    if value <= 0:
+        return 1.0
+    magnitude = 10 ** math.floor(math.log10(value))
+    for step in (1, 2, 5, 10):
+        if value <= step * magnitude:
+            return float(step * magnitude)
+    return float(10 * magnitude)
+
+
+def _nice_step(value: float) -> float:
+    """Smallest 1/2/5 x 10^k step that is >= value."""
+    if value <= 0:
+        return 1.0
+    magnitude = 10 ** math.floor(math.log10(value))
+    for m in (1, 2, 5, 10):
+        if value <= m * magnitude:
+            return float(m * magnitude)
+    return float(10 * magnitude)
+
+
+def _combo_scale(bar_values: list[float], line_values: list[float]) -> dict | None:
+    """Axis ranges that keep a combo chart legible: the columns use the lower ~55% of the plot and
+    the line the upper ~40%, so the line, its labels and the column labels don't overlap. Both axes
+    use round numbers; the line axis starts below zero to make that room (the negative ticks are
+    hidden). None when the data can't be scaled this way (negative values, no line)."""
+    bars = [float(v) for v in bar_values if _is_numeric(v)]
+    line = [float(v) for v in line_values if _is_numeric(v)]
+    if not bars or not line or min(bars) < 0 or min(line) < 0 or max(line) <= 0:
+        return None
+    primary_max = _nice_ceil(max(bars) / 0.55)
+    step = _nice_step(max(line) / 5)
+    top = math.ceil(max(line) * 1.12 / step) * step  # headroom, so the top labels clear their markers
+    total = math.ceil(top / 0.4 / step) * step
+    return {
+        "primary_max": primary_max,
+        "percent_bars": max(bars) <= 100 < primary_max,
+        "secondary": (top - total, top),
+        "step": step,
+        # a rate never exceeds 100: don't label the headroom above it; either way hide the negative ticks
+        "sec_format": '[<0]" ";[<=100]General;" "' if max(line) <= 100 else "General;;0",
+    }
+
+
 class ReportBuilder:
+    """16:9 deck: title top-left with the Carrier logo top-right, a one/two-line
+    explanation under the title, the chart full width below it, a small caption under
+    the chart and the Carrier footer along the bottom (see report_style)."""
+
     def __init__(self, phrases: dict[str, str] | None = None):
         self.prs = Presentation()
         self.prs.slide_width = style.SLIDE_W
@@ -288,148 +561,193 @@ class ReportBuilder:
     def _t(self, text: str) -> str:
         return self.phrases.get(text, text)
 
-    def _new_slide(self, bordered: bool = True):
+    def _new_slide(self):
         slide = self.prs.slides.add_slide(self._blank)
         self.slide_count += 1
         slide.background.fill.solid()
         slide.background.fill.fore_color.rgb = WHITE
-        self._side_band(slide)
-        if bordered:
-            self._add_border(slide)
+        self._body_top = style.BODY_TOP  # moved down by _explanation when the explanation is long
         return slide
 
-    def _add_border(self, slide):
-        # A thin dark-navy frame just inside the slide edges -- every
-        # content slide (Slide 2 onward) gets one; the cover slide doesn't.
-        border = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, style.BORDER_MARGIN, style.BORDER_MARGIN,
-            style.SLIDE_W - 2 * style.BORDER_MARGIN, style.SLIDE_H - 2 * style.BORDER_MARGIN,
-        )
-        border.fill.background()
-        border.line.color.rgb = PRIMARY
-        border.line.width = style.BORDER_WEIGHT
-        border.shadow.inherit = False
-
-    def _side_band(self, slide):
-        # Solid navy strip down the slide's right edge, matching the Carrier
-        # template's own master slide -- every content box already keeps a
-        # 0.5in right margin, well clear of this band.
-        band = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, style.SLIDE_W - style.SIDE_BAND_WIDTH, 0, style.SIDE_BAND_WIDTH, style.SLIDE_H
-        )
-        band.fill.solid()
-        band.fill.fore_color.rgb = PRIMARY
-        band.line.fill.background()
-        band.shadow.inherit = False
-
-    def _header(self, slide, heading: str):
-        # Plain left-aligned text on the white slide background -- no
-        # full-width color band. A decorative bar spanning the slide reads
-        # as filler, and the reference deck's own clean look skips it too.
-        box = slide.shapes.add_textbox(Inches(0.5), Inches(0.22), style.SLIDE_W - Inches(1.0), style.HEADER_HEIGHT)
-        tf = box.text_frame
-        tf.margin_left = tf.margin_top = tf.margin_right = tf.margin_bottom = 0
-        p = tf.paragraphs[0]
-        p.text = heading
-        p.font.size = Pt(24)
-        p.font.bold = True
-        p.font.color.rgb = PRIMARY
-        p.font.name = style.FONT_TITLE
-
-    def _footer(self, slide):
-        logo_top = style.SLIDE_H - Inches(0.365)
-        slide.shapes.add_picture(str(style.LOGO_PATH), Inches(0.4), logo_top, style.LOGO_WIDTH, style.LOGO_HEIGHT)
-
-        tb = slide.shapes.add_textbox(Inches(1.25), style.SLIDE_H - Inches(0.35), Inches(2.5), Inches(0.25))
-        p = tb.text_frame.paragraphs[0]
-        p.text = style.PROGRAM_TITLE
-        p.font.size = Pt(12)
-        p.font.color.rgb = MUTED
-        p.font.name = style.FONT_BODY
-
-        proprietary = slide.shapes.add_textbox(Inches(3.85), style.SLIDE_H - Inches(0.35), Inches(2.3), Inches(0.25))
-        pr = proprietary.text_frame.paragraphs[0]
-        pr.text = self._t(style.PROPRIETARY_TEXT)
-        pr.font.size = Pt(12)
-        pr.alignment = PP_ALIGN.CENTER
-        pr.font.color.rgb = MUTED
-        pr.font.name = style.FONT_BODY
-
-        page = slide.shapes.add_textbox(Inches(8.6), style.SLIDE_H - Inches(0.35), Inches(0.9), Inches(0.25))
-        pp = page.text_frame.paragraphs[0]
-        pp.text = str(self.slide_count)
-        pp.font.size = Pt(12)
-        pp.alignment = PP_ALIGN.RIGHT
-        pp.font.color.rgb = MUTED
-        pp.font.name = style.FONT_BODY
-
-    def _caption(self, slide, text: str, top, bold: bool = False, size: int = 12):
-        box = slide.shapes.add_textbox(Inches(0.5), top, style.SLIDE_W - Inches(1.0), Inches(0.35))
-        tf = box.text_frame
-        tf.word_wrap = True
-        tf.text = text
-        run = tf.paragraphs[0].runs[0]
-        run.font.size = Pt(12)
-        run.font.color.rgb = MUTED
+    # -- shared furniture -------------------------------------------------------
+    @staticmethod
+    def _style_run(run, size: int, color, bold: bool = False, italic: bool = False):
+        run.font.size = Pt(size)
+        run.font.bold = bold
+        run.font.italic = italic
+        run.font.color.rgb = color
         run.font.name = style.FONT_BODY
 
-    # -- slides ---------------------------------------------------------------
-    def _captions(self, slide, description: str, subtitle: str | None):
-        """Caption block under the heading; returns where the chart/table
-        may start. A drill-down slide's filter/rank subtitle takes its own
-        line above the description and pushes the content down to fit."""
-        if not subtitle:
-            self._caption(slide, description, top=Inches(0.6))
-            return style.CHART_TOP
-        self._caption(slide, subtitle, top=Inches(0.6), bold=True, size=11)
-        self._caption(slide, description, top=Inches(0.9))
-        return style.CHART_TOP + Inches(0.5)
-
-    def add_title_slide(self, title: str, subtitle: str | None):
-        """Cover slide: logo top-left, title/subtitle on the left, and a
-        photo-collage-shaped block of flat colour on the right -- no actual
-        photography is available for this deck, so solid colour panels stand
-        in for where a Carrier-branded cover would place its imagery, rather
-        than faking or downloading photos."""
-        slide = self._new_slide(bordered=False)
-
-        slide.shapes.add_picture(str(style.LOGO_PATH), Inches(0.4), Inches(0.35), style.TITLE_LOGO_WIDTH, style.TITLE_LOGO_HEIGHT)
-
-        tf = slide.shapes.add_textbox(Inches(0.4), Inches(3.1), Inches(3.9), Inches(1.6)).text_frame
+    def _text(self, slide, left, top, width, height, text: str, size: int, color, bold: bool = False,
+              align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP, italic: bool = False):
+        box = slide.shapes.add_textbox(left, top, width, height)
+        tf = box.text_frame
         tf.word_wrap = True
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+        tf.vertical_anchor = anchor
         p = tf.paragraphs[0]
-        p.text = title
-        p.font.size = Pt(28)
-        p.font.bold = True
-        p.font.color.rgb = PRIMARY
-        p.font.name = style.FONT_TITLE
-        if subtitle:
-            p2 = tf.add_paragraph()
-            p2.text = subtitle
-            p2.font.size = Pt(13)
-            p2.font.color.rgb = MUTED
-            p2.font.name = style.FONT_BODY
+        p.alignment = align
+        run = p.add_run()
+        run.text = text
+        self._style_run(run, size, color, bold, italic)
+        return box
 
-        # Photo-collage stand-in: one large panel above two smaller ones,
-        # occupying the right half of the slide (clear of the side band).
-        collage_x, collage_w = Inches(4.6), style.SLIDE_W - Inches(4.6) - Inches(0.3)
-        large = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, collage_x, Inches(0.5), collage_w, Inches(3.6))
-        large.fill.solid()
-        large.fill.fore_color.rgb = PRIMARY
-        large.line.fill.background()
-        large.shadow.inherit = False
+    def _title(self, slide, heading: str):
+        size = 28 if len(heading) <= 50 else 24 if len(heading) <= 70 else 20 if len(heading) <= 100 else 18
+        self._text(slide, style.MARGIN_X, style.TITLE_TOP, style.TITLE_W, style.TITLE_H, heading,
+                   size, PRIMARY, bold=True, anchor=MSO_ANCHOR.MIDDLE)
 
-        gap = Inches(0.2)
-        small_w = (collage_w - gap) / 2
-        for i, hex_color in enumerate((style.BAR_PALETTE_HEX[3], style.BAR_PALETTE_HEX[4])):  # teal, amber
-            small = slide.shapes.add_shape(
-                MSO_SHAPE.ROUNDED_RECTANGLE, collage_x + i * (small_w + gap), Inches(4.3), small_w, Inches(2.4)
+    def _explanation(self, slide, text: str | None):
+        """The plain-language takeaway directly under the title. It keeps its font size; the chart/table area
+        below starts lower when the text takes more than two lines, so nothing is ever covered."""
+        if not text:
+            return
+        lines = explanation_lines(text)
+        height = max(style.EXPLAIN_H, Inches(0.31 * lines))
+        self._text(slide, style.MARGIN_X, style.EXPLAIN_TOP, style.CONTENT_W, height, text, style.EXPLAIN_PT, DARK_TEXT)
+        self._body_top = max(style.BODY_TOP, style.EXPLAIN_TOP + height + Inches(0.13))
+
+    def _caption(self, slide, text: str | None):
+        """Small grey note under the chart (the drill-down's filter line)."""
+        if text:
+            self._text(slide, style.MARGIN_X, style.CAPTION_TOP, style.CONTENT_W, style.CAPTION_H,
+                       text, 11, MUTED, italic=True)
+
+    def _logo(self, slide):
+        slide.shapes.add_picture(
+            str(style.LOGO_PATH), style.LOGO_LEFT, style.LOGO_TOP, style.LOGO_WIDTH, style.LOGO_HEIGHT
+        )
+
+    def _footer(self, slide):
+        """The Carrier footer: copyright on the left, 'A Carrier Company' on the right."""
+        footer = RGBColor.from_string(style.FOOTER_HEX)
+        self._text(slide, style.MARGIN_X, style.FOOTER_Y, Inches(7), Inches(0.25),
+                   f"© {datetime.now().year} Carrier. All Rights Reserved.", style.FOOTER_PT, footer)
+        self._text(slide, style.MARGIN_X + style.CONTENT_W - Inches(4), style.FOOTER_Y, Inches(4), Inches(0.25),
+                   "A Carrier Company", style.FOOTER_PT, footer, align=PP_ALIGN.RIGHT)
+
+    def _frame(self, slide, heading: str, explanation: str | None = None):
+        """Title + logo + explanation -- the header every content slide shares."""
+        self._title(slide, heading)
+        self._logo(slide)
+        self._explanation(slide, explanation)
+
+    def _body_box(self):
+        """(left, top, width, height) of the chart/table area -- below the explanation, whatever its length."""
+        return style.MARGIN_X, self._body_top, style.CONTENT_W, style.BODY_BOTTOM - self._body_top
+
+    def _bullets(self, slide, bullets: list[str], left, top, width, height, size: int = 16):
+        box = slide.shapes.add_textbox(left, top, width, height)
+        tf = box.text_frame
+        tf.word_wrap = True
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+        for i, bullet in enumerate(bullets):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            run = p.add_run()
+            run.text = bullet
+            self._style_run(run, size, DARK_TEXT)
+            p.space_after = Pt(12)
+            # A real hanging-indent bullet, so wrapped lines align under the text.
+            pPr = p._p.get_or_add_pPr()
+            pPr.set("marL", "285750")
+            pPr.set("indent", "-285750")
+            pPr.append(parse_xml(
+                '<a:buClr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+                f'<a:srgbClr val="{style.BAR_COLOR_HEX}"/></a:buClr>'
+            ))
+            pPr.append(parse_xml(
+                '<a:buChar xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" char="&#8226;"/>'
+            ))
+
+    # -- cover ------------------------------------------------------------------
+    def _template_cover_shapes(self, slide) -> bool:
+        """Copies the picture/colour-block/frame shapes of the Carrier template's cover
+        layout onto `slide`, scaled from the template's 10in width to this deck's.
+        Returns False (so the caller draws a plain cover) if the template is missing."""
+        try:
+            tpl = Presentation(str(style.DEFAULT_TEMPLATE_PATH))
+            layout = next(
+                lay for m in tpl.slide_masters for lay in m.slide_layouts if lay.name == style.COVER_LAYOUT_NAME
             )
-            small.fill.solid()
-            small.fill.fore_color.rgb = RGBColor.from_string(hex_color)
-            small.line.fill.background()
-            small.shadow.inherit = False
+        except Exception:
+            return False
 
+        scale = self.prs.slide_width / tpl.slide_width
+        theme = _template_theme_colors(tpl)
+        tree = slide.shapes._spTree
+        for el in layout.shapes._spTree:
+            tag = el.tag.split("}")[1]
+            if tag not in ("sp", "pic", "grpSp", "cxnSp"):
+                continue
+            if el.find(".//" + qn("p:ph")) is not None:
+                continue  # the title/subtitle placeholders: drawn as text boxes by the caller
+            if b"svgBlip" in etree.tostring(el):
+                continue  # the template's vector logo: the caller places this app's own PNG logo
+            new = copy.deepcopy(el)
+            for xfrm in new.iter(qn("a:xfrm")):
+                off, ext = xfrm.find(qn("a:off")), xfrm.find(qn("a:ext"))
+                if off is not None:
+                    off.set("x", str(round(int(off.get("x")) * scale)))
+                    off.set("y", str(round(int(off.get("y")) * scale)))
+                if ext is not None:
+                    ext.set("cx", str(round(int(ext.get("cx")) * scale)))
+                    ext.set("cy", str(round(int(ext.get("cy")) * scale)))
+            # Theme colours would resolve against THIS deck's default theme, so pin them to the
+            # template's own values.
+            for clr in list(new.iter(qn("a:schemeClr"))):
+                hex_value = theme.get(clr.get("val"))
+                if hex_value:
+                    srgb = parse_xml(
+                        f'<a:srgbClr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" val="{hex_value}"/>'
+                    )
+                    for child in list(clr):
+                        srgb.append(child)
+                    clr.getparent().replace(clr, srgb)
+            for blip in new.iter(qn("a:blip")):
+                rid = blip.get(qn("r:embed"))
+                if rid:
+                    _, new_rid = slide.part.get_or_add_image_part(io.BytesIO(layout.part.related_part(rid).blob))
+                    blip.set(qn("r:embed"), new_rid)
+            cnv = next(new.iter(qn("p:cNvPr")), None)
+            if cnv is not None:
+                if cnv.get("name") == "Freeform 48":  # the top colour block: blue, as in the sample
+                    for clr in new.find(qn("p:spPr")).iter(qn("a:srgbClr")):
+                        clr.set("val", style.COVER_TOP_BLOCK_HEX)
+                        break
+                cnv.set("id", str(slide.shapes._next_shape_id))
+            tree.append(new)
+        return True
+
+    def add_title_slide(self, title: str, subtitle: str | None, detail: str | None = None):
+        """The title page, laid out like the Carrier template's cover: logo top-left, the
+        title (blue) and a short subtitle at the left, the photo grid and colour blocks at the
+        right."""
+        slide = self._new_slide()
+        has_art = self._template_cover_shapes(slide)
+        k = 1.0 / 0.75  # the template is 10in wide, this deck 13.333in
+
+        slide.shapes.add_picture(
+            str(style.LOGO_PATH), Inches(0.32 * 1.3333), Inches(0.32 * 1.3333), Inches(1.19 * 1.3333), Inches(0.47 * 1.3333)
+        )
+        accent = RGBColor.from_string("0A2EF5")
+        navy = RGBColor.from_string("152C73")
+        left, width = Inches(0.352 * k), Inches(3.52 * k)
+        if not has_art:  # no template available: a plain left-aligned cover, still on the same grid
+            width = Inches(7.5)
+        self._text(slide, left, Inches(1.26 * k), width, Inches(1.55 * k), title, 42, accent, anchor=MSO_ANCHOR.BOTTOM)
+        lines = [t for t in (subtitle, detail) if t]
+        if lines:
+            box = slide.shapes.add_textbox(left, Inches(3.15 * k), width, Inches(0.9 * k))
+            tf = box.text_frame
+            tf.word_wrap = True
+            tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+            for i, line in enumerate(lines):
+                p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                run = p.add_run()
+                run.text = line
+                self._style_run(run, 18, navy)
+
+    # -- chart slides -----------------------------------------------------------
     def add_bar_or_line_slide(
         self, heading: str, description: str, categories: list[str], series: list[tuple[str, list[float]]],
         value_axis_title: str, category_axis_title: str, is_line: bool,
@@ -440,22 +758,26 @@ class ReportBuilder:
         single-series bar, a multi-series "grouped bar", and a line trend
         alike."""
         slide = self._new_slide()
-        self._header(slide, heading)
-        chart_top = self._captions(slide, description, subtitle)
+        self._frame(slide, heading, description)
+        box = self._body_box()
 
+        categories, rotation = _axis_plan(categories)
         data = CategoryChartData()
         data.categories = categories
         for name, values in series:
             data.add_series(name, values)
 
         chart_type = XL_CHART_TYPE.LINE_MARKERS if is_line else XL_CHART_TYPE.COLUMN_CLUSTERED
-        gf = slide.shapes.add_chart(
-            chart_type, Inches(0.7), chart_top, style.SLIDE_W - Inches(1.4), style.SLIDE_H - chart_top - Inches(1.0), data,
-        )
+        gf = slide.shapes.add_chart(chart_type, *box, data)
         chart = gf.chart
-        style_native_chart(chart, number_format="#,##0.##", single_series=len(series) == 1)
+        style_native_chart(
+            chart, number_format=number_format_for([v for _, vals in series for v in vals], hide_zero=not is_line),
+            single_series=len(series) == 1,
+        )
         set_axis_title(chart.value_axis, value_axis_title)
         set_axis_title(chart.category_axis, category_axis_title)
+        _tidy_category_axis(chart.category_axis, rotation)
+        self._caption(slide, subtitle)
         self._footer(slide)
 
     def add_combo_slide(
@@ -467,28 +789,31 @@ class ReportBuilder:
         """One native combo chart -- `bar_name` on the primary (left) axis as
         columns, `line_name` on a secondary (right) axis as a line -- for two
         metrics of different scale (e.g. a 0-100% rate and a raw count) that
-        would be unreadable sharing one axis. Falls back to the plain
-        single-series look if the OOXML split can't find 2 series to split
-        (shouldn't happen given 2 series are always added below, but never
-        leave an unstyled chart on the slide)."""
+        would be unreadable sharing one axis. The two axes are scaled so the columns use the
+        lower part of the plot and the line the upper part, so labels and markers don't
+        pile on top of each other."""
         slide = self._new_slide()
-        self._header(slide, heading)
-        chart_top = self._captions(slide, description, subtitle)
+        self._frame(slide, heading, description)
+        box = self._body_box()
 
+        categories, rotation = _axis_plan(categories)
         data = CategoryChartData()
         data.categories = categories
         data.add_series(bar_name, bar_values)
         data.add_series(line_name, line_values)
 
-        gf = slide.shapes.add_chart(
-            XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.7), chart_top,
-            style.SLIDE_W - Inches(1.4), style.SLIDE_H - chart_top - Inches(1.0), data,
-        )
+        gf = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, *box, data)
         chart = gf.chart
-        if not split_into_combo(chart, line_axis_title):
-            style_native_chart(chart, number_format="#,##0.##", single_series=False)
+        scale = _combo_scale(bar_values, line_values)
+        if not split_into_combo(
+            chart, line_axis_title, *(scale["secondary"] if scale else (None, None)),
+            sec_step=scale["step"] if scale else None, sec_format=scale["sec_format"] if scale else "General;;0",
+        ):
+            style_native_chart(chart, number_format=number_format_for(list(bar_values) + list(line_values)), single_series=False)
             set_axis_title(chart.value_axis, bar_axis_title)
             set_axis_title(chart.category_axis, category_axis_title)
+            _tidy_category_axis(chart.category_axis, rotation)
+            self._caption(slide, subtitle)
             self._footer(slide)
             return
 
@@ -501,47 +826,98 @@ class ReportBuilder:
         chart.legend.font.name = style.FONT_BODY
 
         bar_plot, line_plot = chart.plots[0], chart.plots[1]
-        for plot, color, label_position in (
-            (bar_plot, BAR_PALETTE[0], XL_LABEL_POSITION.OUTSIDE_END),
-            (line_plot, BAR_PALETTE[1], XL_LABEL_POSITION.ABOVE),
+        for plot, color, label_position, values, hide_zero in (
+            (bar_plot, BAR_PALETTE[0], XL_LABEL_POSITION.OUTSIDE_END, bar_values, True),
+            (line_plot, BAR_PALETTE[1], XL_LABEL_POSITION.ABOVE, line_values, False),
         ):
             plot.has_data_labels = True
-            plot.data_labels.number_format = "#,##0.##"
+            plot.data_labels.number_format = number_format_for(values, hide_zero=hide_zero)
             plot.data_labels.number_format_is_linked = False
             plot.data_labels.font.size = Pt(style.CHART_DATA_LABEL_FONT_PT)
             plot.data_labels.font.name = style.FONT_BODY
             plot.data_labels.position = label_position
             series = plot.series[0]
             if plot is line_plot:
+                # The line's labels sit above its markers, in their own band of the plot.
+                plot.data_labels.font.color.rgb = RGBColor.from_string("0B5CAD")
+                plot.data_labels.font.bold = True
                 series.format.line.color.rgb = color
                 series.format.line.width = Pt(2.25)
                 series.marker.format.fill.solid()
                 series.marker.format.fill.fore_color.rgb = color
+                series.marker.format.line.color.rgb = color
             else:
                 series.format.fill.solid()
                 series.format.fill.fore_color.rgb = color
 
-        style_axes_grid(chart.category_axis, chart.value_axis)
+        # After the split python-pptx's `chart.value_axis` is the SECONDARY (right) axis,
+        # so the left/primary one has to be picked by position.
+        primary = _primary_value_axis(chart)
+        if scale:
+            primary.minimum_scale = 0
+            primary.maximum_scale = scale["primary_max"]
+            if scale["percent_bars"]:  # a rate never exceeds 100: don't label the headroom above it
+                primary.tick_labels.number_format = '[<=100]General;" "'
+                primary.tick_labels.number_format_is_linked = False
+        style_axes_grid(chart.category_axis, primary)
         chart.category_axis.tick_labels.font.size = Pt(style.CHART_FONT_PT)
         chart.category_axis.tick_labels.font.name = style.FONT_BODY
-        chart.value_axis.tick_labels.font.size = Pt(style.CHART_FONT_PT)
-        chart.value_axis.tick_labels.font.name = style.FONT_BODY
-        set_axis_title(chart.value_axis, bar_axis_title)
+        primary.tick_labels.font.size = Pt(style.CHART_FONT_PT)
+        primary.tick_labels.font.name = style.FONT_BODY
+        set_axis_title(primary, bar_axis_title)
         set_axis_title(chart.category_axis, category_axis_title)
+        _tidy_category_axis(chart.category_axis, rotation)
+        self._caption(slide, subtitle)
+        self._footer(slide)
+
+    def add_scatter_slide(
+        self, heading: str, description: str, points: list[tuple[float, float]], series_name: str,
+        x_axis_title: str, y_axis_title: str, subtitle: str | None = None,
+    ):
+        """A native XY scatter: points are placed by their real x value (a column chart would space them evenly
+        and misread a numeric axis)."""
+        slide = self._new_slide()
+        self._frame(slide, heading, description)
+        box = self._body_box()
+
+        data = XyChartData()
+        series = data.add_series(series_name or "Series")
+        for x, y in points:
+            series.add_data_point(x, y)
+        chart = slide.shapes.add_chart(XL_CHART_TYPE.XY_SCATTER, *box, data).chart
+        style.set_chart_default_font(chart, style.CHART_DATA_LABEL_FONT_PT, style.FONT_BODY)
+        chart.has_title = False
+        chart.has_legend = False
+        plot = chart.plots[0]
+        marker_series = plot.series[0]
+        marker_series.format.line.fill.background()  # markers only, no connecting line
+        marker_series.marker.style = XL_MARKER_STYLE.CIRCLE
+        marker_series.marker.size = 9
+        marker_series.marker.format.fill.solid()
+        marker_series.marker.format.fill.fore_color.rgb = PRIMARY
+        marker_series.marker.format.line.color.rgb = PRIMARY
+        grid = RGBColor.from_string(style.GRIDLINE_COLOR_HEX)
+        for axis, title in ((chart.category_axis, x_axis_title), (chart.value_axis, y_axis_title)):
+            axis.has_major_gridlines = True
+            axis.major_gridlines.format.line.color.rgb = grid
+            axis.major_gridlines.format.line.width = Pt(0.75)
+            axis.format.line.color.rgb = MUTED
+            axis.tick_labels.font.size = Pt(style.CHART_FONT_PT)
+            axis.tick_labels.font.name = style.FONT_BODY
+            set_axis_title(axis, title)
+        self._caption(slide, subtitle)
         self._footer(slide)
 
     def add_pie_slide(self, heading: str, description: str, labels: list[str], values: list[float], subtitle: str | None = None):
         slide = self._new_slide()
-        self._header(slide, heading)
-        chart_top = self._captions(slide, description, subtitle)
+        self._frame(slide, heading, description)
+        box = self._body_box()
 
         data = CategoryChartData()
-        data.categories = [str(label) for label in labels]
+        data.categories = [_short_label(label, 28) for label in labels]
         data.add_series(heading, [_to_number(v) for v in values])
 
-        gf = slide.shapes.add_chart(
-            XL_CHART_TYPE.PIE, Inches(1.8), chart_top, style.SLIDE_W - Inches(3.6), style.SLIDE_H - chart_top - Inches(1.0), data,
-        )
+        gf = slide.shapes.add_chart(XL_CHART_TYPE.PIE, *box, data)
         chart = gf.chart
         style.set_chart_default_font(chart, style.CHART_DATA_LABEL_FONT_PT, style.FONT_BODY)
         chart.has_title = False
@@ -558,26 +934,28 @@ class ReportBuilder:
         plot.data_labels.number_format_is_linked = False
         plot.data_labels.font.size = Pt(style.CHART_DATA_LABEL_FONT_PT)
         plot.data_labels.font.name = style.FONT_BODY
-        plot.data_labels.font.color.rgb = WHITE
+        plot.data_labels.font.color.rgb = DARK_TEXT
+        plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END  # dark text stays readable on any slice colour
         for i, point in enumerate(plot.series[0].points):
             point.format.fill.solid()
             point.format.fill.fore_color.rgb = BAR_PALETTE[i % len(BAR_PALETTE)]
+        self._caption(slide, subtitle)
         self._footer(slide)
 
     def add_table_slide(self, heading: str, description: str, columns: list[str], rows: list[dict], subtitle: str | None = None):
         slide = self._new_slide()
-        self._header(slide, heading)
-        chart_top = self._captions(slide, description, subtitle)
+        self._frame(slide, heading, description)
+        left, top, width, height = self._body_box()
 
         cols = columns[:MAX_TABLE_COLS]
         display_rows = rows[:MAX_TABLE_ROWS]
         if not cols or not display_rows:
+            self._caption(slide, subtitle)
             self._footer(slide)
             return
 
-        table_top = chart_top + Inches(0.35)
-        table_height = style.SLIDE_H - table_top - Inches(0.6)
-        gf = slide.shapes.add_table(len(display_rows) + 1, len(cols), Inches(0.5), table_top, style.SLIDE_W - Inches(1.0), table_height)
+        row_h = min(Inches(0.4), int(height / (len(display_rows) + 1)))
+        gf = slide.shapes.add_table(len(display_rows) + 1, len(cols), left, top, width, row_h * (len(display_rows) + 1))
         table = gf.table
 
         for c, col in enumerate(cols):
@@ -600,6 +978,7 @@ class ReportBuilder:
                 p.font.color.rgb = DARK_TEXT
                 p.font.name = style.FONT_BODY
 
+        self._caption(slide, subtitle)
         self._footer(slide)
 
     def add_summary_slide(self, heading: str, bullets: list[str]):
@@ -609,29 +988,30 @@ class ReportBuilder:
         included analyses' own interpretations). `bullets` empty means no
         analysis was included to summarize."""
         slide = self._new_slide()
-        self._header(slide, self._t(heading))
+        self._frame(slide, self._t(heading))
+        body_top = style.EXPLAIN_TOP + Inches(0.1)
+        body_h = style.BODY_BOTTOM - body_top
 
         if not bullets:
-            self._caption(slide, self._t(NO_OVERALL_CAPTION), top=Inches(0.6))
-            self._footer(slide)
-            return
-
-        list_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.75), style.SLIDE_W - Inches(1.0), style.SLIDE_H - Inches(1.25))
-        tf = list_box.text_frame
-        tf.word_wrap = True
-        for i, bullet in enumerate(bullets):
-            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-            p.text = f"•  {bullet}"
-            p.font.size = Pt(13)
-            p.font.color.rgb = DARK_TEXT
-            p.font.name = style.FONT_BODY
-            p.space_after = Pt(10)
+            self._bullets(slide, [self._t(NO_OVERALL_CAPTION)], style.MARGIN_X, body_top, style.CONTENT_W, body_h)
+        else:
+            longest = max(len(b) for b in bullets)
+            size = 18 if longest < 200 and len(bullets) <= 4 else 16 if longest < 320 else 14
+            self._bullets(slide, bullets, style.MARGIN_X, body_top, style.CONTENT_W, body_h, size=size)
         self._footer(slide)
 
     def save_bytes(self) -> bytes:
         buffer = io.BytesIO()
         self.prs.save(buffer)
         return buffer.getvalue()
+
+
+def _axis_title(chart_spec: dict, axis: str, fallback: str = "") -> str:
+    """The title the chart itself gives an axis ("xaxis"/"yaxis"), else `fallback` -- more reliable than the
+    table's first column, which isn't always the x axis (a heatmap's table starts with its row field)."""
+    title = ((chart_spec.get("layout") or {}).get(axis) or {}).get("title")
+    text = title.get("text") if isinstance(title, dict) else title
+    return str(text) if text else fallback
 
 
 def _trace_xy(trace: dict) -> tuple[list, list]:
@@ -651,6 +1031,29 @@ def _numeric_columns(result_table: list[dict], result_columns: list[str]) -> lis
 
 def _label_column(result_columns: list[str], numeric_columns: list[str]) -> str | None:
     return next((c for c in result_columns if c not in numeric_columns), result_columns[0] if result_columns else None)
+
+
+def _numeric_xy(trace: dict) -> bool:
+    """True when a trace has numeric x AND y values (so it can be drawn as a real scatter)."""
+    xs, ys = _trace_xy(trace)
+    pairs = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
+    return len(pairs) >= 2 and all(_is_numeric(x) and _is_numeric(y) for x, y in pairs)
+
+
+def _heatmap_series(trace: dict, max_series: int = 6) -> tuple[list[str], list[tuple[str, list[float]]]]:
+    """A heatmap trace as grouped-column data: its x labels are the categories and each y row becomes one
+    series. With more than `max_series` rows, the ones with the largest totals are kept."""
+    xs = [str(x) for x in (trace.get("x") or [])]
+    ys = [str(y) for y in (trace.get("y") or [])]
+    z = trace.get("z") or []
+    if not xs or not ys or not z:
+        return [], []
+    rows = []
+    for name, cells in zip(ys, z):
+        values = [_to_number(v) for v in list(cells)[: len(xs)]]
+        rows.append((name, values + [0.0] * (len(xs) - len(values))))
+    rows.sort(key=lambda r: sum(r[1]), reverse=True)
+    return xs, rows[:max_series]
 
 
 def _bar_series(
@@ -697,10 +1100,10 @@ def translate_entry_texts(entries: list[dict], language: str) -> dict[str, str]:
     texts: list[str] = []
     for entry in entries:
         name = entry.get("name")
-        if name:
+        if name and not entry.get("edit_heading"):
             texts.append(name)
         interpretation = entry.get("interpretation")
-        if interpretation:
+        if interpretation and entry.get("edit_explanation") is None:
             texts.append(interpretation)
     if not texts:
         return {}
@@ -713,7 +1116,9 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
     bad entry shouldn't break the whole export)."""
     content_phrases = content_phrases or {}
     raw_heading = entry.get("name") or "Analysis"
-    heading = content_phrases.get(raw_heading, raw_heading)
+    # Text the PM edited in the Report preview is used exactly as typed: never shortened or translated.
+    edited_heading = entry.get("edit_heading")
+    heading = edited_heading if edited_heading else content_phrases.get(raw_heading, raw_heading)
     # Every slide (roots included) leads with its number so a drill-down
     # reads as "2.1  ..." right after its parent "2  ..."; the subtitle
     # (filter + rank line) only exists on drill-down levels.
@@ -721,15 +1126,37 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
     if number:
         heading = f"{number}  {heading}"
     subtitle = entry.get("subtitle") or None
+    if entry.get("edit_caption") is not None:
+        subtitle = entry["edit_caption"].strip() or None
     raw_description = entry.get("interpretation") or entry.get("description") or ""
     description = content_phrases.get(raw_description, raw_description) if raw_description else raw_description
+    description = short_explanation(description) if entry.get("interpretation") else description
+    if entry.get("edit_explanation") is not None:
+        description = entry["edit_explanation"].strip()
+        if explanation_lines(description) > EXPLAIN_MAX_LINES:  # typed as-is, but never so long it squeezes the chart away
+            description = _fit_max_lines(description)
     chart_type = entry.get("chart_type")
     chart_spec = entry.get("chart_spec") or {}
     traces = chart_spec.get("data") or []
     result_table = entry.get("result_table") or []
     result_columns = entry.get("result_columns") or []
 
-    if chart_type == "pie":
+    # A heatmap's trace is a matrix (x columns, y rows, z cells), not x/y series: drawn as grouped columns
+    # (one series per row), the closest native chart. This is decided by the trace itself, so a heatmap that
+    # arrives labelled as another chart type is never turned into a row of zeros.
+    if traces and traces[0].get("type") == "heatmap":
+        categories, series = _heatmap_series(traces[0])
+        if categories and series:
+            colorbar = ((traces[0].get("colorbar") or {}).get("title") or {})
+            builder.add_bar_or_line_slide(
+                heading, description, categories, series,
+                value_axis_title=colorbar.get("text") or "Value",
+                category_axis_title=_axis_title(chart_spec, "xaxis", result_columns[0] if result_columns else ""),
+                is_line=False, subtitle=subtitle,
+            )
+            return True
+
+    elif chart_type == "pie":
         trace = traces[0] if traces else {}
         labels, values = _trace_xy(trace)
         if not (labels and values) and result_table and result_columns:
@@ -747,7 +1174,7 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
         categories, series = _bar_series(traces, result_table, result_columns, entry.get("name"))
         if categories and len(series) >= 2:
             (bar_name, bar_values), (line_name, line_values) = series[0], series[1]
-            category_axis_title = result_columns[0] if result_columns else ""
+            category_axis_title = _axis_title(chart_spec, "xaxis", result_columns[0] if result_columns else "")
             builder.add_combo_slide(
                 heading, description, categories, bar_name, bar_values, line_name, line_values,
                 bar_axis_title=bar_name, line_axis_title=line_name, category_axis_title=category_axis_title,
@@ -755,11 +1182,21 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
             )
             return True
 
+    elif chart_type == "scatter" and traces and _numeric_xy(traces[0]):
+        xs, ys = _trace_xy(traces[0])
+        pairs = [(float(x), float(y)) for x, y in zip(xs, ys) if _is_numeric(x) and _is_numeric(y)]
+        builder.add_scatter_slide(
+            heading, description, pairs, traces[0].get("name") or entry.get("name") or "",
+            x_axis_title=_axis_title(chart_spec, "xaxis", result_columns[0] if result_columns else ""),
+            y_axis_title=_axis_title(chart_spec, "yaxis", traces[0].get("name") or ""), subtitle=subtitle,
+        )
+        return True
+
     elif chart_type in ("bar", "grouped_bar", "line", "scatter"):
         categories, series = _bar_series(traces, result_table, result_columns, entry.get("name"))
         if categories and series:
             value_axis_title = series[0][0] if len(series) == 1 else "Value"
-            category_axis_title = result_columns[0] if result_columns else ""
+            category_axis_title = _axis_title(chart_spec, "xaxis", result_columns[0] if result_columns else "")
             builder.add_bar_or_line_slide(
                 heading, description, categories, series,
                 value_axis_title=value_axis_title, category_axis_title=category_axis_title,
@@ -778,7 +1215,7 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
 
 def build_report(
     source_label: str, df: pd.DataFrame | None, entries: list[dict], summary_bullets: list[str],
-    language: str = "en",
+    language: str = "en", cover_title: str | None = None, cover_subtitle: str | None = None,
 ) -> bytes:
     """Builds the deck from `entries` (already filtered by the router to
     run_status == "done" analyses the PM chose to include) plus
@@ -793,8 +1230,9 @@ def build_report(
     phrases = translation_service.translate_many(TRANSLATABLE_PHRASES, language) if language != "en" else {}
     content_phrases = translate_entry_texts(entries, language)
     builder = ReportBuilder(phrases=phrases)
-    subtitle = _date_range_label(df) if df is not None else None
-    builder.add_title_slide(source_label, subtitle)
+    dates = _date_range_label(df) if df is not None else None
+    stem = re.sub(r"\.(xlsx|xlsm|xls|csv)$", "", source_label or "", flags=re.IGNORECASE)
+    builder.add_title_slide(cover_title or "Cold Chain Analysis", cover_subtitle if cover_subtitle is not None else (stem or None), dates)
 
     for entry in entries:
         _add_entry_slide(builder, entry, content_phrases)

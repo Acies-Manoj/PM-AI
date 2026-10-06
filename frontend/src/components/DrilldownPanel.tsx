@@ -26,6 +26,10 @@ function proposalTitle(p: DrilldownProposal): string {
 }
 
 const MAX_SLIDES = 6;
+// The panel opens on the best few suggestions (they arrive best first); the rest are one click away.
+const INITIAL_SHOWN = 6;
+// The most suggestions a drill-down holds (backend TOTAL_CAP) -- past it "AI" has nothing more to add.
+const TOTAL_CAP = 15;
 
 function proposalKey(p: DrilldownProposal): string {
   const dims = p.child_dimensions?.length ? p.child_dimensions : [p.child_dimension];
@@ -141,8 +145,12 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
   const [proposing, setProposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingIndex, setConfirmingIndex] = useState<number | null>(null);
+  const [showAll, setShowAll] = useState(false);
   // Already-cached duplicates of one analysis (same columns + measure, different focus) become one card.
   const cards = proposals ? mergeProposals(proposals) : null;
+  const visible = cards ? (showAll ? cards : cards.slice(0, INITIAL_SHOWN)) : null;
+  const hidden = cards ? cards.length - (visible?.length ?? 0) : 0;
+  const atCap = (proposals?.length ?? 0) >= TOTAL_CAP;
 
   const propose = (more: boolean) => {
     setProposing(true);
@@ -182,9 +190,18 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
     <div className="drilldown-panel">
       <div className="drilldown-panel__head">
         <h5 className="drilldown-panel__title">
-          Suggested Drill-downs{proposals && proposals.length > 0 ? ` (${proposals.length})` : ""}
+          Suggested Drill-downs{cards && cards.length > 0 ? ` (${cards.length})` : ""}
         </h5>
-        <button type="button" className="analysis-detail__suggest-more-btn" disabled={proposing} onClick={() => propose(true)}>
+        <button
+          type="button"
+          className="analysis-detail__suggest-more-btn"
+          disabled={proposing || atCap}
+          title={atCap ? "This list already holds the best ideas" : "Ask the AI for more ideas"}
+          onClick={() => {
+            setShowAll(true);
+            propose(true);
+          }}
+        >
           <IconSparkle />
           {proposing ? <><Spinner />Thinking…</> : "AI"}
         </button>
@@ -193,10 +210,10 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
       {error && <p className="analysis-card__error">{error}</p>}
       {proposing && !proposals && <ThinkingLoader messages={LOADING.proposals} showElapsed />}
 
-      {cards && (
-        <div className={`drilldown-proposals${cards.length > 5 ? " drilldown-proposals--scroll" : ""}`}>
+      {visible && cards && (
+        <div className={`drilldown-proposals${visible.length > 5 ? " drilldown-proposals--scroll" : ""}`}>
           {cards.length === 0 && <p className="drilldown-panel__hint">No drill-downs available.</p>}
-          {cards.map((p, i) => (
+          {visible.map((p, i) => (
             <ProposalCard
               key={proposalKey(p)}
               proposal={p}
@@ -207,6 +224,11 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
             />
           ))}
         </div>
+      )}
+      {hidden > 0 && (
+        <button type="button" className="drilldown-panel__show-more" onClick={() => setShowAll(true)}>
+          Show {hidden} more
+        </button>
       )}
     </div>
   );

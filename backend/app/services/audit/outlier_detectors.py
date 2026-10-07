@@ -3,6 +3,7 @@
 Delegates to anomaly_detection.py (agent-orchestration-flow branch) for the
 actual algorithms:
   - compute_lane_duration_outliers: 5th/95th percentile fence from each exact lane's own trips
+    (a 1-trip lane is its own baseline; a 2-trip lane is flagged only if the pair disagrees)
   - compute_flags: 9 trip-level rules; flag_1/flag_2 used for temperature tab
 
 SensiWatch exports use a "long sensor format": one row per (trip, sensor channel),
@@ -18,6 +19,19 @@ import numpy as np
 import pandas as pd
 
 from app.services.audit import anomaly_detection
+
+
+# Temperature outliers: "too warm" = the trip's mean temp is among the hottest
+# TEMP_WARM_TOP_PERCENT % of that product's trips; "too cold" = mean below the trip's Limit Low.
+TEMP_WARM_TOP_PERCENT = 5
+
+_STATUS_TYPE_BY_LABEL = {
+    anomaly_detection.STATUS_OWN_LANE: "own_lane",
+    anomaly_detection.STATUS_SINGLE: "single_trip",
+    anomaly_detection.STATUS_PAIR_OK: "pair_consistent",
+    anomaly_detection.STATUS_PAIR_FLAG: "pair_inconsistent",
+    anomaly_detection.STATUS_INSUFFICIENT: "insufficient",
+}
 
 
 def _find_col(columns: list[str], *needles: str) -> str | None:
@@ -102,6 +116,7 @@ def detect_segment_outliers(df: pd.DataFrame) -> dict:
     outlier_df["duration_outlier"] = outlier_df["duration_outlier"].fillna(False)
     outlier_df["duration_outlier_status"] = outlier_df["duration_outlier_status"].fillna("Insufficient History")
     duration = pd.to_numeric(analysis_df[DUR], errors="coerce")
+    mode_col = _find_col(list(analysis_df.columns), "mode", "transport")
 
     origins = analysis_df[ORIG].fillna("(blank)").astype(str)
     destinations = analysis_df[DEST].fillna("(blank)").astype(str)
@@ -130,7 +145,7 @@ def detect_segment_outliers(df: pd.DataFrame) -> dict:
         non_insuf = status_series[status_series != "Insufficient History"]
         status_label = str(non_insuf.iloc[0]) if len(non_insuf) > 0 else "Insufficient History"
 
-        status_type = "own_lane" if "Own-Lane Fence" in status_label else "insufficient"
+        status_type = _STATUS_TYPE_BY_LABEL.get(status_label, "insufficient")
 
         lower_fence: float | None = None
         upper_fence: float | None = None
@@ -173,14 +188,16 @@ def detect_segment_outliers(df: pd.DataFrame) -> dict:
             serial_val = analysis_df.at[i, serial_col] if serial_col else None
             trip_val = analysis_df.at[i, trip_col] if trip_col else None
             days = duration.at[i]
+            mode_val = analysis_df.at[i, mode_col] if mode_col else None
             flat_rows.append({
+                "mode": str(mode_val).strip() if mode_val is not None and pd.notna(mode_val) and str(mode_val).strip() else None,
                 "serial": str(serial_val) if serial_val is not None and pd.notna(serial_val) else None,
                 "trip_id": _to_trip_id(trip_val),
                 "origin": lane["origin"],
                 "destination": lane["destination"],
                 "segment_days": round(float(days), 2) if pd.notna(days) else None,
-                "lower_fence_days": lane["lower_fence"],
-                "upper_fence_days": lane["upper_fence"],
+                "lower_fence_days": round(lane["lower_fence"], 2) if lane["lower_fence"] is not None else None,
+                "upper_fence_days": round(lane["upper_fence"], 2) if lane["upper_fence"] is not None else None,
                 "status": lane["status_label"],
             })
 
@@ -231,7 +248,6 @@ def detect_temperature_outliers(df: pd.DataFrame) -> dict:
     # reshaping that can leave a subtly mismatched index for some real,
     # messy exports -- reindexing turns a would-be crash (KeyError from
     # `.at[i]` below) into "treat that trip as not flagged" instead.
-    too_warm = flags["flag_1_too_warm_avg"].reindex(analysis_df.index, fill_value=False)
     too_cold = flags["flag_2_too_cold_avg"].reindex(analysis_df.index, fill_value=False)
     flag_count = flags["flag_count"].reindex(analysis_df.index, fill_value=0)
 
@@ -249,6 +265,14 @@ def detect_temperature_outliers(df: pd.DataFrame) -> dict:
         if PRODUCT in analysis_df.columns
         else pd.Series(["Unknown"] * len(analysis_df), dtype=str)
     )
+
+    # Too warm: only the extreme top of each product's own mean temperatures, not every
+    # trip above the product's average (that would flag about half of them).
+    products_key = pd.Series(products.values, index=analysis_df.index)
+    warm_cutoff = mean_temp.groupby(products_key).transform(
+        lambda s: s.quantile(1 - TEMP_WARM_TOP_PERCENT / 100)
+    )
+    too_warm = (mean_temp > warm_cutoff).fillna(False)
 
     by_product: list[dict] = []
     for product in sorted(products.unique()):

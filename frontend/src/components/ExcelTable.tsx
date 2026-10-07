@@ -155,7 +155,7 @@ export default function ExcelTable({
                         aria-haspopup="dialog"
                         onClick={(e) => {
                           const rect = e.currentTarget.getBoundingClientRect();
-                          setMenu((cur) => (cur?.column === col ? null : { column: col, left: Math.max(8, Math.min(rect.left, window.innerWidth - 260)), top: rect.bottom + 4 }));
+                          setMenu((cur) => (cur?.column === col ? null : { column: col, left: Math.max(8, Math.min(rect.left, window.innerWidth - 260)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 380)) }));
                         }}
                       >
                         <IconFilter />
@@ -260,11 +260,21 @@ function ColumnMenu({ column, left, top, numeric, values, allowed, sortDir, onSo
         onClose();
       }
     };
+    // The menu is position:fixed at the header's spot when opened, so scrolling the page (or the
+    // table) would leave it floating over unrelated content -- close it instead.
+    const onScroll = (e: Event) => {
+      if (ref.current && e.target instanceof Node && ref.current.contains(e.target)) return;
+      onClose();
+    };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey, true);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onClose);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onClose);
     };
   }, [onClose]);
 
@@ -317,7 +327,7 @@ function ColumnMenu({ column, left, top, numeric, values, allowed, sortDir, onSo
             <label className="excel-menu__check">
               <input type="checkbox" checked={isOn(v)} onChange={() => toggle(v)} />
               <span className="excel-menu__value">{v}</span>
-              <span className="excel-menu__n">{n}</span>
+              <span className="excel-menu__n">({n})</span>
             </label>
           </li>
         ))}

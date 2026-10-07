@@ -945,7 +945,7 @@ export interface LaneResult {
   n_trips: number;
   n_valid: number;
   n_outliers: number;
-  status_type: "own_lane" | "insufficient";
+  status_type: "own_lane" | "single_trip" | "pair_consistent" | "pair_inconsistent" | "insufficient";
   status_label: string;
   lower_fence: number | null;
   upper_fence: number | null;
@@ -957,6 +957,7 @@ export interface LaneResult {
 export interface SegmentOutlierRow {
   serial: string | null;
   trip_id: number | string | null;
+  mode: string | null;
   origin: string;
   destination: string;
   segment_days: number | null;

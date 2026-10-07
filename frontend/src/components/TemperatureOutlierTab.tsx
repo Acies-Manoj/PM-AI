@@ -317,7 +317,7 @@ export default function TemperatureOutlierTab({ data, sessionId, onUpdated }: Pr
     <div className="outlier-tab">
       <div className="outlier-tab__toolbar-row">
         <p className="outlier-tab__hint">
-          One card per product -- open one to see its mean-temperature chart and flagged trips.
+          One card per product -- open one to see its mean-temperature chart and flagged trips. Too warm = the hottest 5% of that product's trips (by mean temperature); too cold = every trip whose mean is below its Low limit.
         </p>
         {data.by_product.length > 0 && (
           <div className="outlier-tab__search">
@@ -341,7 +341,7 @@ export default function TemperatureOutlierTab({ data, sessionId, onUpdated }: Pr
       </div>
 
       {totalBreaches === 0 && (
-        <p className="outlier-tab__all-clear">No temperature breaches detected. All trips are within their configured limits.</p>
+        <p className="outlier-tab__all-clear">No temperature outliers detected: no trip is in a product's hottest 5% or below its Low limit.</p>
       )}
 
       <div className="audit-report__issues">

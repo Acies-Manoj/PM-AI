@@ -62,11 +62,9 @@ def _strip_code_fence(text: str) -> str:
 
 
 def strip_json_fence(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("```", 2)[-1] if stripped.count("```") >= 2 else stripped
-        stripped = stripped[4:].strip() if stripped.lower().startswith("json") else stripped
-    return stripped
+    stripped = (text or "").strip()
+    match = re.match(r"^```[a-zA-Z]*\s*(.*?)\s*```$", stripped, re.DOTALL)
+    return match.group(1).strip() if match else stripped
 
 
 def describe_columns(df: pd.DataFrame) -> str:

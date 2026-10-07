@@ -58,7 +58,17 @@ GROUP_COLS = (COL_ORIGIN, COL_DESTINATION, COL_PRODUCT)
 PERCENTILE = 0.95
 
 # Lane duration-outlier thresholds (see compute_lane_duration_outliers).
-LANE_MIN_TRIPS_FOR_FENCE = 3  # lanes with FEWER trips than this (i.e. 1-2) are "Insufficient History"
+LANE_MIN_TRIPS_FOR_FENCE = 3  # lanes with FEWER trips than this (i.e. 1-2) get no percentile fence
+# Thin lanes: a single trip is its own baseline (never flagged); a pair is flagged
+# (both trips, for review) only when it disagrees by BOTH an absolute gap and a ratio.
+PAIR_MIN_GAP_DAYS = 3.0
+PAIR_MIN_RATIO = 1.5
+
+STATUS_OWN_LANE = "Own-Lane Fence"
+STATUS_SINGLE = "Single Trip (Baseline)"
+STATUS_PAIR_OK = "Two Trips (Consistent)"
+STATUS_PAIR_FLAG = "Two Trips (Inconsistent Pair)"
+STATUS_INSUFFICIENT = "Insufficient History"
 DURATION_FENCE_LOWER_PERCENTILE = 0.05
 DURATION_FENCE_UPPER_PERCENTILE = 0.95
 
@@ -153,29 +163,45 @@ def compute_lane_duration_outliers(
 
     - Lanes with >= LANE_MIN_TRIPS_FOR_FENCE trips: fenced from their own
       5th/95th percentile.
-    - Lanes with only 1-2 usable trips: too few to say what's "normal" for
-      that exact route -- marked "Insufficient History" for manual review
-      rather than guessing.
+    - Lanes with exactly 1 usable trip: that trip is the lane's baseline
+      (fence = its own value), never flagged.
+    - Lanes with exactly 2 usable trips: fence = [min, max]. Neither trip can be
+      singled out, so both are flagged for review only when the pair disagrees
+      by at least PAIR_MIN_GAP_DAYS AND PAIR_MIN_RATIO.
+    - Lanes with 0 usable trips: "Insufficient History", nothing to judge.
     """
     duration = pd.to_numeric(df[duration_col], errors="coerce")
     lane = list(zip(df[origin_col].fillna("(blank)"), df[destination_col].fillna("(blank)")))
     lane_series = pd.Series(lane, index=df.index)
 
     is_outlier = pd.Series(False, index=df.index)
-    status = pd.Series("Insufficient History", index=df.index)
+    status = pd.Series(STATUS_INSUFFICIENT, index=df.index)
     lower_fence = pd.Series(np.nan, index=df.index)
     upper_fence = pd.Series(np.nan, index=df.index)
 
     for _lane_key, idx in lane_series.groupby(lane_series).groups.items():
         values = duration.loc[idx].dropna()
         n = len(values)
+        if n == 0:
+            continue  # nothing usable -> stays "Insufficient History"
+
         if n < LANE_MIN_TRIPS_FOR_FENCE:
-            continue  # 0-2 usable trips for this exact lane -> stays "Insufficient History"
+            lo, hi = float(values.min()), float(values.max())
+            lower_fence.loc[idx] = lo
+            upper_fence.loc[idx] = hi
+            if n == 1:
+                status.loc[idx] = STATUS_SINGLE
+            else:
+                inconsistent = (hi - lo) >= PAIR_MIN_GAP_DAYS and hi >= PAIR_MIN_RATIO * max(lo, 1e-9)
+                status.loc[idx] = STATUS_PAIR_FLAG if inconsistent else STATUS_PAIR_OK
+                if inconsistent:
+                    is_outlier.loc[idx] = duration.loc[idx].notna()
+            continue
 
         lower, upper = _percentile_fence(values)
         lower_fence.loc[idx] = lower
         upper_fence.loc[idx] = upper
-        status.loc[idx] = "Own-Lane Fence"
+        status.loc[idx] = STATUS_OWN_LANE
         in_range = duration.loc[idx].between(lower, upper)
         is_outlier.loc[idx] = duration.loc[idx].notna() & ~in_range
 

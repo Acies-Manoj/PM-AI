@@ -603,14 +603,6 @@ export async function acceptFeatureEntry(sessionId: string, entryId: string): Pr
   return response.json();
 }
 
-export async function rejectFeatureEntry(sessionId: string, entryId: string): Promise<FeatureRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/features/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
 export interface IssueRowsResponse {
   issue_id: string;
   total_matching: number;
@@ -724,14 +716,6 @@ export async function suggestAnalysisEntries(sessionId: string): Promise<Suggest
 
 export async function acceptAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
   const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/accept`, { method: "POST" });
-  if (!response.ok) {
-    throw new AuditApiError(await parseErrorDetail(response));
-  }
-  return response.json();
-}
-
-export async function rejectAnalysisEntry(sessionId: string, entryId: string): Promise<AnalysisRepositoryEntry> {
-  const response = await fetch(`${API_BASE_URL}/api/analysis/repository/${sessionId}/entries/${entryId}/reject`, { method: "POST" });
   if (!response.ok) {
     throw new AuditApiError(await parseErrorDetail(response));
   }

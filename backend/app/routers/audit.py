@@ -140,11 +140,6 @@ def run_audit_agent(session_id: str) -> AuditReport:
     return _to_report(session)
 
 
-@router.get("/{session_id}", response_model=AuditReport)
-def get_audit(session_id: str) -> AuditReport:
-    return _to_report(_get_session_or_404(session_id))
-
-
 @router.post("/{session_id}/resolve", response_model=AuditReport)
 def resolve_issue(session_id: str, body: ResolveRequest) -> AuditReport:
     session = _get_session_or_404(session_id)

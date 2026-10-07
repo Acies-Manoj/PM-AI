@@ -5,8 +5,8 @@ suggestion, or a PM-triggered drilldown) -- has already been reduced to a
 plain-English `calculation_intent` by the time it reaches here (see
 analysis_repository.py), so this agent has one job regardless of source:
 THINK about how to aggregate it, WRITE the pandas code, pick a CHART TYPE
-for the resulting table (unless one was already chosen), INTERPRET the
-chart, and SUGGEST follow-up drilldowns -- all via OpenRouter, never Groq.
+for the resulting table (unless one was already chosen), and INTERPRET the
+chart -- all via OpenRouter, never Groq.
 The chart itself is drawn from the real table by analysis_charts.py, never
 by the LLM. Generated code is never trusted at face value: it runs through
 the same AST-sandboxed executor as the Feature Agent (ai_code_executor.py).
@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from app.config import ANALYSIS_AGENT_MODEL, DRILLDOWN_AGENT_MODEL, model_for
+from app.config import ANALYSIS_AGENT_MODEL, model_for
 from app.services.analysis import analysis_charts
 from app.services.analysis.analysis_charts import ChartRoles
 from app.services.analysis.analysis_columns import column_catalog
@@ -238,103 +238,6 @@ def interpret(entry: dict, plan: dict, table_sample: str, chart_type: str) -> st
 
 # --- Call 5: Suggest drilldowns -----------------------------------------------
 
-_DRILLDOWN_SYSTEM = _prompts.DRILLDOWN_SYSTEM
-
-_LENSES = {"quality", "volume", "trend", "duration", "temperature", "outliers"}
-
-
-def _features_block(entry: dict) -> str:
-    lines = [
-        f"- `{f['output_column']}` ({f.get('name', '')}): {f.get('definition', '')}".rstrip(": ")
-        for f in entry.get("available_features") or []
-    ]
-    return ("ENGINEERED FEATURES (computed columns you can build on):\n" + "\n".join(lines) + "\n\n") if lines else ""
-
-
-def _metric_key(text: str) -> str:
-    return " ".join(sorted(set(re.sub(r"[^a-z0-9%]+", " ", (text or "").lower()).split())))
-
-
-def _diverse(candidates: list, avoid: list[str] | None = None, parent_dims: list[str] | None = None) -> list[dict]:
-    """Keeps only ideas that ask a different question: one per lens, never the
-    same metric twice (same measure re-sliced by another x-axis), and never a
-    breakdown by the column the parent already groups by."""
-    taken = {_metric_key(n) for n in avoid or []}
-    parent = {str(d).strip().lower() for d in parent_dims or []}
-    lenses: set[str] = set()
-    metrics: set[str] = set()
-    kept: list[dict] = []
-    for spec in candidates:
-        if not isinstance(spec, dict) or not spec.get("name") or not spec.get("calculation_intent"):
-            continue
-        lens = str(spec.get("lens") or "").strip().lower()
-        lens = lens if lens in _LENSES else "volume"
-        metric = _metric_key(spec.get("metric") or spec["name"])
-        if str(spec.get("dimension") or "").strip().lower() in parent:
-            continue
-        if lens in lenses or metric in metrics or _metric_key(spec["name"]) in taken:
-            continue
-        lenses.add(lens)
-        metrics.add(metric)
-        kept.append({**spec, "lens": lens})
-    return kept
-
-
-def suggest_drilldowns(
-    entry: dict, plan: dict, table_sample: str, interpretation: str, columns_block: str,
-    parent_chart_type: str | None = None,
-    avoid: list[str] | None = None,
-) -> list[dict]:
-    parent_group_by = plan.get("group_by") or []
-    context_lines = []
-    if parent_group_by:
-        context_lines.append(f"Parent grouped by: {', '.join(parent_group_by)}")
-    if parent_chart_type:
-        context_lines.append(f"Parent chart type: {parent_chart_type}")
-    if avoid:
-        # "Suggest more": the PM already has these -- propose different ones.
-        context_lines.append(
-            "Already suggested (do NOT repeat or rephrase these; use a different lens, metric or standout):\n"
-            + "\n".join(f"- {n}" for n in avoid)
-        )
-    context_block = ("\n" + "\n".join(context_lines) + "\n") if context_lines else ""
-    user_prompt = (
-        f"Analysis: {entry['name']}\nPlan:\n{plan['plan']}\n{context_block}\n"
-        f"Computed table sample:\n{table_sample}\n\nInterpretation:\n{interpretation}\n\n"
-        f"{_features_block(entry)}COLUMN CATALOG:\n{columns_block}\n\nPropose the drilldowns now."
-    )
-
-    kept: list[dict] = []
-    for attempt in range(2):
-        prompt = user_prompt
-        if attempt:
-            prompt += (
-                "\n\nYOUR PREVIOUS IDEAS WERE TOO SIMILAR (same measure, different x-axis): "
-                + "; ".join(k["name"] for k in kept)
-                + ". Return ideas with DIFFERENT lenses and metrics."
-            )
-        raw = call_llm(
-            _DRILLDOWN_SYSTEM, prompt, json_mode=True, temperature=0.5, call_name="analysis_agent_drilldown",
-            model=model_for("analysis_agent_drilldown", DRILLDOWN_AGENT_MODEL),
-        )
-        payload = json.loads(strip_json_fence(raw))
-        candidates = payload.get("drilldowns", [])
-        kept = _diverse(candidates if isinstance(candidates, list) else [], avoid, parent_group_by)
-        if len(kept) >= 2 or len(candidates or []) < 2:
-            break
-
-    drilldowns: list[dict] = []
-    for spec in kept:
-        chart_type_hint = spec.get("suggested_chart_type")
-        drilldowns.append({
-            "name": spec["name"],
-            "description": spec.get("description", ""),
-            "calculation_intent": spec["calculation_intent"],
-            "chart_type_hint": chart_type_hint if chart_type_hint in _ALLOWED_CHART_TYPES else None,
-        })
-    return drilldowns[:3]
-
-
 # --- Sanity check + orchestration ---------------------------------------------
 
 def is_plausible_table(table: list[dict]) -> tuple[bool, str | None]:
@@ -387,7 +290,6 @@ class AnalysisComputation:
     chart_type: str | None = None
     chart_spec: dict | None = None
     interpretation: str | None = None
-    drilldown_suggestions: list[dict] = field(default_factory=list)
     error: str | None = None
     # "template" when a deterministic analysis_templates template computed
     # the table, "code" when the Analysis Agent generated pandas code.

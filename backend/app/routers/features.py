@@ -32,17 +32,6 @@ async def upload_feature_definitions(file: UploadFile = File(...)) -> FeatureDef
     )
 
 
-@router.get("/definitions", response_model=FeatureDefinitionsSummary)
-def get_feature_definitions() -> FeatureDefinitionsSummary:
-    if defs_store.store.definitions is None:
-        raise HTTPException(status_code=404, detail="No Customer KPI Profile has been uploaded yet.")
-    return FeatureDefinitionsSummary(
-        filename=defs_store.store.filename,
-        feature_count=len(defs_store.store.definitions),
-        feature_names=[f["name"] for f in defs_store.store.definitions],
-    )
-
-
 _get_session_or_404 = get_or_404
 
 
@@ -112,10 +101,3 @@ def accept_entry(session_id: str, entry_id: str) -> FeatureRepositoryEntry:
     return FeatureRepositoryEntry(**entry)
 
 
-@router.post("/repository/{session_id}/entries/{entry_id}/reject", response_model=FeatureRepositoryEntry)
-def reject_entry(session_id: str, entry_id: str) -> FeatureRepositoryEntry:
-    _get_session_or_404(session_id)
-    entry = feature_repository.set_entry_status(session_id, entry_id, "rejected")
-    if entry is None:
-        raise HTTPException(status_code=404, detail="Feature entry not found in this session's repository.")
-    return FeatureRepositoryEntry(**entry)

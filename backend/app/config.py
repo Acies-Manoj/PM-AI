@@ -93,7 +93,6 @@ MODEL_BY_CALL: dict[str, str] = {
     "analysis_agent_write_code": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
     "analysis_agent_chart_suggestion": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
     "analysis_agent_interpret": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
-    "analysis_agent_drilldown": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): HAIKU_45
 
     # -- Analysis designer (custom analyses, template matching) ------------------------------
     "analysis_designer_template_match": "openai/gpt-4o-mini",  # trial (Anthropic/Nova): SONNET_46

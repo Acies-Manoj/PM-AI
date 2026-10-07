@@ -224,20 +224,6 @@ AnalysisEntryStatus = Literal["approved", "pending", "rejected"]
 AnalysisRunStatus = Literal["not_run", "done", "error"]
 
 
-class AnalysisDrilldownSuggestion(BaseModel):
-    id: str
-    name: str
-    description: str
-    calculation_intent: str
-    # Set when this drilldown reuses the parent's own chart type (a rate +
-    # volume pair, e.g. "combo") for visual consistency down a drill chain --
-    # see analysis_agent.suggest_drilldowns. None lets the normal chart-
-    # suggestion step decide when the entry is accepted.
-    chart_type_hint: str | None = None
-    triggered: bool = False
-    child_entry_id: str | None = None
-
-
 # What a drill-down level shows per group: trips, % in spec, or an aggregation of one measure column.
 DrilldownMeasure = Literal["count", "pct_in_spec", "mean", "sum", "median", "max", "min"]
 
@@ -394,7 +380,7 @@ class AnalysisRepositoryEntry(BaseModel):
     English description of what to aggregate -- the one thing every source
     can be reduced to, and the only input the Analysis Agent's Think step
     actually needs. The definitional fields (id..parent_id) are always
-    present; the run-result fields (run_status..drilldown_suggestions) are
+    present; the run-result fields (run_status..applied_filters) are
     only populated once the PM has clicked "Run" for this entry."""
     id: str
     source: AnalysisSource
@@ -438,13 +424,11 @@ class AnalysisRepositoryEntry(BaseModel):
     chart_spec: dict[str, Any] | None = None
     interpretation: str | None = None
     error: str | None = None
-    drilldown_suggestions: list[AnalysisDrilldownSuggestion] = []
     # Cached guided drill-down proposals (see analysis_drilldown_agent.propose)
     # -- generated once, the first time the PM opens this entry's drill-down
     # section, and reused on every later open. "Suggest with AI" appends a
     # fresh batch on top rather than replacing it. Cleared on every re-run,
-    # same as drilldown_suggestions, since a changed result can change what's
-    # worth drilling into.
+    # since a changed result can change what's worth drilling into.
     guided_proposals: list[DrilldownProposal] = []
     computation_mode: AnalysisComputationMode | None = None
     notes: list[str] = []
@@ -583,7 +567,6 @@ class AnalysisResult(BaseModel):
     chart_spec: dict[str, Any] | None = None
     interpretation: str | None = None
     error: str | None = None
-    drilldown_suggestions: list[AnalysisDrilldownSuggestion] = []
     guided_proposals: list[DrilldownProposal] = []
     computation_mode: AnalysisComputationMode | None = None
     notes: list[str] = []

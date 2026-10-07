@@ -13,6 +13,7 @@ import { uploadAnalysisDefinitions, uploadFeatureDefinitions } from "../api/audi
 import type { FilesState } from "../App";
 import type { PlannerRecommendation, PlannerRecommendationType, PlannerSuggestResponse, PmDecisionValue } from "../api/planner";
 import PlanText from "../components/PlanText";
+import { useStoredRef } from "../state/sessionStore";
 import "./PlannerPage.css";
 
 type PlannerTab = "features" | "analyses";
@@ -76,12 +77,16 @@ interface PlannerCacheEntry {
   decisions: DecisionsMap;
   activeTab: PlannerTab;
 }
-const plannerCache = new Map<string, PlannerCacheEntry>();
-// A request still running when the PM leaves the page, so coming back joins it instead of starting another.
-const plannerInflight = new Map<string, Promise<PlannerSuggestResponse>>();
 
 export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
   const navigate = useNavigate();
+  // Lives in the shared session store (like every other page's cross-navigation
+  // state) instead of a module-level Map, so it also survives whatever Features/
+  // Analysis/Report already rely on this store for -- same Map objects, same
+  // get/set/has/delete semantics, just held here instead of at module scope.
+  const plannerCache = useStoredRef<Map<string, PlannerCacheEntry>>("planner.cache", () => new Map());
+  // A request still running when the PM leaves the page, so coming back joins it instead of starting another.
+  const plannerInflight = useStoredRef<Map<string, Promise<PlannerSuggestResponse>>>("planner.inflight", () => new Map());
   const cached = sessionId ? plannerCache.get(sessionId) : undefined;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

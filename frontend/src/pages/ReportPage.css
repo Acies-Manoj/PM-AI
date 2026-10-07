@@ -5,7 +5,7 @@
 }
 
 .report-page__main {
-  max-width: 960px;
+  max-width: var(--page-width);
   width: 100%;
   margin: 0 auto;
   padding: 28px 24px 60px;
@@ -20,51 +20,6 @@
   padding: 40px 0;
   color: var(--color-text-muted);
   font-size: 14px;
-}
-
-.report-page__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: var(--radius-sm);
-  padding: 10px 20px;
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.report-page__btn svg {
-  width: 15px;
-  height: 15px;
-}
-
-.report-page__btn--primary {
-  background: var(--carrier-blue);
-  border: 1px solid var(--carrier-blue);
-  color: #fff;
-}
-
-.report-page__btn--primary:hover {
-  background: var(--carrier-light-blue);
-  border-color: var(--carrier-light-blue);
-}
-
-.report-page__btn--secondary {
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-}
-
-.report-page__btn--secondary:hover {
-  border-color: var(--color-text-muted);
-  color: var(--color-text);
-}
-
-.report-page__nav-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
 }
 
 /* -- card shell -------------------------------------------------------- */
@@ -97,13 +52,13 @@
 .report-page__slot-title {
   margin: 0;
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--carrier-blue);
 }
 
 .report-page__pill {
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--carrier-blue);
   background: var(--carrier-blue-tint);
@@ -209,7 +164,7 @@
 }
 
 .report-page__stat-row .stat-tile__value {
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1.2;
 }
 
@@ -226,8 +181,8 @@
 
 .report-page__included-title {
   margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 13.5px;
+  font-weight: 700;
   color: var(--carrier-blue);
 }
 
@@ -238,13 +193,6 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.report-page__included-summary {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  padding: 6px 2px;
 }
 
 /* -- slide thumbnail (mirrors the exported slide's own look: navy heading,
@@ -296,7 +244,7 @@
 
 .report-page__slide-label {
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.04em;
   color: #fff;
   background: var(--carrier-blue);
@@ -306,8 +254,8 @@
 }
 
 .report-page__entry-name {
-  font-size: 14.5px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--carrier-blue);
   flex: 1;
 }
@@ -350,7 +298,7 @@
 
 .report-page__slide-thumb-caption {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--color-text-muted);
   line-height: 1.5;
 }
@@ -371,8 +319,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14.5px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--carrier-blue);
 }
 
@@ -509,15 +457,6 @@
   pointer-events: none;
 }
 
-.report-page__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 8px;
-}
-
 /* -- drill-down slides: indented under their parent, numbered, with a
    filter/rank subtitle; stale levels are flagged and can't be included ----- */
 
@@ -527,7 +466,7 @@
 
 .report-page__slide-subtitle {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--color-text-muted);
 }
@@ -538,9 +477,9 @@
 
 .report-page__stale-badge {
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.04em;
-  color: #92400e;
+  color: var(--accent-amber);
   background: #fef3c7;
   border: 1px solid #fcd34d;
   border-radius: 999px;
@@ -549,6 +488,53 @@
 
 .report-page__stale-note {
   margin: 6px 0 0;
-  font-size: 12px;
-  color: #92400e;
+  font-size: 12.5px;
+  color: var(--accent-amber);
+}
+
+/* An added slide in the list on the Report page. */
+.report-page__slide-label--added {
+  background: var(--carrier-blue-tint-2);
+  color: var(--carrier-blue);
+}
+
+.report-page__added-bullets {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+/* Drill-down slides sit under the slide they came from: a lighter card, a smaller title and a short
+   connector, so the nesting is visible instead of every level looking like a top-level slide. */
+.report-page__slide-thumb--child {
+  position: relative;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-bg-subtle);
+  padding: 10px 14px 12px;
+}
+
+.report-page__slide-thumb--child::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 22px;
+  width: 16px;
+  height: 2px;
+  background: var(--carrier-blue-tint-2);
+}
+
+.report-page__slide-thumb--child .report-page__entry-name {
+  font-size: 13.5px;
+  color: var(--color-text);
+}
+
+.report-page__slide-thumb--child .report-page__slide-label {
+  background: var(--carrier-blue-tint-2);
+  color: var(--carrier-blue);
+}
+
+.report-page__slide-subtitle {
+  font-weight: 600;
 }

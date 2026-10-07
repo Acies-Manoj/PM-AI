@@ -34,31 +34,36 @@ export const EMPTY_BRIEF: BriefState = {
 interface Props {
   value: BriefState;
   onChange: (state: BriefState) => void;
+  /** Validation message shown under the box (e.g. "Client brief is required."). */
+  error?: string;
 }
 
-export default function ClientBriefInput({ value, onChange }: Props) {
+export default function ClientBriefInput({ value, onChange, error }: Props) {
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
     onChange({ ...value, rawText: text, finalText: text, isEnglish: true });
   };
 
   return (
-    <div className="cb">
+    <div className={`cb${error ? " cb--error" : ""}`}>
       <div className="cb__header">
         <span className="cb__title">
           <IconClipboard /> Client Brief
+          <span className="cb__badge-required">Required</span>
         </span>
-        <span className="cb__hint">Optional — tailors the Planner's suggestions</span>
       </div>
 
       <textarea
         className="cb__textarea"
-        placeholder="Paste your client brief here…"
+        placeholder="Paste the client brief here. The Planner uses it to suggest features and analyses."
         value={value.rawText}
         onChange={handleChange}
         rows={3}
         spellCheck
+        aria-required="true"
+        aria-invalid={error ? true : undefined}
       />
+      {error && <p className="cb__error" role="alert">{error}</p>}
     </div>
   );
 }

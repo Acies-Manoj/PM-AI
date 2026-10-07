@@ -323,6 +323,8 @@ export interface DrilldownPath {
   // False when a step's results are no longer in memory (e.g. after a backend restart).
   ready: boolean;
   steps: DrilldownPathStep[];
+  /** Levels skipped when the path was accepted (still calculated, not in the report). */
+  skipped_levels?: number[];
 }
 
 export type RequiredFeatureState = "satisfied" | "not_approved" | "not_computed" | "missing";
@@ -788,8 +790,10 @@ export function suggestDrilldownPath(sessionId: string, entryId: string): Promis
   return postDrilldown(`${sessionId}/entries/${entryId}/paths/suggest`);
 }
 
-export function acceptDrilldownPath(sessionId: string, pathId: string): Promise<DrilldownPath> {
-  return postDrilldown(`${sessionId}/paths/${pathId}/accept`);
+/** `levels` = the levels of the path to keep. Levels deeper than the deepest one kept are discarded; a level
+ * skipped in the middle is still calculated (a later level builds on it) but left out of the report. */
+export function acceptDrilldownPath(sessionId: string, pathId: string, levels?: number[]): Promise<DrilldownPath> {
+  return postDrilldown(`${sessionId}/paths/${pathId}/accept`, levels ? { levels } : undefined);
 }
 
 export function rejectDrilldownPath(sessionId: string, pathId: string): Promise<DrilldownPath> {
@@ -995,6 +999,10 @@ export interface ProductTemperatureResult {
   too_warm: number;
   too_cold: number;
   in_spec: number;
+  /** Average of this product's trip mean temperatures (the reference line). */
+  avg_temp: number | null;
+  /** avg + 2 standard deviations; trips above it are "too warm". Null when too few trips to judge. */
+  outlier_line: number | null;
   trips: ProductTemperatureTrip[];
 }
 
@@ -1059,6 +1067,8 @@ export interface ReportExportBody {
   cover_title?: string;
   cover_subtitle?: string;
   summary_bullets?: string[] | null;
+  /** Slides the PM added by hand; the exporter puts them after the analysis slides. */
+  custom_slides?: { heading: string; bullets: string[] }[];
 }
 
 /** Builds the .pptx for a deck the PM edited (order, deletions, text) and returns it as a Blob. */

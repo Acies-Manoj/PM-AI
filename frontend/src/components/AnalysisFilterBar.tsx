@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AnalysisFilter, AnalysisFilterSelection, AnalysisFilterSelections } from "../api/audit";
 import { IconChevronDown } from "./icons";
+import FilterList from "./FilterList";
 import "./AnalysisFilterBar.css";
 
 interface AnalysisFilterBarProps {
@@ -11,7 +12,6 @@ interface AnalysisFilterBarProps {
   onChange: (selections: AnalysisFilterSelections) => void;
 }
 
-const SEARCH_THRESHOLD = 8;
 const APPLY_DELAY_MS = 350;
 
 function isEmpty(sel: AnalysisFilterSelection | undefined): boolean {
@@ -59,56 +59,18 @@ function CategoricalOptions({
   selection: AnalysisFilterSelection | undefined;
   onChange: (sel: AnalysisFilterSelection) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const chosen = new Set(selection?.values ?? []);
   const all = filter.values ?? [];
-  const visible = all.filter((v) => v.toLowerCase().includes(query.toLowerCase()));
-  // "All" means every value is ticked: nothing chosen is the same thing as everything chosen.
-  const everything = chosen.size === 0 || (all.length > 0 && chosen.size >= all.length);
-  const toggle = (value: string) => {
-    const next = new Set(everything ? all : chosen);
-    if (next.has(value)) {
-      if (next.size === 1) return; // at least one value stays ticked
-      next.delete(value);
-    } else {
-      next.add(value);
-    }
-    // Every value ticked again is no restriction at all.
-    onChange(next.size >= all.length ? {} : { values: [...next] });
-  };
-
+  // Nothing chosen, or every value chosen, both mean "All": no restriction.
+  const chosen = new Set(selection?.values ?? []);
+  const allowed = chosen.size === 0 || chosen.size >= all.length ? null : chosen;
   return (
-    <>
-      {all.length > SEARCH_THRESHOLD && (
-        <input
-          type="search"
-          className="analysis-filter__search"
-          placeholder="Search…"
-          value={query}
-          autoFocus
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      )}
-      <ul className="analysis-filter__options">
-        {!query && (
-          <li>
-            <label>
-              <input type="checkbox" checked={everything} onChange={() => onChange({})} />
-              All
-            </label>
-          </li>
-        )}
-        {visible.map((value) => (
-          <li key={value}>
-            <label>
-              <input type="checkbox" checked={everything || chosen.has(value)} onChange={() => toggle(value)} />
-              {value}
-            </label>
-          </li>
-        ))}
-        {visible.length === 0 && <li className="analysis-filter__no-match">No matches</li>}
-      </ul>
-    </>
+    <FilterList
+      entries={all.map((v): [string, number | null] => [v, null])}
+      allowed={allowed}
+      keepOne
+      autoFocus
+      onFilter={(next) => onChange(next === null ? {} : { values: [...next] })}
+    />
   );
 }
 
@@ -243,18 +205,14 @@ export default function AnalysisFilterBar({ filters, busy, onChange }: AnalysisF
             </button>
             {open && (
               <div className="analysis-filter__popover" role="dialog" aria-label={`Filter by ${f.column}`}>
-                <button type="button" className="analysis-filter__close" aria-label="Close filter" onClick={() => setOpenColumn(null)}>
-                  ×
+                <button type="button" className="excel-menu__item" disabled={!active} onClick={() => setOne(f.column, {})}>
+                  Clear filter from "{f.column}"
                 </button>
+                <div className="excel-menu__divider" />
                 {f.kind === "categorical" ? (
                   <CategoricalOptions filter={f} selection={sel} onChange={(next) => setOne(f.column, next)} />
                 ) : (
                   <RangeOptions filter={f} selection={sel} onChange={(next) => setOne(f.column, next)} />
-                )}
-                {active && (
-                  <button type="button" className="analysis-filter__reset-one" onClick={() => setOne(f.column, {})}>
-                    Reset {f.column}
-                  </button>
                 )}
               </div>
             )}

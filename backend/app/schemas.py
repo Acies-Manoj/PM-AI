@@ -497,6 +497,14 @@ class DrilldownPath(BaseModel):
     # False when a step's results are no longer in memory (e.g. after a backend restart).
     ready: bool = True
     steps: list[DrilldownPathStep]
+    # Levels the PM chose to skip when accepting: still calculated (a later level is built from their results)
+    # but left out of the report.
+    skipped_levels: list[int] = []
+
+
+class DrilldownPathAccept(BaseModel):
+    """Which levels of a suggested path to keep. Omitted = keep every level."""
+    levels: list[int] | None = None
 
 
 class AddCustomAnalysisRequest(BaseModel):
@@ -650,6 +658,14 @@ class ReportSlideEdit(BaseModel):
     caption: str | None = None
 
 
+class ReportCustomSlide(BaseModel):
+    """A slide the PM added in the Report editor: a title and bullet points, already in the report language
+    (the editor translates it when it is saved)."""
+
+    heading: str
+    bullets: list[str] = []
+
+
 class ReportExportRequest(BaseModel):
     """The deck exactly as arranged in the Report preview: slides in order (deleted ones simply absent),
     plus any edited cover text and summary bullets."""
@@ -659,6 +675,8 @@ class ReportExportRequest(BaseModel):
     cover_title: str | None = None
     cover_subtitle: str | None = None
     summary_bullets: list[str] | None = None
+    # Slides the PM added by hand, placed after the analysis slides and before the summary.
+    custom_slides: list[ReportCustomSlide] = []
 
 
 class TranslateTextsRequest(BaseModel):

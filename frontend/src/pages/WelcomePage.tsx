@@ -6,6 +6,7 @@ import {
   IconSparkle,
   IconGrid,
   IconClipboard,
+  IconLayers,
   IconChevronRight,
   IconSnowflake,
   IconShieldCheck,
@@ -20,40 +21,47 @@ const STEPS = [
     title: "Upload",
     icon: <IconUpload />,
     color: "blue",
-    description: "Provide your SensiWatch/ColdStream exports, threshold references, and any KPI or analysis definition profiles.",
+    description: "Provide your SensiWatch/ColdStream export, a client brief, and any KPI or analysis definition profiles.",
   },
   {
     step: 2,
-    title: "Audit",
-    icon: <IconShieldSearch />,
-    color: "teal",
-    description: "A deterministic data-quality audit with the AI agent, flags issues, outliers, duplicates, and empty columns before trusting the numbers.",
+    title: "Planner",
+    icon: <IconLayers />,
+    color: "amber",
+    description: "The AI Planner reads your brief and your data's column details, then suggests features and analyses. Accept or reject each one.",
   },
   {
     step: 3,
-    title: "Features",
-    icon: <IconSparkle />,
-    color: "purple",
-    description: "Compute KPIs from your Customer KPI Profile or build new ones together with the AI agent using your data's own columns.",
+    title: "Audit",
+    icon: <IconShieldSearch />,
+    color: "teal",
+    description: "Flags duplicates, empty columns, and Segment Length and Temperature outliers, with inline fixes before you trust the numbers.",
   },
   {
     step: 4,
-    title: "Analysis",
-    icon: <IconGrid />,
-    color: "amber",
-    description: "Build breakdowns with interactive slicers, view as tables or charts, or work with the AI agent to surface insights worth looking at.",
+    title: "Features",
+    icon: <IconSparkle />,
+    color: "purple",
+    description: "Compute KPIs from your Customer KPI Profile, or build the planned features with the AI agent using your data's own columns.",
   },
   {
     step: 5,
+    title: "Analysis",
+    icon: <IconGrid />,
+    color: "amber",
+    description: "Run the planned analyses with interactive slicers, tables or charts, and drill down with the AI agent.",
+  },
+  {
+    step: 6,
     title: "Report",
     icon: <IconClipboard />,
     color: "blue",
-    description: "Download a PowerPoint report with native, editable charts and insights— ready for sharing and decision-making.",
+    description: "Download a PowerPoint report with native, editable charts and insights, ready for sharing and decision-making.",
   },
 ] as const;
 
 const BENEFITS = [
-  { title: "Trusted & Audited Data", description: "Deterministic audits ensure clean, reliable data.", icon: <IconShieldCheck />, color: "blue" },
+  { title: "Trusted & Audited Data", description: "Deterministic audits and outlier checks ensure clean, reliable data.", icon: <IconShieldCheck />, color: "blue" },
   { title: "Faster Decisions", description: "Go from raw exports to actionable insights in minutes.", icon: <IconZap />, color: "teal" },
   { title: "Interactive Analysis", description: "Drill down, slice, and explore what matters most.", icon: <IconGrid />, color: "purple" },
   { title: "Share with Confidence", description: "Export polished reports that drive action.", icon: <IconDownload />, color: "blue" },
@@ -129,10 +137,10 @@ export default function WelcomePage() {
               <h1 className="welcome-page__title">Program Manager AI</h1>
               <span className="welcome-page__title-underline" aria-hidden="true" />
               <p className="welcome-page__lede">
-                A smart program management tool that turns messy shipment data into clean, audited datasets,
+                A smart program management tool that turns messy shipment data into a clear plan, clean audited datasets,
                 engineered KPIs, interactive analysis, and a downloadable report.
               </p>
-              <button type="button" className="welcome-page__cta" onClick={() => navigate("/upload")}>
+              <button type="button" className="btn btn--primary welcome-page__cta" onClick={() => navigate("/upload")}>
                 Get Started <IconChevronRight />
               </button>
             </section>

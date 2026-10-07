@@ -11,7 +11,7 @@ export interface AnalysisSourceTag {
 const TAGS: Record<AnalysisSource, AnalysisSourceTag> = {
   predefined: { label: "Predefined", color: "blue" },
   planner: { label: "Planner", color: "purple" },
-  ai_suggested: { label: "AI Suggested", color: "amber" },
+  ai_suggested: { label: "AI Suggested", color: "purple" },
   custom: { label: "User Added", color: "teal" },
   drilldown: { label: "Drilldown", color: "teal" },
 };

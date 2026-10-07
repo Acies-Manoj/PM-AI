@@ -86,7 +86,7 @@ export default function OutlierCorrectionStep({
   }
   if (!data || flaggedCount === 0) {
     // Zero flagged: onProceed() above is already advancing past this step.
-    return <p className="outlier-tab__loading">No outliers flagged — continuing…</p>;
+    return <p className="outlier-tab__loading">No outliers flagged. Continuing…</p>;
   }
 
   const segmentFlagged = data.segment.flagged_trips;
@@ -105,7 +105,7 @@ export default function OutlierCorrectionStep({
 
       <p className="outlier-step__intro">
         <strong>{flaggedCount}</strong> trip(s) were flagged for unusual duration or temperature.
-        Download them, correct the underlying readings in SensiWatch, and re-upload the export —
+        Download them, correct the underlying readings in SensiWatch, and re-upload the export,
         or continue without correcting them.
       </p>
 
@@ -167,7 +167,7 @@ export default function OutlierCorrectionStep({
               </a>
               <button
                 type="button"
-                className="outlier-step__btn outlier-step__btn--primary"
+                className="btn btn--primary outlier-step__btn"
                 disabled={!selectedFile || uploading}
                 onClick={() => selectedFile && onFileCorrected(selectedFile)}
               >
@@ -189,7 +189,7 @@ export default function OutlierCorrectionStep({
 
         <div className="outlier-step__skip-row">
           <span className="outlier-step__skip-hint">
-            Skipping keeps flagged trips unedited — you can still correct and re-upload later.
+            Skipping keeps flagged trips unedited. You can still correct and re-upload later.
           </span>
           <button type="button" className="outlier-step__skip-link" onClick={onProceed}>
             Skip correction, continue to Standard Checks →

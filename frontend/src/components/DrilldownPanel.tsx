@@ -100,23 +100,26 @@ function ProposalCard({
   return (
     <div className="drilldown-proposal drilldown-proposal--stacked">
       <div className="drilldown-proposal__body">
-        <span className="drilldown-proposal__title">
-          {proposalTitle(proposal)}
-          <span className="drilldown-tag drilldown-tag--vars">
-            {(proposal.child_dimensions?.length || 1) + 1}-variable chart
-          </span>
-        </span>
+        <div className="drilldown-proposal__head">
+          <span className="drilldown-proposal__title">{proposalTitle(proposal)}</span>
+          <span className="tag tag--new">{(proposal.child_dimensions?.length || 1) + 1}-variable chart</span>
+        </div>
         <p className="drilldown-proposal__reason">{proposal.reason}</p>
         {options.focus_options.length > 0 && (
           <>
-            <span className="drilldown-panel__label">Apply to {label} (tick one or more)</span>
+            <div className="drilldown-panel__label">
+              <span>Apply to {label.toLowerCase()}</span>
+              <span className="drilldown-panel__label-hint">
+                {focus.length === 0 ? "Pick one or more" : `${focus.length} selected`}
+              </span>
+            </div>
             <FocusChips options={options} selected={focus} onToggle={(v) => setFocus((prev) => toggleValue(prev, v))} />
           </>
         )}
       </div>
       <button
         type="button"
-        className="drilldown-btn drilldown-btn--primary"
+        className="btn btn--primary btn--sm"
         disabled={disabled || focus.length === 0}
         onClick={() => onRun(focus)}
       >
@@ -194,7 +197,7 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
         </h5>
         <button
           type="button"
-          className="analysis-detail__suggest-more-btn"
+          className="btn btn--ai btn--sm"
           disabled={proposing || atCap}
           title={atCap ? "This list already holds the best ideas" : "Ask the AI for more ideas"}
           onClick={() => {
@@ -203,7 +206,7 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
           }}
         >
           <IconSparkle />
-          {proposing ? <><Spinner />Thinking…</> : "AI"}
+          {proposing ? <><Spinner />Thinking…</> : "Suggest more"}
         </button>
       </div>
 
@@ -226,7 +229,7 @@ export default function DrilldownPanel({ options, onPropose, onConfirm }: Drilld
         </div>
       )}
       {hidden > 0 && (
-        <button type="button" className="drilldown-panel__show-more" onClick={() => setShowAll(true)}>
+        <button type="button" className="btn btn--secondary btn--sm drilldown-panel__show-more" onClick={() => setShowAll(true)}>
           Show {hidden} more
         </button>
       )}

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { AddCustomFeatureBody, FeatureDraft } from "../api/audit";
 import { AuditApiError } from "../api/audit";
+import ExcelTable from "./ExcelTable";
 import "./AddKpiForm.css";
 
 interface AddKpiFormProps {
@@ -19,11 +20,6 @@ function formatNumber(v: number): string {
   return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-function formatCell(v: unknown): string {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "number") return formatNumber(v);
-  return String(v);
-}
 
 /** Human in the loop for a user-requested feature: the PM describes it, the
  * Feature Agent writes the formula and dry-runs it on the real data, and the
@@ -128,7 +124,7 @@ export default function AddKpiForm({ columns, busy, onDraft, onAdd, onCancel }: 
 
       <button
         type="button"
-        className={`add-kpi-form__btn ${draft ? "add-kpi-form__btn--secondary" : "add-kpi-form__btn--primary"} add-kpi-form__draft-btn`}
+        className={`btn btn--sm ${draft ? "btn--secondary" : "btn--primary"} add-kpi-form__draft-btn`}
         disabled={drafting || busy}
         onClick={() => requestDraft()}
       >
@@ -136,7 +132,7 @@ export default function AddKpiForm({ columns, busy, onDraft, onAdd, onCancel }: 
       </button>
 
       {requestStale && (
-        <p className="add-kpi-form__warn">The name or description changed since this draft -- regenerate before adding.</p>
+        <p className="add-kpi-form__warn">The name or description changed since this draft. Regenerate before adding.</p>
       )}
 
       {draft && (
@@ -155,10 +151,10 @@ export default function AddKpiForm({ columns, busy, onDraft, onAdd, onCancel }: 
             />
             {formulaEdited ? (
               <div className="add-kpi-form__inline-row">
-                <p className="add-kpi-form__warn">You edited the formula -- re-check it to see the new result before adding.</p>
+                <p className="add-kpi-form__warn">You edited the formula. Re-check it to see the new result before adding.</p>
                 <button
                   type="button"
-                  className="add-kpi-form__btn add-kpi-form__btn--secondary"
+                  className="btn btn--sm btn--secondary"
                   disabled={drafting || !formula.trim()}
                   onClick={() => requestDraft(formula.trim())}
                 >
@@ -193,28 +189,7 @@ export default function AddKpiForm({ columns, busy, onDraft, onAdd, onCancel }: 
                   </p>
                 )}
                 <div className="add-kpi-form__preview">
-                  <table>
-                    <thead>
-                      <tr>
-                        {draft.preview_columns.map((c) => (
-                          <th key={c} className={c === draft.output_column ? "add-kpi-form__preview-new" : undefined}>
-                            {c}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {draft.preview_rows.map((row, i) => (
-                        <tr key={i}>
-                          {draft.preview_columns.map((c) => (
-                            <td key={c} className={c === draft.output_column ? "add-kpi-form__preview-new" : undefined}>
-                              {formatCell(row[c])}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <ExcelTable columns={draft.preview_columns} rows={draft.preview_rows} highlight={draft.output_column} />
                 </div>
               </>
             )}
@@ -233,10 +208,10 @@ export default function AddKpiForm({ columns, busy, onDraft, onAdd, onCancel }: 
       {error && <p className="add-kpi-form__error">{error}</p>}
 
       <div className="add-kpi-form__actions">
-        <button type="button" className="add-kpi-form__btn add-kpi-form__btn--primary" disabled={!canSave} onClick={handleSubmit}>
+        <button type="button" className="btn btn--sm btn--primary" disabled={!canSave} onClick={handleSubmit}>
           {busy ? "Adding…" : "Add KPI"}
         </button>
-        <button type="button" className="add-kpi-form__btn add-kpi-form__btn--secondary" disabled={busy} onClick={onCancel}>
+        <button type="button" className="btn btn--sm btn--secondary" disabled={busy} onClick={onCancel}>
           Cancel
         </button>
       </div>

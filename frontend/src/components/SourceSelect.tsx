@@ -29,7 +29,7 @@ export default function SourceSelect({ files, onSelect }: SourceSelectProps) {
         </option>
         {UPLOAD_SLOTS.map((slot) => (
           <option key={slot.id} value={slot.id}>
-            {slot.title} — {files[slot.id] ? `uploaded (${files[slot.id]!.name})` : slot.required ? "required, not uploaded" : "optional, not uploaded"}
+            {slot.title} ({files[slot.id] ? `uploaded: ${files[slot.id]!.name}` : slot.required ? "required, not uploaded" : "optional, not uploaded"})
           </option>
         ))}
       </select>

@@ -20,12 +20,12 @@
 .analysis-chart__table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .analysis-chart__table th {
   text-align: left;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--carrier-blue);
   background: var(--carrier-blue-tint);
   padding: 8px 10px;

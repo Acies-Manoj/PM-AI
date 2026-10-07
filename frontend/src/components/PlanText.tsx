@@ -26,20 +26,22 @@ interface PlanTextProps {
   plan: string;
   className?: string;
   label?: string;
+  /** Hide the heading when something around it (e.g. a "View plan" button) already names it. */
+  hideLabel?: boolean;
 }
 
 /** Renders a Feature Agent plan as a readable numbered list when it's in the
  * expected "1. ... 2. ..." shape, falling back to plain text otherwise. */
-export default function PlanText({ plan, className, label = "Computation plan" }: PlanTextProps) {
+export default function PlanText({ plan, className, label = "Computation plan", hideLabel = false }: PlanTextProps) {
   const steps = splitPlanSteps(plan);
 
   if (steps.length === 0) {
-    return <p className={`plan-text plan-text--prose ${className ?? ""}`}>ƒ {plan}</p>;
+    return <p className={`plan-text plan-text--prose ${className ?? ""}`}>{plan}</p>;
   }
 
   return (
     <div className={`plan-text ${className ?? ""}`}>
-      <span className="plan-text__label">ƒ {label}</span>
+      {!hideLabel && <span className="plan-text__label">{label}</span>}
       <ol className="plan-text__list">
         {steps.map((step, i) => (
           <li key={i}>{step}</li>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tidyText } from "../utils/tidyText";
 import type { FeatureRepositoryEntry } from "../api/audit";
 import { IconExpand } from "./icons";
 import Modal from "./Modal";
@@ -22,7 +23,7 @@ export default function FeatureSuggestionCard({ suggestion, added, busy, onAdd }
             <h4 className="feature-suggestion__name">{suggestion.name}</h4>
             <span className="feature-suggestion__column">{suggestion.output_column}</span>
           </div>
-          <p className="feature-suggestion__description">{suggestion.description}</p>
+          <p className="feature-suggestion__description">{tidyText(suggestion.description)}</p>
 
           <button type="button" className="feature-suggestion__formula-toggle" onClick={() => setShowFormula(true)}>
             <IconExpand />
@@ -37,8 +38,8 @@ export default function FeatureSuggestionCard({ suggestion, added, busy, onAdd }
 
       {showFormula && (
         <Modal title={suggestion.name} onClose={() => setShowFormula(false)}>
-          <p className="feature-suggestion__modal-description">{suggestion.description}</p>
-          <p className="feature-suggestion__formula">ƒ {suggestion.calculation_intent}</p>
+          <p className="feature-suggestion__modal-description">{tidyText(suggestion.description)}</p>
+          <p className="feature-suggestion__formula">{suggestion.calculation_intent}</p>
         </Modal>
       )}
     </>

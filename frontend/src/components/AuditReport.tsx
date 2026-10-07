@@ -60,7 +60,6 @@ export default function AuditReport({
   const pendingCount = decisionIssues.filter((i) => i.status === "pending").length;
   const resolvedCount = decisionIssues.length - pendingCount;
   const criticalCount = report.issues.filter((i) => i.severity === "critical").length;
-  const warningCount = report.issues.filter((i) => i.severity === "warning").length;
 
   const qualityIssues = useMemo(() => report.issues, [report.issues]);
 
@@ -155,7 +154,6 @@ export default function AuditReport({
         <StatTile icon={<IconGrid />} color="teal" value={report.column_count} label="Columns" />
         <StatTile icon={<IconSearch />} color="purple" value={report.issues.length} label="Findings" />
         {criticalCount > 0 && <StatTile icon={<IconWarnTriangle />} color="error" value={criticalCount} label="Critical" />}
-        {warningCount > 0 && <StatTile icon={<IconWarnTriangle />} color="amber" value={warningCount} label="Warning" />}
         <StatTile icon={<IconClipboard />} color="blue" value={`${resolvedCount}/${decisionIssues.length}`} label="Decisions" />
       </div>
 

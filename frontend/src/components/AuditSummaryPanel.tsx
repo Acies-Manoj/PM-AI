@@ -64,7 +64,7 @@ export default function AuditSummaryPanel({ report }: AuditSummaryPanelProps) {
   const summarySentence = joinClauses(summaryClauses);
 
   if (resolvedCount === 0) {
-    return <p className="audit-report__empty-tab">No changes yet — resolve some findings to see a summary here.</p>;
+    return <p className="audit-report__empty-tab">No changes yet. Resolve some findings to see a summary here.</p>;
   }
 
   return (
@@ -78,11 +78,11 @@ export default function AuditSummaryPanel({ report }: AuditSummaryPanelProps) {
         <div className="audit-report__changes-copy">
           <p className="audit-report__changes-title">
             {report.status === "reviewed"
-              ? "Audit complete — here's what changed"
+              ? "Audit complete: here's what changed"
               : `${resolvedCount} of ${decisionIssues.length} findings resolved so far`}
           </p>
           <p className="audit-report__changes-sentence">
-            {summarySentence || "No changes made yet — every finding so far was kept as-is."}
+            {summarySentence || "No changes made yet. Every finding so far was kept as-is."}
             {datasetChanged && (
               <>
                 {" "}Dataset is now <strong>{report.row_count.toLocaleString()}</strong> rows ×{" "}

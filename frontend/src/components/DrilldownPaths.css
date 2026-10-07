@@ -14,7 +14,7 @@
 .drilldown-paths__title {
   margin: 0 0 4px;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--carrier-blue);
 }
 
@@ -28,9 +28,9 @@
 
 .drilldown-path {
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--color-surface);
-  padding: 16px 18px;
+  padding: 18px 20px;
 }
 
 .drilldown-path--pending {
@@ -47,13 +47,13 @@
 .drilldown-path__name {
   margin: 0;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .drilldown-path__status {
   margin-left: auto;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 11.5px;
+  font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   border-radius: 999px;
@@ -61,8 +61,8 @@
 }
 
 .drilldown-path__status--pending {
-  color: #8a5a00;
-  background: #fff3d6;
+  color: var(--accent-amber);
+  background: var(--accent-amber-bg);
 }
 
 .drilldown-path__status--accepted {
@@ -72,7 +72,7 @@
 
 .drilldown-path__rationale {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.5;
   color: var(--color-text-muted);
 }
@@ -89,7 +89,7 @@
 .drilldown-step {
   position: relative;
   padding-left: 18px;
-  border-left: 3px solid var(--carrier-light-blue);
+  border-left: 2px solid var(--carrier-blue-tint-2);
 }
 
 .drilldown-step__pick {
@@ -101,11 +101,14 @@
 }
 
 .drilldown-step__level {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #6d3fc0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--carrier-blue-tint-2);
+  color: var(--carrier-blue);
 }
 
 .drilldown-step__pick-text {
@@ -115,15 +118,16 @@
 }
 
 .drilldown-step__title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 800;
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
 }
 
 .drilldown-step__axes {
   margin: 2px 0 0;
-  font-size: 12px;
-  color: #6d3fc0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
   font-weight: 600;
 }
 
@@ -137,7 +141,7 @@
   margin: 10px 0 0;
   padding: 10px 12px;
   border-left: 3px solid var(--carrier-blue);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--carrier-blue-tint);
   font-size: 12.5px;
   line-height: 1.5;
@@ -154,7 +158,7 @@
   border-radius: 999px;
   background: none;
   padding: 3px 12px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--color-text-muted);
   cursor: pointer;
@@ -188,13 +192,51 @@
 .drilldown-chartcard {
   min-width: 0;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  padding: 14px;
 }
 
 .drilldown-chartcard__path {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* Choosing which levels of a suggested path to keep. */
+.drilldown-step__keep {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.drilldown-step__keep input {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.drilldown-step--off {
+  opacity: 0.55;
+}
+
+.drilldown-path__choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--carrier-blue-tint);
   font-size: 12.5px;
-  font-weight: 800;
-  color: #6d3fc0;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.drilldown-path__choice strong {
+  color: var(--carrier-blue);
 }

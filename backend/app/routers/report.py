@@ -278,6 +278,7 @@ def export_report(session_id: str, body: ReportExportRequest):
     pptx_bytes = report_generator.build_report(
         session.filename, session.df, entries, summary_bullets, body.language,
         cover_title=(body.cover_title or "").strip() or None, cover_subtitle=body.cover_subtitle,
+        custom_slides=[{"heading": c.heading, "bullets": c.bullets} for c in body.custom_slides],
     )
     filename = f"{report_generator.REPORT_NAME}.pptx"
     return Response(

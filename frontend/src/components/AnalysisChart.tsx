@@ -1,6 +1,8 @@
 import Plotly from "plotly.js-dist-min";
 import createPlotlyComponent from "react-plotly.js/factory";
 import type { AnalysisChartSpec } from "../api/audit";
+import { CHART_COLORS, CHART_HEATMAP_SCALE, CHART_PALETTE } from "../utils/chartTheme";
+import ExcelTable from "./ExcelTable";
 import "./AnalysisChart.css";
 
 const Plot = createPlotlyComponent(Plotly);
@@ -19,24 +21,65 @@ interface AnalysisChartProps {
 }
 
 const CHART_HEIGHT = 360;
-const AXIS_FONT = { family: "inherit", size: 10.5, color: "#5B6478" };
+const AXIS_FONT = { family: "inherit", size: 10.5, color: CHART_COLORS.text };
+// Legend sits ABOVE the plot, left-aligned: below it, it collided with slanted category labels and the
+// axis title, and on the right it ate into charts that are already narrow.
+const LEGEND_TOP: Partial<Plotly.Legend> = {
+  orientation: "h",
+  x: 0,
+  xanchor: "left",
+  y: 1.02,
+  yanchor: "bottom",
+  font: { size: 10.5, color: CHART_COLORS.text },
+};
+
+/** Axis styling shared by every chart: one tick-label size, one title size, and room between the two so
+ * a long or slanted tick label can never sit on top of the axis title. */
+function themeAxis(base: unknown, tickSize: number, titleSize: number, extra: object = {}): object {
+  const axis = (base ?? {}) as { title?: unknown; tickfont?: object };
+  const title = typeof axis.title === "string" ? { text: axis.title } : ((axis.title as object) ?? {});
+  return {
+    ...axis,
+    automargin: true,
+    gridcolor: CHART_COLORS.grid,
+    tickfont: { size: tickSize, color: CHART_COLORS.text, ...(axis.tickfont ?? {}) },
+    title: { standoff: 14, ...title, font: { size: titleSize, color: CHART_COLORS.text } },
+    ...extra,
+  };
+}
+
+/** The normal (non-slide) layout: the spec's own layout with the shared theme merged in. */
+function themedLayout(spec: Partial<Plotly.Layout> | undefined): Partial<Plotly.Layout> {
+  const base = (spec ?? {}) as Record<string, unknown>;
+  const merged: Record<string, unknown> = {
+    ...base,
+    ...BASE_LAYOUT,
+    xaxis: themeAxis(base.xaxis, 10.5, 11.5),
+    yaxis: themeAxis(base.yaxis, 10.5, 11.5),
+  };
+  if (base.yaxis2) merged.yaxis2 = themeAxis(base.yaxis2, 10.5, 11.5, { showgrid: false });
+  merged.legend = LEGEND_TOP;
+  return merged as Partial<Plotly.Layout>;
+}
+
 const BASE_LAYOUT: Partial<Plotly.Layout> = {
-  margin: { l: 48, r: 48, t: 16, b: 90 },
+  margin: { l: 56, r: 56, t: 44, b: 24 },
   height: CHART_HEIGHT,
   font: AXIS_FONT,
   paper_bgcolor: "transparent",
   plot_bgcolor: "transparent",
   hovermode: "x",
+  // Series without their own colour take the brand palette, the same one the exported slides use.
+  colorway: CHART_PALETTE,
 };
-const PLOTLY_CONFIG: Partial<Plotly.Config> = { displayModeBar: true, displaylogo: false, responsive: true };
+const PLOTLY_CONFIG: Partial<Plotly.Config> = { displayModeBar: "hover", displaylogo: false, responsive: true };
 const FILL_LAYOUT: Partial<Plotly.Layout> = {
   ...BASE_LAYOUT,
   height: undefined,
   autosize: true,
-  margin: { l: 44, r: 44, t: 6, b: 84 },
+  margin: { l: 44, r: 44, t: 30, b: 24 },
   font: { ...AXIS_FONT, family: "Arial, sans-serif", size: 9 },
-  // Below the plot, so it never sits on top of a right-hand axis.
-  legend: { orientation: "h", x: 0, y: -0.28, yanchor: "top" },
+  legend: { ...LEGEND_TOP, font: { size: 9, color: CHART_COLORS.text } },
 };
 const FILL_CONFIG: Partial<Plotly.Config> = { ...PLOTLY_CONFIG, displayModeBar: false };
 // Thumbnails: no hover, zoom or toolbar -- they're pictures of a chart, and there can be dozens.
@@ -74,7 +117,7 @@ type Trace = { x?: unknown[]; y?: unknown[]; type?: string };
  * axis titles and the legend never sit on top of one another. */
 function fillLayout(spec: Partial<Plotly.Layout> | undefined, data: Trace[]): Partial<Plotly.Layout> {
   const base = (spec ?? {}) as Record<string, unknown>;
-  const axis = (key: string, extra: object = {}) => ({ ...((base[key] as object) ?? {}), automargin: true, ...extra });
+  const axis = (key: string, extra: object = {}) => themeAxis(base[key], 9, 10, extra);
 
   let xExtra: object = {};
   const first = data.find((t) => Array.isArray(t.x) && t.x.length > 0 && typeof t.x[0] !== "number");
@@ -100,17 +143,21 @@ function fillLayout(spec: Partial<Plotly.Layout> | undefined, data: Trace[]): Pa
  * so this component only merges in the shared theme/config, never reshapes
  * the trace data itself. Falls back to a plain table when chart-spec
  * generation failed but the underlying table still computed. */
+function withBrandScale(data: Partial<Plotly.PlotData>[]): Partial<Plotly.PlotData>[] {
+  return data.map((t) => (t.type === "heatmap" && !("colorscale" in t) ? { ...t, colorscale: CHART_HEATMAP_SCALE } : t));
+}
+
 export default function AnalysisChart({ chartSpec, resultTable, maxTableRows = 20, fill = false, thumbnail = false }: AnalysisChartProps) {
   if (chartSpec) {
     return (
       <div className={fill ? "analysis-chart analysis-chart--fill" : "analysis-chart"}>
         <Plot
-          data={chartSpec.data as Partial<Plotly.PlotData>[]}
+          data={withBrandScale(chartSpec.data as Partial<Plotly.PlotData>[])}
           // BASE_LAYOUT wins on any overlapping key (title/axis-titles/
           // barmode from chartSpec.layout still come through since
           // BASE_LAYOUT doesn't set those) -- the agent-produced layout is
           // never allowed to override sizing-critical keys like height.
-          layout={fill ? fillLayout(chartSpec.layout, chartSpec.data as Trace[]) : { ...chartSpec.layout, ...BASE_LAYOUT }}
+          layout={fill ? fillLayout(chartSpec.layout, chartSpec.data as Trace[]) : themedLayout(chartSpec.layout)}
           config={fill ? (thumbnail ? STATIC_CONFIG : FILL_CONFIG) : PLOTLY_CONFIG}
           // An explicit height is required: with `responsive` on, Plotly sizes
           // its inner container to 100% of this element, which collapses to 0
@@ -127,27 +174,10 @@ export default function AnalysisChart({ chartSpec, resultTable, maxTableRows = 2
     const columns = Object.keys(resultTable[0]);
     return (
       <div className="analysis-chart analysis-chart__table-wrap">
-        <table className="analysis-chart__table">
-          <thead>
-            <tr>
-              {columns.map((c) => (
-                <th key={c}>{c}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {resultTable.slice(0, maxTableRows).map((row, idx) => (
-              <tr key={idx}>
-                {columns.map((c) => (
-                  <td key={c}>{String(row[c] ?? "—")}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ExcelTable columns={columns} rows={resultTable.slice(0, maxTableRows)} />
       </div>
     );
   }
 
-  return <p className="analysis-chart__empty">No chart data yet -- run this analysis to compute it.</p>;
+  return <p className="analysis-chart__empty">No chart data yet. Run this analysis to compute it.</p>;
 }

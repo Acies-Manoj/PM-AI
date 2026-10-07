@@ -14,7 +14,7 @@
 
 .cb__title {
   padding: 14px 20px 12px;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--carrier-blue, #002e6e);
   letter-spacing: 0.01em;
@@ -48,15 +48,39 @@
   color: var(--carrier-blue, #002e6e);
 }
 
+/* Same look as the file cards' REQUIRED badge (FileUploadCard.css) so the two read as one system. */
+.cb__badge-required {
+  margin-left: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-error-bg);
+  color: var(--color-required);
+}
+
+.cb--error {
+  border-color: var(--color-required);
+}
+
+.cb__error {
+  margin: 0;
+  padding: 0 16px 10px;
+  font-size: 12.5px;
+  color: var(--color-required);
+}
+
 .cb__hint {
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--color-text-muted, #6b7a99);
 }
 
 .cb__header + .cb__textarea {
   min-height: 64px;
   padding: 10px 16px;
-  font-size: 13px;
+  font-size: 13.5px;
 }
 
 /* ── Two-panel grid ── */
@@ -82,7 +106,7 @@
 }
 
 .cb__lang-label {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--color-text-muted, #6b7a99);
   text-transform: uppercase;
@@ -111,7 +135,7 @@
 
 /* ── Badges ── */
 .cb__badge {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 700;
   border-radius: 20px;
   padding: 2px 8px;
@@ -121,8 +145,8 @@
 }
 
 .cb__badge--ok {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 .cb__badge--warn {
@@ -132,7 +156,7 @@
 
 .cb__badge--error {
   background: #ffebee;
-  color: #c62828;
+  color: var(--color-error);
 }
 
 /* ── Textareas ── */
@@ -199,7 +223,7 @@
 .cb__edit-hint {
   margin: 0;
   padding: 6px 16px 10px;
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--color-text-muted, #90a4ae);
   font-style: italic;
 }
@@ -207,8 +231,8 @@
 .cb__error-hint {
   margin: 0;
   padding: 6px 16px 10px;
-  font-size: 11px;
-  color: #c62828;
+  font-size: 11.5px;
+  color: var(--color-error);
 }
 
 .cb__error-hint--info {
@@ -220,7 +244,7 @@
   background: var(--color-bg-alt, #f2f5fa);
   border-radius: 3px;
   padding: 1px 4px;
-  font-size: 10px;
+  font-size: 10.5px;
 }
 
 /* ── Responsive: stack on small screens ── */

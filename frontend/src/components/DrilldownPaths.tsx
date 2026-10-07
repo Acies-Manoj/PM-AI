@@ -11,7 +11,8 @@ import "./DrilldownPaths.css";
 interface DrilldownPathsProps {
   onFetch: () => Promise<DrilldownPath[]>;
   onSuggest: () => Promise<DrilldownPath>;
-  onAccept: (pathId: string) => Promise<DrilldownPath>;
+  /** `levels` = the levels to keep (see acceptDrilldownPath). */
+  onAccept: (pathId: string, levels: number[]) => Promise<DrilldownPath>;
   onReject: (pathId: string) => Promise<DrilldownPath>;
   /** Jumps to the Selected Drill-downs tab (where an accepted path's levels are listed). */
   onViewSelected: () => void;
@@ -51,10 +52,10 @@ export default function DrilldownPaths({ onFetch, onSuggest, onAccept, onReject,
       .finally(() => setSuggesting(false));
   };
 
-  const decide = (path: DrilldownPath, accept: boolean) => {
+  const decide = (path: DrilldownPath, accept: boolean, levels: number[] = []) => {
     setBusyId(path.path_id);
     setError(null);
-    (accept ? onAccept(path.path_id) : onReject(path.path_id))
+    (accept ? onAccept(path.path_id, levels) : onReject(path.path_id))
       .then((updated) =>
         setPaths((prev) =>
           (prev ?? []).flatMap((p) => (p.path_id !== updated.path_id ? [p] : updated.status === "rejected" ? [] : [updated]))
@@ -74,7 +75,7 @@ export default function DrilldownPaths({ onFetch, onSuggest, onAccept, onReject,
             its levels to this analysis, or reject it.
           </p>
         </div>
-        <button type="button" className="analysis-detail__suggest-more-btn" disabled={suggesting} onClick={suggest}>
+        <button type="button" className="btn btn--ai btn--sm" disabled={suggesting} onClick={suggest}>
           <IconSparkle />
           {suggesting ? <><Spinner />Planning…</> : paths && paths.length > 0 ? "Suggest another" : "Suggest a path"}
         </button>
@@ -99,7 +100,7 @@ export default function DrilldownPaths({ onFetch, onSuggest, onAccept, onReject,
           key={path.path_id}
           path={path}
           busy={busyId === path.path_id}
-          onAccept={() => decide(path, true)}
+          onAccept={(levels) => decide(path, true, levels)}
           onReject={() => decide(path, false)}
           onViewSelected={onViewSelected}
         />
@@ -117,11 +118,19 @@ function PathCard({
 }: {
   path: DrilldownPath;
   busy: boolean;
-  onAccept: () => void;
+  onAccept: (levels: number[]) => void;
   onReject: () => void;
   onViewSelected: () => void;
 }) {
   const pending = path.status === "pending";
+  // Which levels to keep. Every level starts ticked.
+  const allLevels = path.steps.map((st) => st.level);
+  const [keep, setKeep] = useState<number[]>(allLevels);
+  const kept = allLevels.filter((l) => keep.includes(l));
+  const deepest = kept.length > 0 ? Math.max(...kept) : 0;
+  const dropped = allLevels.filter((l) => l > deepest);
+  const skipped = allLevels.filter((l) => l < deepest && !keep.includes(l));
+  const toggle = (level: number) => setKeep((prev) => (prev.includes(level) ? prev.filter((l) => l !== level) : [...prev, level]));
   return (
     <section className={`drilldown-path drilldown-path--${path.status}`}>
       <header className="drilldown-path__head">
@@ -139,9 +148,39 @@ function PathCard({
 
       <ol className="drilldown-path__steps">
         {path.steps.map((step) => (
-          <StepView key={step.level} step={step} />
+          <StepView
+            key={step.level}
+            step={step}
+            choose={pending ? { checked: keep.includes(step.level), onToggle: () => toggle(step.level) } : undefined}
+          />
         ))}
       </ol>
+
+      {pending && path.steps.length > 1 && (
+        <div className="drilldown-path__choice" role="status">
+          <strong>
+            Keeping {kept.length === 0 ? "no levels" : `${kept.length} of ${allLevels.length} level${allLevels.length === 1 ? "" : "s"}`}
+          </strong>
+          {kept.length === 0 && <span>Tick at least one level to accept this path.</span>}
+          {dropped.length > 0 && kept.length > 0 && (
+            <span>
+              {dropped.map((l) => `Level ${l}`).join(", ")} {dropped.length === 1 ? "is" : "are"} dropped, so the path stops at level {deepest}.
+            </span>
+          )}
+          {skipped.length > 0 && (
+            <span>
+              {skipped.map((l) => `Level ${l}`).join(", ")} {skipped.length === 1 ? "is" : "are"} still calculated, because the next level builds on{" "}
+              {skipped.length === 1 ? "it" : "them"}, but {skipped.length === 1 ? "is" : "are"} left out of the report.
+            </span>
+          )}
+        </div>
+      )}
+
+      {!pending && (path.skipped_levels?.length ?? 0) > 0 && (
+        <p className="drilldown-path__choice">
+          Skipped: {path.skipped_levels!.map((l) => `Level ${l}`).join(", ")}. Still calculated, but not in the report.
+        </p>
+      )}
 
       {!path.ready && (
         <p className="analysis-card__error">
@@ -152,15 +191,15 @@ function PathCard({
       <footer className="drilldown-path__actions">
         {pending ? (
           <>
-            <button type="button" className="drilldown-btn" disabled={busy} onClick={onReject}>
+            <button type="button" className="btn btn--secondary btn--sm" disabled={busy} onClick={onReject}>
               Reject
             </button>
-            <button type="button" className="drilldown-btn drilldown-btn--primary" disabled={busy || !path.ready} onClick={onAccept}>
-              {busy ? <><Spinner />Working…</> : "Accept this path"}
+            <button type="button" className="btn btn--primary btn--sm" disabled={busy || !path.ready || kept.length === 0} onClick={() => onAccept(kept)}>
+              {busy ? <><Spinner />Working…</> : kept.length === allLevels.length ? "Accept this path" : `Accept ${kept.length} level${kept.length === 1 ? "" : "s"}`}
             </button>
           </>
         ) : (
-          <button type="button" className="drilldown-btn" onClick={onViewSelected}>
+          <button type="button" className="btn btn--secondary btn--sm" onClick={onViewSelected}>
             View in Selected Drill-downs
           </button>
         )}
@@ -169,11 +208,17 @@ function PathCard({
   );
 }
 
-function StepView({ step }: { step: DrilldownPathStep }) {
+function StepView({ step, choose }: { step: DrilldownPathStep; choose?: { checked: boolean; onToggle: () => void } }) {
   const first = step.entries[0];
   return (
-    <li className="drilldown-step">
+    <li className={`drilldown-step${choose && !choose.checked ? " drilldown-step--off" : ""}`}>
       <div className="drilldown-step__pick">
+        {choose && (
+          <label className="drilldown-step__keep">
+            <input type="checkbox" checked={choose.checked} onChange={choose.onToggle} aria-label={`Keep level ${step.level}`} />
+            Keep
+          </label>
+        )}
         <span className="drilldown-step__level">Level {step.level}</span>
         <span className="drilldown-step__pick-text">
           {step.split && step.entries.length > 1 ? `${step.entries.length} charts, one for each: ` : ""}

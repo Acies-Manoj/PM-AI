@@ -2,7 +2,8 @@ import ThinkingLoader, { Spinner } from "./ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
 import type { AnalysisRepositoryEntry } from "../api/audit";
 import { sourceTag } from "../utils/analysisSourceTag";
-import { IconBarChart, IconChevronRight, IconShieldCheck } from "./icons";
+import { tidyText } from "../utils/tidyText";
+import { IconChevronRight } from "./icons";
 import type { LevelNode } from "../utils/drilldownTree";
 import "./AnalysisCard.css";
 import "./DrilldownPanel.css";
@@ -12,10 +13,10 @@ interface AnalysisCardProps {
   running: boolean;
   /** Set when the run request itself failed (network / server error). */
   runFailure?: string;
-  /** Only used to retry a failed run -- runs start automatically. */
+  /** Only used to retry a failed run: runs start automatically. */
   onRun: () => void;
   onExpand: () => void;
-  /** Drill-down levels beneath this analysis, shown as an indented chain. */
+  /** Drill-down levels beneath this analysis, shown as an indented list. */
   levels?: LevelNode[];
   onOpenLevel?: (entryId: string) => void;
   /** Approve one required feature (then the page computes it). */
@@ -26,6 +27,9 @@ interface AnalysisCardProps {
   featureBusy?: string;
   featureError?: string;
 }
+
+// The source tag colours (see utils/analysisSourceTag.ts) mapped onto the shared tag classes.
+const TAG_CLASS: Record<string, string> = { blue: "analysis", purple: "purple", teal: "existing", amber: "attention" };
 
 export default function AnalysisCard({
   entry,
@@ -46,6 +50,17 @@ export default function AnalysisCard({
   const blockedMessage = "Select all required features before continuing.";
   const failed = entry.run_status === "error" || (entry.run_status === "not_run" && !!runFailure && !running);
 
+  // One status tag in the corner says where this analysis is.
+  const status = failed
+    ? { label: "Failed", cls: "error" }
+    : entry.run_status === "done"
+      ? { label: "Ready", cls: "success" }
+      : running
+        ? { label: "Running", cls: "attention" }
+        : blocked
+          ? { label: "Blocked", cls: "attention" }
+          : { label: "Queued", cls: "new" };
+
   return (
     <div
       className="analysis-card"
@@ -56,19 +71,17 @@ export default function AnalysisCard({
         if (e.key === "Enter" || e.key === " ") onExpand();
       }}
     >
-      <div className="analysis-card__top">
-        <span className={`analysis-card__icon analysis-card__icon--${tag.color}`}>
-          <IconBarChart />
-        </span>
-        <span className={`analysis-card__pill analysis-card__pill--${tag.color}`}>{tag.label}</span>
+      <div className="analysis-card__head">
+        <span className={`tag tag--${TAG_CLASS[tag.color] ?? "new"}`}>{tag.label}</span>
+        <span className={`tag tag--${status.cls}`}>{status.label}</span>
       </div>
 
       <h3 className="analysis-card__name">{entry.name}</h3>
-      <p className="analysis-card__description">{entry.description}</p>
+      <p className="analysis-card__description">{tidyText(entry.description)}</p>
 
       {requiredFeatures.length > 0 && (
-        <div className="analysis-card__required" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-          <p className="analysis-card__required-title">Required features</p>
+        <div className="analysis-card__section" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <p className="analysis-card__section-title">Required features</p>
           <ul className="analysis-card__required-list">
             {requiredFeatures.map((f) => {
               const statusText =
@@ -76,23 +89,20 @@ export default function AnalysisCard({
                 (f.state === "satisfied"
                   ? "Selected and computed"
                   : f.state === "not_computed"
-                    ? "Approved - not computed yet"
-                    : "Required feature not selected");
+                    ? "Approved, not computed yet"
+                    : "Not selected");
               const key = f.feature_id ?? f.name;
               return (
                 <li key={key} className="analysis-card__required-row">
-                  <input type="checkbox" checked={f.satisfied || f.state === "satisfied"} disabled readOnly aria-label={`${f.name} selected`} />
+                  <span className={`analysis-card__dot analysis-card__dot--${f.state}`} aria-hidden="true" />
                   <div className="analysis-card__required-text">
-                    <span className="analysis-card__required-name">
-                      {f.name}
-                      {f.output_column && <code className="analysis-card__required-col">{f.output_column}</code>}
-                    </span>
+                    <span className="analysis-card__required-name">{f.name}</span>
                     <span className={`analysis-card__required-status analysis-card__required-status--${f.state}`}>{statusText}</span>
                   </div>
                   {(f.state === "not_approved" || f.state === "missing") && f.feature_id && (
                     <button
                       type="button"
-                      className="analysis-card__run-btn analysis-card__required-btn"
+                      className="btn btn--secondary btn--sm"
                       disabled={!!featureBusy}
                       onClick={() => onSelectFeature?.(f.feature_id!)}
                     >
@@ -100,13 +110,8 @@ export default function AnalysisCard({
                     </button>
                   )}
                   {f.state === "not_computed" && (
-                    <button
-                      type="button"
-                      className="analysis-card__run-btn analysis-card__required-btn"
-                      disabled={!!featureBusy}
-                      onClick={() => onComputeFeatures?.()}
-                    >
-                      {featureBusy === "compute" ? <><Spinner />Computing…</> : "Compute features"}
+                    <button type="button" className="btn btn--secondary btn--sm" disabled={!!featureBusy} onClick={() => onComputeFeatures?.()}>
+                      {featureBusy === "compute" ? <><Spinner />Computing…</> : "Compute"}
                     </button>
                   )}
                 </li>
@@ -117,15 +122,8 @@ export default function AnalysisCard({
         </div>
       )}
 
-      {entry.run_status === "not_run" && !failed && (
-        running ? (
-          <ThinkingLoader variant="inline" messages={LOADING.analysisRun} />
-        ) : (
-          <p className="analysis-card__status" role="status">
-            <span className="analysis-card__status-dot" />
-            {blocked ? blockedMessage : "Queued"}
-          </p>
-        )
+      {entry.run_status === "not_run" && !failed && running && (
+        <ThinkingLoader variant="inline" messages={LOADING.analysisRun} />
       )}
 
       {failed && (
@@ -133,7 +131,7 @@ export default function AnalysisCard({
           <p className="analysis-card__error">{runFailure ?? entry.error}</p>
           <button
             type="button"
-            className="analysis-card__run-btn analysis-card__run-btn--retry"
+            className="btn btn--secondary btn--sm"
             disabled={blocked}
             title={blocked ? blockedMessage : undefined}
             onClick={(e) => {
@@ -147,32 +145,29 @@ export default function AnalysisCard({
         </div>
       )}
 
-      {entry.run_status === "done" && (
-        <p className="analysis-card__ready">
-          <IconShieldCheck /> Ready
-        </p>
-      )}
-
       {levels.length > 0 && (
-        <ul className="drilldown-tree" aria-label="Drill-down chain">
-          {levels.map((l) => (
-            <li key={l.id} style={{ paddingLeft: (l.depth - 1) * 12 }}>
-              <span aria-hidden="true">›</span>
-              <button
-                type="button"
-                className="drilldown-tree__item"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenLevel?.(l.id);
-                }}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
-                {l.label}
-              </button>
-              {l.stale && <span className="drilldown-tag drilldown-tag--stale">Stale</span>}
-            </li>
-          ))}
-        </ul>
+        <div className="analysis-card__section" onClick={(e) => e.stopPropagation()}>
+          <p className="analysis-card__section-title">Drill-downs</p>
+          <ul className="analysis-card__levels" aria-label="Drill-down chain">
+            {levels.map((l) => (
+              <li key={l.id} style={{ paddingLeft: (l.depth - 1) * 14 }}>
+                <button
+                  type="button"
+                  className="analysis-card__level"
+                  title={l.label}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenLevel?.(l.id);
+                  }}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  {l.label}
+                </button>
+                {l.stale && <span className="drilldown-tag drilldown-tag--stale">Stale</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <span className="analysis-card__arrow" aria-hidden="true">

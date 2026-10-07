@@ -25,7 +25,7 @@
 }
 
 .outlier-step__overview .stat-tile__value {
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1.2;
 }
 
@@ -81,7 +81,7 @@
 
 .outlier-step__subtab-count {
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
   background: var(--carrier-blue-tint-2);
   color: var(--carrier-blue);
   border-radius: 999px;
@@ -96,7 +96,7 @@
 .outlier-step__empty-subtab {
   margin: 0;
   padding: 24px 4px;
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--color-text-muted);
   text-align: center;
 }
@@ -152,7 +152,7 @@
 .outlier-step__option-title {
   margin: 0;
   font-size: 13.5px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--carrier-blue);
 }
 
@@ -198,7 +198,7 @@
   align-self: flex-start;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--carrier-blue);
   text-decoration: none;
@@ -220,28 +220,7 @@
 }
 
 .outlier-step__btn {
-  border-radius: var(--radius-sm);
-  padding: 10px 20px;
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
   align-self: flex-start;
-}
-
-.outlier-step__btn:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.outlier-step__btn--primary {
-  background: var(--carrier-blue);
-  border: 1px solid var(--carrier-blue);
-  color: #fff;
-}
-
-.outlier-step__btn--primary:hover:not(:disabled) {
-  background: var(--carrier-light-blue);
-  border-color: var(--carrier-light-blue);
 }
 
 

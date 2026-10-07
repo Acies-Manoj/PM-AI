@@ -71,6 +71,8 @@ STATUS_PAIR_FLAG = "Two Trips (Inconsistent Pair)"
 STATUS_INSUFFICIENT = "Insufficient History"
 DURATION_FENCE_LOWER_PERCENTILE = 0.05
 DURATION_FENCE_UPPER_PERCENTILE = 0.95
+# A trip just past the fence is still normal: flag only if beyond it by more than this share.
+DURATION_FENCE_TOLERANCE = 0.15
 
 FLAG_COLUMNS = [
     "flag_1_too_warm_avg",
@@ -162,7 +164,8 @@ def compute_lane_duration_outliers(
     that never actually ran it).
 
     - Lanes with >= LANE_MIN_TRIPS_FOR_FENCE trips: fenced from their own
-      5th/95th percentile.
+      5th/95th percentile; a trip is flagged only if it is beyond the fence by more
+      than DURATION_FENCE_TOLERANCE (the reported fence itself is unchanged).
     - Lanes with exactly 1 usable trip: that trip is the lane's baseline
       (fence = its own value), never flagged.
     - Lanes with exactly 2 usable trips: fence = [min, max]. Neither trip can be
@@ -202,7 +205,9 @@ def compute_lane_duration_outliers(
         lower_fence.loc[idx] = lower
         upper_fence.loc[idx] = upper
         status.loc[idx] = STATUS_OWN_LANE
-        in_range = duration.loc[idx].between(lower, upper)
+        in_range = duration.loc[idx].between(
+            lower * (1 - DURATION_FENCE_TOLERANCE), upper * (1 + DURATION_FENCE_TOLERANCE)
+        )
         is_outlier.loc[idx] = duration.loc[idx].notna() & ~in_range
 
     return pd.DataFrame(

@@ -135,7 +135,7 @@ export default function AddAnalysisForm({ columns, busy, onDraft, onAdd, onCance
 
       <button
         type="button"
-        className={`add-analysis-form__btn ${draft ? "add-analysis-form__btn--secondary" : "add-analysis-form__btn--primary"} add-analysis-form__draft-btn`}
+        className={`btn btn--sm ${draft ? "btn--secondary" : "btn--primary"} add-analysis-form__draft-btn`}
         disabled={drafting || busy}
         onClick={() => requestDraft()}
       >
@@ -143,7 +143,7 @@ export default function AddAnalysisForm({ columns, busy, onDraft, onAdd, onCance
       </button>
 
       {descriptionStale && (
-        <p className="add-analysis-form__warn">The description changed since this draft -- regenerate before adding.</p>
+        <p className="add-analysis-form__warn">The description changed since this draft. Regenerate before adding.</p>
       )}
 
       {draft && (
@@ -158,10 +158,10 @@ export default function AddAnalysisForm({ columns, busy, onDraft, onAdd, onCance
             />
             {formulaEdited ? (
               <div className="add-analysis-form__inline-row">
-                <p className="add-analysis-form__warn">You edited the logic -- re-check it so the template, chart and filters match.</p>
+                <p className="add-analysis-form__warn">You edited the logic. Re-check it so the template, chart and filters match.</p>
                 <button
                   type="button"
-                  className="add-analysis-form__btn add-analysis-form__btn--secondary"
+                  className="btn btn--sm btn--secondary"
                   disabled={drafting || !formula.trim()}
                   onClick={() => requestDraft(formula.trim())}
                 >
@@ -182,7 +182,7 @@ export default function AddAnalysisForm({ columns, busy, onDraft, onAdd, onCance
                   <strong>{draft.template_name}</strong>
                   <p>{draft.template_summary}</p>
                   <p className="add-analysis-form__ai-hint">
-                    Computed by a fixed, tested calculation -- no generated code, same result every run.
+                    Computed by a fixed, tested calculation: no generated code, same result every run.
                   </p>
                 </div>
               </div>
@@ -264,10 +264,10 @@ export default function AddAnalysisForm({ columns, busy, onDraft, onAdd, onCance
       {error && <p className="add-analysis-form__error">{error}</p>}
 
       <div className="add-analysis-form__actions">
-        <button type="button" className="add-analysis-form__btn add-analysis-form__btn--primary" disabled={!canSave} onClick={handleSubmit}>
+        <button type="button" className="btn btn--sm btn--primary" disabled={!canSave} onClick={handleSubmit}>
           {busy ? "Adding…" : "Add Analysis"}
         </button>
-        <button type="button" className="add-analysis-form__btn add-analysis-form__btn--secondary" disabled={busy} onClick={onCancel}>
+        <button type="button" className="btn btn--sm btn--secondary" disabled={busy} onClick={onCancel}>
           Cancel
         </button>
       </div>

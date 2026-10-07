@@ -46,7 +46,7 @@
 }
 
 .feature-card__icon--amber {
-  background: var(--accent-amber);
+  background: var(--accent-amber-solid);
   color: #fff;
 }
 
@@ -61,7 +61,7 @@
 .feature-card__name {
   margin: 0;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--color-text);
 }
 
@@ -82,7 +82,7 @@
 
 .feature-card__code {
   margin: 0;
-  font-size: 12px;
+  font-size: 12.5px;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   color: var(--color-text);
   background: var(--color-bg);
@@ -111,21 +111,23 @@
 }
 
 .feature-card__ai-badge {
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 10.5px;
+  font-weight: 700;
   letter-spacing: 0.04em;
-  color: #fff;
-  background: var(--accent-purple);
+  text-transform: uppercase;
+  color: var(--accent-purple);
+  background: var(--accent-purple-bg);
   border-radius: 999px;
   padding: 2px 8px;
 }
 
 .feature-card__custom-badge {
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 10.5px;
+  font-weight: 700;
   letter-spacing: 0.04em;
-  color: #fff;
-  background: var(--carrier-blue);
+  text-transform: uppercase;
+  color: var(--accent-teal);
+  background: var(--accent-teal-bg);
   border-radius: 999px;
   padding: 2px 8px;
 }
@@ -139,7 +141,7 @@
 
 .feature-card__coverage {
   margin: 10px 0 0;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--color-text);
 }
@@ -158,7 +160,7 @@
   grid-template-columns: 110px 1fr 44px;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .feature-card__dist-label {
@@ -201,7 +203,7 @@
 }
 
 .feature-card__stat-tile {
-  background: var(--accent-purple-bg);
+  background: var(--carrier-blue-tint);
   border-radius: var(--radius-sm);
   padding: 10px 6px;
   text-align: center;
@@ -209,9 +211,9 @@
 
 .feature-card__stat-value {
   display: block;
-  font-size: 17px;
-  font-weight: 800;
-  color: var(--accent-purple);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--carrier-blue);
 }
 
 .feature-card__stat-label {
@@ -221,52 +223,36 @@
   margin-top: 2px;
 }
 
+.feature-card__footer {
+  margin-top: auto;
+  padding-top: 16px;
+}
+
 .feature-card__expand-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 16px;
-  padding: 9px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: none;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--color-text);
-  cursor: pointer;
-}
-
-.feature-card__expand-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.feature-card__expand-btn:hover {
-  border-color: var(--carrier-blue);
-  color: var(--carrier-blue);
+  width: 100%;
 }
 
 .feature-card__modal-description {
   margin: 0 0 18px;
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--color-text-muted);
   line-height: 1.6;
 }
 
 .feature-card__validation-note {
-  margin: 0 0 18px;
+  margin: 0;
   padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--color-success-bg, #eafaf1);
-  color: var(--color-success-text, #1e7e4d);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
   font-size: 12.5px;
   line-height: 1.5;
 }
 
 .feature-card__needed-by {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.45;
   color: var(--color-text-muted);
 }
@@ -274,4 +260,31 @@
 .feature-card__needed-by strong {
   color: var(--carrier-blue);
   font-weight: 700;
+}
+
+.feature-card__section {
+  margin: 0 0 20px;
+}
+
+.feature-card__section-title {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.feature-card__section-text {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.feature-card__section .feature-card__stats--modal {
+  margin-bottom: 0;
+}
+
+.feature-card__how {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }

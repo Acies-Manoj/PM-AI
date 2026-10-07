@@ -28,7 +28,7 @@ export const UPLOAD_SLOTS: UploadSlotConfig[] = [
   {
     id: "analysisProfile",
     title: "Analysis Profile",
-    description: "JSON analysis definitions for the Analysis Agent -- plain-English calculation intents (e.g. carrier reliability trend), not fixed pivot specs.",
+    description: "JSON analysis definitions for the Analysis Agent: plain-English calculation intents (e.g. carrier reliability trend), not fixed pivot specs.",
     required: false,
     accept: ".json",
     acceptLabel: "JSON",

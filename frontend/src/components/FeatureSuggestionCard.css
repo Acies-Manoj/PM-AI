@@ -33,7 +33,7 @@
 .feature-suggestion__name {
   margin: 0;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--accent-purple);
 }
 
@@ -42,7 +42,7 @@
 }
 
 .feature-suggestion__column {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 700;
   color: var(--color-text-muted);
   background: var(--accent-purple-bg);
@@ -72,7 +72,7 @@
 
 .feature-suggestion__formula {
   margin: 0;
-  font-size: 13px;
+  font-size: 13.5px;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   color: var(--color-text);
   background: var(--color-bg);
@@ -82,7 +82,7 @@
 
 .feature-suggestion__modal-description {
   margin: 0 0 14px;
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--color-text-muted);
   line-height: 1.6;
 }

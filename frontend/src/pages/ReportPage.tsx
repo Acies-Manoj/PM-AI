@@ -6,14 +6,14 @@ import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
+import PageNav from "../components/PageNav";
 import StatTile from "../components/StatTile";
 import AnalysisChart from "../components/AnalysisChart";
 import ReportEditorModal from "../components/ReportEditorModal";
-import type { DeckState, SlideEdit } from "../utils/deck";
+import type { CustomSlide, DeckState, SlideEdit } from "../utils/deck";
 import { useStoredRef, useStoredState } from "../state/sessionStore";
 import {
   IconChevronDown,
-  IconChevronLeft,
   IconClipboard,
   IconDownload,
   IconEye,
@@ -87,6 +87,8 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
   // What the PM changed in the editor: slide text, cover text, and whether the summary was hand-written.
   const [edits, setEdits] = useStoredState<Record<string, SlideEdit>>("report.edits", {});
   const [cover, setCover] = useStoredState<Partial<Record<UploadSlotId, DeckState["cover"]>>>("report.cover", {});
+  // Slides the PM added by hand, per source.
+  const [customSlides, setCustomSlides] = useStoredState<Partial<Record<UploadSlotId, CustomSlide[]>>>("report.customSlides", {});
   const [summaryEdited, setSummaryEdited] = useStoredState<Partial<Record<UploadSlotId, boolean>>>("report.summaryEdited", {});
   // The summary has three sources: what the generator wrote (English), its translation into the picked language,
   // and what the PM typed. The PM's text wins; otherwise the translation when one matches the language.
@@ -316,7 +318,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           <StepIndicator current={6} />
           <div className="report-page__empty">
             <p>No audited data yet.</p>
-            <button type="button" className="report-page__btn report-page__btn--primary" onClick={() => navigate("/upload")}>
+            <button type="button" className="btn btn--primary" onClick={() => navigate("/upload")}>
               Go to Upload
             </button>
           </div>
@@ -333,7 +335,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           <StepIndicator current={6} />
           <div className="report-page__empty">
             <p>Finish resolving the data audit before a report can be generated.</p>
-            <button type="button" className="report-page__btn report-page__btn--primary" onClick={() => navigate("/audit")}>
+            <button type="button" className="btn btn--primary" onClick={() => navigate("/audit")}>
               Back to Audit
             </button>
           </div>
@@ -355,9 +357,9 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
             <p>
               {stillChecking
                 ? <ThinkingLoader variant="inline" messages={["Checking whether any analyses have been run…"]} />
-                : "No analyses have been run yet -- go run some on the Analysis page first, since the report is built from whichever of them finished successfully."}
+                : "No analyses have been run yet. Go run some on the Analysis page first, since the report is built from whichever of them finished successfully."}
             </p>
-            <button type="button" className="report-page__btn report-page__btn--primary" onClick={() => navigate("/analysis")}>
+            <button type="button" className="btn btn--primary" onClick={() => navigate("/analysis")}>
               Go to Analysis
             </button>
           </div>
@@ -372,15 +374,12 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
       <main className="report-page__main">
         <StepIndicator current={6} />
 
+        <PageNav position="top" onBack={() => navigate("/analysis")} />
+
         <PageHeader
           icon={<IconClipboard />}
           title="Report"
           subtitle="Pick which completed analyses go into the downloadable report, drag to reorder, preview each slide, then export it as a .pptx."
-          action={
-            <button type="button" className="report-page__btn report-page__btn--secondary report-page__nav-btn" onClick={() => navigate("/analysis")}>
-              <IconChevronLeft /> Back to Analysis
-            </button>
-          }
         />
 
         <div className="report-page__toolbar">
@@ -422,6 +421,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
             order,
             edits,
             cover: cover[id] ?? {},
+            custom: customSlides[id] ?? [],
             bullets: bulletsFor(id),
             bulletsEdited: !!summaryEdited[id],
           };
@@ -430,6 +430,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
             setSlideOrder((prev) => ({ ...prev, [id]: next.order }));
             setEdits(next.edits);
             setCover((prev) => ({ ...prev, [id]: next.cover }));
+            setCustomSlides((prev) => ({ ...prev, [id]: next.custom }));
             setSummaryEdited((prev) => ({ ...prev, [id]: next.bulletsEdited }));
             // Only text the PM typed is stored; the generated summary stays as the generator wrote it.
             if (next.bulletsEdited) setSummaryText((prev) => ({ ...prev, [id]: next.bullets ?? [] }));
@@ -438,15 +439,31 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
             setExporting((prev) => ({ ...prev, [id]: true }));
             setErrors((prev) => ({ ...prev, [id]: undefined }));
             try {
+              // Text the PM typed is translated like the rest of the slide. Text already saved in the report
+              // language comes back unchanged, so this is safe to run every time.
+              let slideEdits = edits;
+              if (language !== "en") {
+                const typed = selectedEntries
+                  .flatMap((e) => [edits[e.id]?.heading, edits[e.id]?.explanation, edits[e.id]?.caption])
+                  .filter((t): t is string => !!t?.trim());
+                if (typed.length > 0) {
+                  const map = await translateTexts(language, [...new Set(typed)]);
+                  const tr = (t?: string) => (t ? (map[t] ?? t) : t);
+                  slideEdits = Object.fromEntries(
+                    Object.entries(edits).map(([k, v]) => [k, { heading: tr(v.heading), explanation: tr(v.explanation), caption: tr(v.caption) }])
+                  );
+                }
+              }
               const blob = await exportReport(auditReports[id]!.session_id, {
                 slides: selectedEntries.map((e) => ({
                   entry_id: e.id,
                   chart_type: defaultChartType(e),
-                  heading: edits[e.id]?.heading,
-                  explanation: edits[e.id]?.explanation,
-                  caption: edits[e.id]?.caption,
+                  heading: slideEdits[e.id]?.heading,
+                  explanation: slideEdits[e.id]?.explanation,
+                  caption: slideEdits[e.id]?.caption,
                 })),
                 language,
+                custom_slides: (customSlides[id] ?? []).map((c) => ({ heading: c.heading, bullets: c.bullets })),
                 cover_title: cover[id]?.title,
                 cover_subtitle: cover[id]?.subtitle,
                 // The summary exactly as shown (and possibly edited), so the file matches the preview.
@@ -515,13 +532,15 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
                 {tree.map(({ entry, depth }) => {
                   const entryTranslation = translations[id]?.[entry.id];
                   const displayName = edits[entry.id]?.heading || (entryTranslation?.name ?? entry.name);
-                  const displayInterpretation = entryTranslation?.interpretation ?? entry.interpretation;
+                  const displayInterpretation = edits[entry.id]?.explanation ?? entryTranslation?.interpretation ?? entry.interpretation;
+                  const editedCaption = edits[entry.id]?.caption;
+                  const displaySubtitle = editedCaption !== undefined ? editedCaption : entry.chain ? drilldownSubtitle(entry.chain) : "";
                   const stale = staleIds.has(entry.id);
                   const slideNumber = slideNumbers.get(entry.id);
                   return (
                     <li
                       key={entry.id}
-                      className={`report-page__slide-thumb${draggingId === entry.id ? " report-page__slide-thumb--dragging" : ""}${stale ? " report-page__slide-thumb--stale" : ""}`}
+                      className={`report-page__slide-thumb${depth > 0 ? " report-page__slide-thumb--child" : ""}${draggingId === entry.id ? " report-page__slide-thumb--dragging" : ""}${stale ? " report-page__slide-thumb--stale" : ""}`}
                       style={depth > 0 ? { marginLeft: depth * 28 } : undefined}
                       draggable
                       onDragStart={() => setDraggingId(entry.id)}
@@ -548,7 +567,7 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
                         <span className="report-page__entry-name">{displayName}</span>
                         {stale && <span className="report-page__stale-badge">Stale</span>}
                       </div>
-                      {entry.chain && <p className="report-page__slide-subtitle">{drilldownSubtitle(entry.chain)}</p>}
+                      {displaySubtitle && <p className="report-page__slide-subtitle">{displaySubtitle}</p>}
                       {stale && (
                         <p className="report-page__stale-note">
                           Stale - an earlier level's filter or ranking changed. Refresh it on the Analysis page to include it.
@@ -576,7 +595,23 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
                     </li>
                   );
                 })}
-                <li className="report-page__included-summary">Final summary</li>
+                {(customSlides[id] ?? []).map((c, i) => (
+                  <li key={c.id} className="report-page__slide-thumb">
+                    <div className="report-page__slide-thumb-head">
+                      <span className="report-page__slide-label report-page__slide-label--added">Added slide {i + 1}</span>
+                      <span className="report-page__entry-name">{c.heading || "Untitled"}</span>
+                    </div>
+                    {c.bullets.some((b) => b.trim()) && (
+                      <ul className="report-page__added-bullets">
+                        {c.bullets
+                          .filter((b) => b.trim())
+                          .map((b, j) => (
+                            <li key={j}>{b}</li>
+                          ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
               </ul>
 
               {(() => {
@@ -620,6 +655,8 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
                   entries={doneEntriesRaw}
                   staleIds={staleIds}
                   translations={translations[id]}
+                  language={language}
+                  onTranslate={(texts) => translateTexts(language, texts)}
                   deck={deck}
                   coverDefaults={{ title: "Cold Chain Analysis", subtitle: files[id]!.name.replace(/\.(xlsx|xlsm|xls|csv)$/i, "") }}
                   summaryLoading={!!summaryLoading[id]}
@@ -633,12 +670,9 @@ export default function ReportPage({ files, auditReports }: ReportPageProps) {
           );
         })}
 
-        <div className="report-page__actions">
-          <button type="button" className="report-page__btn report-page__btn--secondary report-page__nav-btn" onClick={() => navigate("/analysis")}>
-            <IconChevronLeft /> Back to Analysis
-          </button>
+        <PageNav position="bottom" onBack={() => navigate("/analysis")}>
           <div className="report-page__export-host" ref={setExportBottom} />
-        </div>
+        </PageNav>
       </main>
     </div>
   );

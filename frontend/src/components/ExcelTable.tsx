@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { IconFilter } from "./icons";
+import FilterList from "./FilterList";
 import "./ExcelTable.css";
 
 type Row = Record<string, unknown>;
@@ -25,7 +26,6 @@ interface ExcelTableProps {
 
 // Widths of the pinned columns, so each one's `left` offset is known without measuring the DOM.
 const FROZEN_WIDTHS = [150, 110, 130];
-const MAX_LIST = 300;
 
 function text(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
@@ -234,21 +234,16 @@ interface ColumnMenuProps {
   onClose: () => void;
 }
 
-/** The popup under a header: sort, then a searchable tick-list of the column's values. */
+/** The popup under a header: sort, then the shared tick-list of the column's values. */
 function ColumnMenu({ column, left, top, numeric, values, allowed, sortDir, onSort, onFilter, onClose }: ColumnMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const [search, setSearch] = useState("");
 
   // Distinct values with how often each appears, in a natural order.
-  const distinct = useMemo(() => {
+  const distinct = useMemo<[string, number][]>(() => {
     const counts = new Map<string, number>();
     for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => compare(a[0] === "—" ? null : a[0], b[0] === "—" ? null : b[0]));
   }, [values]);
-
-  const shown = distinct.filter(([v]) => v.toLowerCase().includes(search.trim().toLowerCase()));
-  const isOn = (v: string) => allowed === null || allowed.has(v);
-  const allShownOn = shown.length > 0 && shown.every(([v]) => isOn(v));
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -278,22 +273,6 @@ function ColumnMenu({ column, left, top, numeric, values, allowed, sortDir, onSo
     };
   }, [onClose]);
 
-  const toggle = (v: string) => {
-    const base = new Set(allowed ?? distinct.map(([d]) => d));
-    if (base.has(v)) base.delete(v);
-    else base.add(v);
-    onFilter(base.size === distinct.length ? null : base);
-  };
-
-  const toggleShown = () => {
-    const base = new Set(allowed ?? distinct.map(([d]) => d));
-    for (const [v] of shown) {
-      if (allShownOn) base.delete(v);
-      else base.add(v);
-    }
-    onFilter(base.size === distinct.length ? null : base);
-  };
-
   return (
     <div ref={ref} className="excel-menu" role="dialog" aria-label={`Sort and filter ${column}`} style={{ left, top }}>
       <button type="button" className={`excel-menu__item${sortDir === "asc" ? " is-on" : ""}`} onClick={() => onSort(sortDir === "asc" ? null : "asc")}>
@@ -307,33 +286,7 @@ function ColumnMenu({ column, left, top, numeric, values, allowed, sortDir, onSo
       </button>
 
       <div className="excel-menu__divider" />
-      <input
-        className="excel-menu__search"
-        type="search"
-        placeholder="Search values…"
-        value={search}
-        autoFocus
-        onChange={(e) => setSearch(e.target.value)}
-      />
-      <ul className="excel-menu__list">
-        <li>
-          <label className="excel-menu__check">
-            <input type="checkbox" checked={allShownOn} onChange={toggleShown} />
-            <span>{search ? "(Select all search results)" : "(Select all)"}</span>
-          </label>
-        </li>
-        {shown.slice(0, MAX_LIST).map(([v, n]) => (
-          <li key={v}>
-            <label className="excel-menu__check">
-              <input type="checkbox" checked={isOn(v)} onChange={() => toggle(v)} />
-              <span className="excel-menu__value">{v}</span>
-              <span className="excel-menu__n">({n})</span>
-            </label>
-          </li>
-        ))}
-        {shown.length > MAX_LIST && <li className="excel-menu__more">+{shown.length - MAX_LIST} more -- search to narrow</li>}
-        {shown.length === 0 && <li className="excel-menu__more">No values match.</li>}
-      </ul>
+      <FilterList entries={distinct} allowed={allowed} onFilter={onFilter} autoFocus />
     </div>
   );
 }

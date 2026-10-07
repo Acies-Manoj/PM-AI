@@ -5,6 +5,9 @@ import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
+import PageNav from "../components/PageNav";
+import Collapsible from "../components/Collapsible";
+import { IconSparkle } from "../components/icons";
 import { fetchSuggestions, saveDecisions } from "../api/planner";
 import { uploadAnalysisDefinitions, uploadFeatureDefinitions } from "../api/audit";
 import type { FilesState } from "../App";
@@ -65,22 +68,41 @@ interface PlannerPageProps {
 
 type DecisionsMap = Record<number, PmDecisionValue>;
 
+// The Planner's suggestions, the PM's accept/reject choices and the open tab, kept per session so
+// going to another page and coming back shows the same thing instead of calling the AI again.
+// A new upload creates a new session id, so it starts fresh; a full page reload clears this.
+interface PlannerCacheEntry {
+  result: PlannerSuggestResponse;
+  decisions: DecisionsMap;
+  activeTab: PlannerTab;
+}
+const plannerCache = new Map<string, PlannerCacheEntry>();
+// A request still running when the PM leaves the page, so coming back joins it instead of starting another.
+const plannerInflight = new Map<string, Promise<PlannerSuggestResponse>>();
+
 export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
   const navigate = useNavigate();
+  const cached = sessionId ? plannerCache.get(sessionId) : undefined;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<PlannerSuggestResponse | null>(null);
-  const [decisions, setDecisions] = useState<DecisionsMap>({});
-  const [activeTab, setActiveTab] = useState<PlannerTab>("features");
+  const [result, setResult] = useState<PlannerSuggestResponse | null>(cached?.result ?? null);
+  const [decisions, setDecisions] = useState<DecisionsMap>(cached?.decisions ?? {});
+  const [activeTab, setActiveTab] = useState<PlannerTab>(cached?.activeTab ?? "features");
   const [moreLoading, setMoreLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const fetched = useRef(false);
+  const fetched = useRef(Boolean(cached));
+
+  // Keep the cache in step with what is on screen.
+  useEffect(() => {
+    if (sessionId && result) plannerCache.set(sessionId, { result, decisions, activeTab });
+  }, [sessionId, result, decisions, activeTab]);
 
   useEffect(() => {
     if (!sessionId || fetched.current) return;
     fetched.current = true;
     setLoading(true);
     setError(null);
+    let mounted = true;
     // The customer KPI profile and analysis profile are only held by the
     // backend once uploaded, and the Features/Analysis pages come AFTER this
     // one -- so send them now, or the Planner can't check them for reuse.
@@ -89,11 +111,28 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
       files.customerKpis ? uploadFeatureDefinitions(files.customerKpis) : null,
       files.analysisProfile ? uploadAnalysisDefinitions(files.analysisProfile) : null,
     ].filter((upload) => upload !== null);
-    Promise.allSettled(profileUploads)
-      .then(() => fetchSuggestions(sessionId))
-      .then((res) => setResult(res))
-      .catch((err) => setError(err.message ?? "Planner failed."))
-      .finally(() => setLoading(false));
+    const request =
+      plannerInflight.get(sessionId) ??
+      Promise.allSettled(profileUploads)
+        .then(() => fetchSuggestions(sessionId))
+        .finally(() => plannerInflight.delete(sessionId));
+    plannerInflight.set(sessionId, request);
+    request
+      .then((res) => {
+        if (!plannerCache.has(sessionId)) plannerCache.set(sessionId, { result: res, decisions: {}, activeTab: "features" });
+        if (mounted) setResult(res);
+      })
+      .catch((err) => {
+        if (mounted) setError(err.message ?? "Planner failed.");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+      // Leaving mid-request: let the next visit run its own effect and join the same request.
+      fetched.current = false;
+    };
   }, [sessionId]);
 
   const setDecision = (index: number, value: PmDecisionValue) => {
@@ -177,6 +216,17 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
       <main className="planner-page__main">
         <StepIndicator current={2} />
 
+        <PageNav position="top" onBack={() => navigate("/upload")}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={saving || loading || !result}
+            onClick={handleProceed}
+          >
+            {saving ? "Saving…" : "Proceed to Audit"}
+          </button>
+        </PageNav>
+
         <PageHeader
           icon={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -186,13 +236,14 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
             </svg>
           }
           title="AI Planner"
-          subtitle="The Planner has read your brief and dataset. Review its suggested features and analyses below, then accept or reject each one before proceeding to the data audit."
+          subtitle="The Planner has read your brief and the column details of your data. Review its suggested features and analyses below, then accept or reject each one before proceeding to the data audit."
         />
+
 
         {loading && (
           <ThinkingLoader
             messages={LOADING.planner}
-            hint="The Planner reads your brief against your data. This usually takes 20 to 40 seconds."
+            hint="The Planner reads your brief against your data's column details. This usually takes 20 to 40 seconds."
             intervalMs={4000}
             showElapsed
           />
@@ -211,11 +262,11 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
                     <button
                       key={tab}
                       type="button"
-                      className={`planner-page__tab${activeTab === tab ? " planner-page__tab--active" : ""}`}
+                      className={`planner-page__tab${activeTab === tab ? " planner-page__tab--active is-active" : ""}`}
                       onClick={() => setActiveTab(tab)}
                     >
                       {tab === "features" ? "Feature Suggestions" : "Analysis Suggestions"}
-                      <span className="planner-page__tab-count">{count}</span>
+                      <span className="count-pill">{count}</span>
                       {acceptedCount > 0 && (
                         <span className="planner-page__tab-accepted">{acceptedCount} accepted</span>
                       )}
@@ -227,14 +278,14 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
                 <div className="planner-page__bulk-btns">
                   <button
                     type="button"
-                    className="planner-page__bulk-btn planner-page__bulk-btn--accept"
+                    className="btn btn--sm btn--primary"
                     onClick={() => setAllInTab(activeTab, "accepted")}
                   >
                     Accept all
                   </button>
                   <button
                     type="button"
-                    className="planner-page__bulk-btn planner-page__bulk-btn--reject"
+                    className="btn btn--sm btn--secondary"
                     onClick={() => setAllInTab(activeTab, "rejected")}
                   >
                     Reject all
@@ -274,39 +325,30 @@ export default function PlannerPage({ sessionId, files }: PlannerPageProps) {
               </p>
               <button
                 type="button"
-                className="planner-page__more-btn"
+                className="btn btn--ai"
                 onClick={handleRequestMore}
                 disabled={moreLoading || !result}
               >
                 {moreLoading ? (
                   <><Spinner />Generating more suggestions…</>
                 ) : (
-                  "Generate more suggestions"
+                  <><IconSparkle /> Generate more suggestions</>
                 )}
               </button>
             </div>
           </>
         )}
 
-        <div className="planner-page__bottom">
-          <div className="planner-page__nav-btns">
-            <button
-              type="button"
-              className="planner-page__btn--secondary"
-              onClick={() => navigate("/upload")}
-            >
-              Back to Upload
-            </button>
-            <button
-              type="button"
-              className="planner-page__btn--primary"
-              disabled={saving || loading || !result}
-              onClick={handleProceed}
-            >
-              {saving ? "Saving…" : "Proceed to Audit"}
-            </button>
-          </div>
-        </div>
+        <PageNav position="bottom" onBack={() => navigate("/upload")}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={saving || loading || !result}
+            onClick={handleProceed}
+          >
+            {saving ? "Saving…" : "Proceed to Audit"}
+          </button>
+        </PageNav>
       </main>
     </div>
   );
@@ -371,23 +413,6 @@ function typeSlug(type: string): string {
   return type === "feature_and_analysis" ? "analysis" : type.replace(/_/g, "-");
 }
 
-// Why this card exists: reused from something already there, or newly
-// suggested -- so the PM can see the reasoning behind each suggestion.
-function decisionSourceLabel(rec: PlannerRecommendation): string {
-  if (rec.type === "analysis" || rec.type === "feature_and_analysis") {
-    if (rec.analysis_source === "analysis_profile") return "Existing analysis profile";
-    if ((rec.kpi_dependencies?.length ?? 0) > 0) return "Existing customer KPI";
-    if ((rec.feature_dependencies ?? []).some((d) => d.action === "reuse_existing")) return "Existing feature";
-    return "New";
-  }
-  if (rec.type === "feature") {
-    if (rec.decision_source === "analysis_profile") return "Existing analysis profile";
-    if (rec.status === "existing") return "Existing feature";
-    return (rec.required_for_analysis?.length ?? 0) > 0 || rec.decision_source === "new_feature" ? "New feature" : "New";
-  }
-  return "New";
-}
-
 // A rejected feature that an accepted/pending analysis needs would leave that
 // analysis blocked on the Analysis page. Warn only -- Proceed is not blocked.
 function dependencyWarningFor(
@@ -405,6 +430,13 @@ function dependencyWarningFor(
     .map(({ r }) => r.name);
   if (blocked.length === 0) return null;
   return `${blocked.join(", ")} depend${blocked.length === 1 ? "s" : ""} on this feature - it will be blocked until the feature is selected.`;
+}
+
+// Colour = meaning: grey = new, teal = reused, amber = needs attention.
+function statusTagClass(status: string): string {
+  if (status === "existing") return "existing";
+  if (status === "needs_clarification") return "attention";
+  return "new";
 }
 
 function statusLabel(status: string): string {
@@ -436,21 +468,21 @@ function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap, 
       <div className="planner-page__card-head">
         <div className="planner-page__card-meta">
           <div className="planner-page__card-badges">
-            <span className={`planner-page__badge planner-page__badge--type-${typeSlug(rec.type)}`}>
+            <span className={`tag tag--${typeSlug(rec.type)}`}>
               {typeLabel(rec.type)}
             </span>
-            <span className={`planner-page__badge planner-page__badge--status-${statusLabel(rec.status).toLowerCase().replace(/\s+/g, "-")}`}>
+            <span className={`tag tag--${statusTagClass(rec.status)}`}>
               {statusLabel(rec.status)}
             </span>
           </div>
           <h3 className="planner-page__card-name">{rec.name}</h3>
-          <p className="planner-page__card-desc">{rec.description}</p>
+          <p className="planner-page__card-desc">{rec.reason || rec.description}</p>
           {requiredFor.length > 0 && (
             <div className="planner-page__needed-by">Needed by: {requiredFor.join(", ")}</div>
           )}
           {rec.feature_formula_expression && (
-            <div className="planner-page__spec">
-              <span className="planner-page__spec-label">ƒ Feature formula</span>
+            <div className="planner-page__spec planner-page__spec--feature">
+              <span className="planner-page__spec-label">Feature formula</span>
               <code className="planner-page__spec-code">{rec.feature_formula_expression}</code>
               {rec.feature_output_dtype && (
                 <span className="planner-page__spec-meta">Output type: {rec.feature_output_dtype}</span>
@@ -458,10 +490,12 @@ function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap, 
             </div>
           )}
           {generatedFormula && (
-            <PlanText plan={generatedFormula} label="Feature computation plan" className="planner-page__formula" />
+            <Collapsible label="feature plan">
+              <PlanText plan={generatedFormula} label="Feature computation plan" hideLabel className="planner-page__formula" />
+            </Collapsible>
           )}
           {(rec.analysis_logic || (rec.analysis_group_by?.length ?? 0) > 0 || (rec.analysis_metrics?.length ?? 0) > 0) && (
-            <div className="planner-page__spec">
+            <div className="planner-page__spec planner-page__spec--analysis">
               <span className="planner-page__spec-label">Analysis spec / logic</span>
               {rec.analysis_logic && <code className="planner-page__spec-code">{rec.analysis_logic}</code>}
               <span className="planner-page__spec-meta">
@@ -473,7 +507,9 @@ function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap, 
             </div>
           )}
           {generatedAnalysisFormula && (
-            <PlanText plan={generatedAnalysisFormula} label="Analysis plan" className="planner-page__formula" />
+            <Collapsible label="analysis plan">
+              <PlanText plan={generatedAnalysisFormula} label="Analysis plan" hideLabel className="planner-page__formula" />
+            </Collapsible>
           )}
           {columns.length > 0 && (
             <div className="planner-page__columns">
@@ -511,10 +547,11 @@ function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap, 
               )}
             </div>
           )}
-          <div className={`planner-page__requirement planner-page__requirement--${requirement.kind}`}>
-            {requirement.text}
-          </div>
-          <div className="planner-page__decision-source">Source: {decisionSourceLabel(rec)}</div>
+          {requirement.kind !== "ok" && (
+            <div className={`planner-page__requirement planner-page__requirement--${requirement.kind}`}>
+              {requirement.text}
+            </div>
+          )}
           {guardrails.length > 0 && (
             <div className="planner-page__guardrail" role="alert">
               {guardrails.map((w, i) => (
@@ -542,18 +579,19 @@ function RecommendationCard({ rec, index, decision, onDecide, featureColumnMap, 
       )}
 
       <div className="planner-page__card-foot">
-        <span className="planner-page__reason">{rec.reason}</span>
         <div className="planner-page__actions">
           <button
             type="button"
-            className={`planner-page__btn-accept${decision === "accepted" ? " planner-page__btn-accept--active" : ""}`}
+            className="btn btn--sm btn--primary"
+            aria-pressed={decision === "accepted"}
             onClick={() => onDecide(index, "accepted")}
           >
-            {decision === "accepted" ? "✓ Accepted" : "Accept"}
+            {decision === "accepted" ? "Accepted" : "Accept"}
           </button>
           <button
             type="button"
-            className={`planner-page__btn-reject${decision === "rejected" ? " planner-page__btn-reject--active" : ""}`}
+            className={`btn btn--sm btn--secondary${decision === "rejected" ? " btn--selected" : ""}`}
+            aria-pressed={decision === "rejected"}
             onClick={() => onDecide(index, "rejected")}
           >
             {decision === "rejected" ? "Rejected" : "Reject"}

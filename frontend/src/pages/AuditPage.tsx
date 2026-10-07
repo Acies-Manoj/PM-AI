@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
+import PageNav from "../components/PageNav";
 import AuditReport from "../components/AuditReport";
 import type { Tab } from "../components/AuditReport";
 import AuditSummaryPanel from "../components/AuditSummaryPanel";
@@ -107,7 +108,7 @@ export default function AuditPage({
           <StepIndicator current={3} />
           <div className="audit-page__empty">
             <p>No files have been uploaded yet.</p>
-            <button type="button" className="audit-page__btn audit-page__btn--primary" onClick={() => navigate("/upload")}>
+            <button type="button" className="btn btn--primary" onClick={() => navigate("/upload")}>
               Go to Upload
             </button>
           </div>
@@ -121,6 +122,12 @@ export default function AuditPage({
       <Header subtitle="Data Audit" />
       <main className="audit-page__main">
         <StepIndicator current={3} />
+
+        <PageNav position="top" onBack={() => navigate("/planner")}>
+          <button type="button" className="btn btn--primary" disabled={!canContinue} onClick={() => navigate("/features")}>
+            Proceed to Features
+          </button>
+        </PageNav>
 
         <PageHeader
           icon={<IconShieldSearch />}
@@ -276,19 +283,11 @@ export default function AuditPage({
           );
         })}
 
-        <div className="audit-page__actions">
-          <button type="button" className="audit-page__btn audit-page__btn--secondary" onClick={() => navigate("/upload")}>
-            Back to Upload
+        <PageNav position="bottom" onBack={() => navigate("/planner")}>
+          <button type="button" className="btn btn--primary" disabled={!canContinue} onClick={() => navigate("/features")}>
+            Proceed to Features
           </button>
-          <button
-            type="button"
-            className="audit-page__btn audit-page__btn--primary"
-            disabled={!canContinue}
-            onClick={() => navigate("/features")}
-          >
-            Continue to Features
-          </button>
-        </div>
+        </PageNav>
 
         {!canContinue && !anyLoading && (
           <p className="audit-page__hint">Resolve the outstanding data audit questions above before continuing.</p>

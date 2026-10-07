@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Modal from "./Modal";
 import AnalysisChart from "./AnalysisChart";
-import { ContentSlidePreview, CoverSlidePreview, SummarySlidePreview, ThumbScaler } from "./SlidePreview";
+import { ContentSlidePreview, CoverSlidePreview, SummarySlidePreview, TextSlidePreview, ThumbScaler } from "./SlidePreview";
 import { IconPlus, IconRedo, IconTrash, IconUndo } from "./icons";
 import type { AnalysisRepositoryEntry, EntryTranslation } from "../api/audit";
 import { buildReportTree, drilldownSubtitle } from "../utils/reportTree";
 import { EXPLAIN_MAX_LINES, explanationLines, shortExplanation } from "../utils/slideText";
-import { moveSibling, type DeckState, type SlideEdit } from "../utils/deck";
+import { moveSibling, type CustomSlide, type DeckState, type SlideEdit } from "../utils/deck";
 import "./ReportEditorModal.css";
 
 interface ReportEditorModalProps {
@@ -18,6 +18,10 @@ interface ReportEditorModalProps {
   coverDefaults: { title: string; subtitle: string };
   summaryLoading: boolean;
   summaryError?: string;
+  /** The report language picked on the page ("en" = no translation needed). */
+  language: string;
+  /** Translates typed text into that language; text it can't translate comes back unchanged. */
+  onTranslate: (texts: string[]) => Promise<Record<string, string>>;
   onChange: (next: DeckState) => void;
   onRegenerateSummary: () => void;
   onClose: () => void;
@@ -26,6 +30,8 @@ interface ReportEditorModalProps {
 type Page =
   | { key: string; kind: "cover" }
   | { key: string; kind: "summary" }
+  // A slide the PM added by hand (key = `custom:${slide.id}`).
+  | { key: string; kind: "custom"; slide: CustomSlide }
   // `number` is null while the slide is unticked: it is not in the report, so it has no slide number.
   | { key: string; kind: "entry"; entry: AnalysisRepositoryEntry; number: string | null; parentId: string | null };
 
@@ -66,6 +72,8 @@ export default function ReportEditorModal({
   coverDefaults,
   summaryLoading,
   summaryError,
+  language,
+  onTranslate,
   onChange,
   onRegenerateSummary,
   onClose,
@@ -82,14 +90,16 @@ export default function ReportEditorModal({
     () => [
       { key: "cover", kind: "cover" },
       ...all.map((n): Page => ({ key: n.entry.id, kind: "entry", entry: n.entry, number: numbers.get(n.entry.id) ?? null, parentId: n.parentId })),
+      ...deck.custom.map((c): Page => ({ key: `custom:${c.id}`, kind: "custom", slide: c })),
       { key: "summary", kind: "summary" },
     ],
-    [all, numbers]
+    [all, numbers, deck.custom]
   );
   // Position in the exported deck: cover is 1, then each ticked slide, then the summary.
   const deckPosition = (key: string): number | null => {
     if (key === "cover") return 1;
-    if (key === "summary") return includedTree.length + 2;
+    if (key === "summary") return includedTree.length + 2 + deck.custom.length;
+    if (key.startsWith("custom:")) return includedTree.length + 2 + deck.custom.findIndex((c) => `custom:${c.id}` === key);
     const at = includedTree.findIndex((n) => n.entry.id === key);
     return at === -1 ? null : at + 2;
   };
@@ -143,6 +153,46 @@ export default function ReportEditorModal({
     bump((n) => n + 1);
   };
 
+  // -- saving a slide's text (translates it into the report language) ------------------------------
+  const deckRef = useRef(deck);
+  deckRef.current = deck;
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  // What each slide's text looked like when last saved, so the editor can say there are unsaved changes.
+  const [saved, setSaved] = useState<Record<string, string>>(() =>
+    ({
+      ...Object.fromEntries(Object.entries(deck.edits).map(([k, v]) => [k, JSON.stringify(v)])),
+      ...Object.fromEntries(deck.custom.map((c) => [`custom:${c.id}`, JSON.stringify(c)])),
+    })
+  );
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const saveSlide = async (id: string) => {
+    const edit = deckRef.current.edits[id] ?? {};
+    const fields = (["heading", "explanation", "caption"] as const).filter((f) => !!edit[f]?.trim());
+    setSaveError(null);
+    let next: SlideEdit = { ...edit };
+    if (language !== "en" && fields.length > 0) {
+      setSaving(id);
+      try {
+        const map = await onTranslate(fields.map((f) => edit[f] as string));
+        for (const f of fields) next[f] = map[edit[f] as string] ?? edit[f];
+      } catch {
+        setSaveError("Could not translate this text, so it was saved as typed. Try again in a moment.");
+      } finally {
+        setSaving(null);
+      }
+    }
+    const latest = deckRef.current;
+    // The PM may have kept typing while the translation ran: only replace what we translated.
+    const current = latest.edits[id] ?? {};
+    const merged: SlideEdit = { ...current };
+    for (const f of fields) if (current[f] === edit[f]) merged[f] = next[f];
+    commitRef.current({ ...latest, edits: { ...latest.edits, [id]: merged } });
+    setSaved((prev) => ({ ...prev, [id]: JSON.stringify(merged) }));
+  };
+
   // -- actions ----------------------------------------------------------------------------------
   const setSelected = (id: string, on: boolean) => commit({ ...deck, selected: { ...deck.selected, [id]: on } });
   const editOf = (id: string): SlideEdit => deck.edits[id] ?? {};
@@ -153,6 +203,52 @@ export default function ReportEditorModal({
     if (Object.keys(merged).length === 0) delete edits[id];
     else edits[id] = merged;
     commit({ ...deck, edits }, `${id}:${group}`);
+  };
+
+  // -- slides the PM adds --------------------------------------------------------------------------
+  const customKey = (c: CustomSlide) => `custom:${c.id}`;
+  const addSlide = () => {
+    const slide: CustomSlide = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, heading: "New slide", bullets: [""] };
+    commit({ ...deck, custom: [...deck.custom, slide] });
+    setSaved((prev) => ({ ...prev, [customKey(slide)]: JSON.stringify(slide) }));
+    setActiveKey(customKey(slide));
+  };
+  const setCustom = (id: string, patch: Partial<CustomSlide>, group: string) =>
+    commit({ ...deck, custom: deck.custom.map((c) => (c.id === id ? { ...c, ...patch } : c)) }, `custom:${id}:${group}`);
+  const deleteCustom = (id: string) => {
+    commit({ ...deck, custom: deck.custom.filter((c) => c.id !== id) });
+    setActiveKey("summary");
+  };
+  // Translates the slide's title and bullets into the report language and keeps the result, like a slide's text.
+  const saveCustom = async (id: string) => {
+    const key = `custom:${id}`;
+    const current = deckRef.current.custom.find((c) => c.id === id);
+    if (!current) return;
+    setSaveError(null);
+    let next: CustomSlide = current;
+    const texts = [current.heading, ...current.bullets].filter((t) => t.trim());
+    if (language !== "en" && texts.length > 0) {
+      setSaving(key);
+      try {
+        const map = await onTranslate(texts);
+        next = { ...current, heading: map[current.heading] ?? current.heading, bullets: current.bullets.map((b) => map[b] ?? b) };
+      } catch {
+        setSaveError("Could not translate this text, so it was saved as typed. Try again in a moment.");
+      } finally {
+        setSaving(null);
+      }
+    }
+    const latest = deckRef.current;
+    const live = latest.custom.find((c) => c.id === id);
+    if (!live) return;
+    // Only replace what was translated, in case the PM kept typing meanwhile.
+    const merged: CustomSlide = {
+      ...live,
+      heading: live.heading === current.heading ? next.heading : live.heading,
+      bullets: live.bullets.map((b, i) => (b === current.bullets[i] ? (next.bullets[i] ?? b) : b)),
+    };
+    commitRef.current({ ...latest, custom: latest.custom.map((c) => (c.id === id ? merged : c)) });
+    setSaved((prev) => ({ ...prev, [key]: JSON.stringify(merged) }));
   };
 
   // -- keyboard ---------------------------------------------------------------------------------
@@ -210,12 +306,13 @@ export default function ReportEditorModal({
 
   const renderPage = (page: Page, thumbnail: boolean) => {
     if (page.kind === "cover") return <CoverSlidePreview title={coverTitle} subtitle={coverSubtitle} />;
+    if (page.kind === "custom") return <TextSlidePreview heading={page.slide.heading} bullets={page.slide.bullets} />;
     if (page.kind === "summary") {
       return deck.bullets && deck.bullets.length > 0 ? (
         <SummarySlidePreview bullets={deck.bullets} />
       ) : (
         <div className="report-editor__pending">
-          {summaryError ?? (summaryLoading ? "Writing the summary…" : "No summary yet — add bullet points on the right.")}
+          {summaryError ?? (summaryLoading ? "Writing the summary…" : "No summary yet. Add bullet points on the right.")}
         </div>
       );
     }
@@ -234,7 +331,13 @@ export default function ReportEditorModal({
   };
 
   const pageName = (page: Page) =>
-    page.kind === "cover" ? "Cover" : page.kind === "summary" ? "Summary" : texts(page.entry, page.number).heading;
+    page.kind === "cover"
+      ? "Cover"
+      : page.kind === "summary"
+        ? "Summary"
+        : page.kind === "custom"
+          ? page.slide.heading || "Added slide"
+          : texts(page.entry, page.number).heading;
 
   // -- drag to reorder ----------------------------------------------------------------------------
   const [dragKey, setDragKey] = useState<string | null>(null);
@@ -318,10 +421,64 @@ export default function ReportEditorModal({
         {summaryError && <p className="report-editor__error">{summaryError}</p>}
       </>
     );
+  } else if (active.kind === "custom") {
+    const slide = deck.custom.find((c) => `custom:${c.id}` === active.key) ?? active.slide;
+    const dirtyCustom = JSON.stringify(slide) !== (saved[active.key] ?? "");
+    inspector = (
+      <>
+        <h4 className="report-editor__inspector-title">Added slide</h4>
+        <Field label="Title">
+          <input
+            className="report-editor__input"
+            value={slide.heading}
+            maxLength={100}
+            onChange={(e) => setCustom(slide.id, { heading: e.target.value }, "heading")}
+          />
+        </Field>
+        <Field label="Bullet points" hint="One point per box. Empty boxes are left out of the slide.">
+          <ul className="report-editor__bullets">
+            {slide.bullets.map((b, i) => (
+              <li key={i}>
+                <textarea
+                  className="report-editor__input report-editor__textarea"
+                  rows={2}
+                  value={b}
+                  aria-label={`Bullet ${i + 1}`}
+                  onChange={(e) => setCustom(slide.id, { bullets: slide.bullets.map((x, j) => (j === i ? e.target.value : x)) }, `bullet:${i}`)}
+                />
+                <button
+                  type="button"
+                  className="report-editor__icon-btn"
+                  aria-label={`Delete bullet ${i + 1}`}
+                  onClick={() => setCustom(slide.id, { bullets: slide.bullets.filter((_, j) => j !== i) }, "bullets")}
+                >
+                  <IconTrash />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="btn btn--secondary btn--sm" onClick={() => setCustom(slide.id, { bullets: [...slide.bullets, ""] }, "bullets")}>
+            <IconPlus /> Add bullet
+          </button>
+        </Field>
+        <div className="report-editor__save">
+          <button type="button" className="btn btn--secondary btn--sm" onClick={() => deleteCustom(slide.id)}>
+            Delete slide
+          </button>
+          <span className={`report-editor__save-status${dirtyCustom ? " report-editor__save-status--dirty" : ""}`}>
+            {saveError ?? (dirtyCustom ? (language !== "en" ? "Unsaved. Save to translate." : "Unsaved changes") : "All changes saved")}
+          </span>
+          <button type="button" className="btn btn--primary btn--sm" disabled={!dirtyCustom || saving === active.key} onClick={() => saveCustom(slide.id)}>
+            {saving === active.key ? "Translating…" : language !== "en" ? "Save and translate" : "Save"}
+          </button>
+        </div>
+      </>
+    );
   } else {
     const t = texts(active.entry, active.number);
     const edit = editOf(active.key);
     const over = explanationLines(t.explanation) > EXPLAIN_MAX_LINES;
+    const dirty = JSON.stringify(edit) !== (saved[active.key] ?? "{}");
     inspector = (
       <>
         <h4 className="report-editor__inspector-title">{active.number ? `Slide ${active.number}` : "Not in report"}</h4>
@@ -343,7 +500,7 @@ export default function ReportEditorModal({
           hint={
             <span className={over ? "report-editor__hint--warn" : undefined}>
               {over
-                ? `Longer than ${EXPLAIN_MAX_LINES} lines — the slide will cut the rest off.`
+                ? `Longer than ${EXPLAIN_MAX_LINES} lines. The slide will cut the rest off.`
                 : "The chart moves down to make room for longer text."}
             </span>
           }
@@ -365,6 +522,14 @@ export default function ReportEditorModal({
           />
         </Field>
         <p className="report-editor__hint">The chart and its data come from the analysis and can't be edited here.</p>
+        <div className="report-editor__save">
+          <span className={`report-editor__save-status${dirty ? " report-editor__save-status--dirty" : ""}`}>
+            {saveError ?? (dirty ? (language !== "en" ? "Unsaved changes. Save to translate them." : "Unsaved changes") : "All changes saved")}
+          </span>
+          <button type="button" className="btn btn--primary btn--sm" disabled={!dirty || saving === active.key} onClick={() => saveSlide(active.key)}>
+            {saving === active.key ? "Translating…" : language !== "en" ? "Save and translate" : "Save"}
+          </button>
+        </div>
       </>
     );
   }
@@ -378,7 +543,7 @@ export default function ReportEditorModal({
         <button type="button" className="report-editor__tool" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">
           <IconRedo /> Redo
         </button>
-        <span className="report-editor__count">{includedTree.length + 2} slides in report</span>
+        <span className="report-editor__count">{includedTree.length + 2 + deck.custom.length} slides in report</span>
       </div>
 
       <div className="report-editor">
@@ -454,7 +619,9 @@ export default function ReportEditorModal({
               );
             })}
           </ol>
-
+          <button type="button" className="btn btn--secondary btn--sm report-editor__add-slide" onClick={addSlide}>
+            <IconPlus /> Add slide
+          </button>
         </nav>
 
         <section className="report-editor__stage" aria-label="Open slide">

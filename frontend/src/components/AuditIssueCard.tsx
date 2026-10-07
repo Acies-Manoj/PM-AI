@@ -193,7 +193,7 @@ export default function AuditIssueCard({
                     {dropOption && (
                       <button
                         type="button"
-                        className={`audit-issue__btn audit-issue__btn--primary`}
+                        className={`btn btn--sm btn--primary`}
                         disabled={resolving || checked.size === 0}
                         onClick={() => resolveAndClose(dropOption.id, Array.from(checked))}
                       >
@@ -203,7 +203,7 @@ export default function AuditIssueCard({
                     {keepOption && (
                       <button
                         type="button"
-                        className={`audit-issue__btn audit-issue__btn--secondary`}
+                        className={`btn btn--sm btn--secondary`}
                         disabled={resolving}
                         onClick={() => resolveAndClose(keepOption.id)}
                       >
@@ -218,7 +218,7 @@ export default function AuditIssueCard({
                     <button
                       key={opt.id}
                       type="button"
-                      className={`audit-issue__btn ${opt.id === "keep" ? "audit-issue__btn--secondary" : "audit-issue__btn--primary"}`}
+                      className={`btn btn--sm ${opt.id === "keep" ? "btn--secondary" : "btn--primary"}`}
                       disabled={resolving}
                       onClick={() => resolveAndClose(opt.id)}
                     >

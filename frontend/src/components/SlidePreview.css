@@ -4,8 +4,8 @@
 
 .slide-preview {
   --sp-navy: #010198;
-  --sp-text: #1b2333;
-  --sp-muted: #5b6478;
+  --sp-text: var(--color-text);
+  --sp-muted: var(--color-text-muted);
   --sp-footer: #5c8aa5;
 
   position: relative;
@@ -125,7 +125,7 @@
   width: 35.2cqw;
   font-size: 1.875cqw; /* 18pt */
   line-height: 1.2;
-  color: #152c73;
+  color: var(--carrier-blue);
 }
 
 /* -- thumbnails: the slide drawn at 1000px, scaled down as one picture ---------------------- */

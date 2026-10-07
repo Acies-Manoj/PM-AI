@@ -39,7 +39,20 @@ def _distribution(series: pd.Series, top_n: int = TOP_N_DISTRIBUTION) -> dict[st
     return {str(k): int(v) for k, v in counts.items()}
 
 
+def _is_boolean_like(series: pd.Series) -> bool:
+    """A True/False column. It is a category (how many True, how many False), not a number: an "average" of
+    0.7 for a yes/no flag means nothing next to a count of each."""
+    values = series.dropna()
+    if values.empty:
+        return False
+    if pd.api.types.is_bool_dtype(values):
+        return True
+    return set(values.astype(str).unique()) <= {"True", "False"}
+
+
 def _is_numeric_like(series: pd.Series) -> bool:
+    if _is_boolean_like(series):
+        return False
     return pd.to_numeric(series, errors="coerce").notna().sum() >= max(1, int(series.notna().sum() * 0.8))
 
 

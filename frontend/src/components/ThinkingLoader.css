@@ -62,7 +62,7 @@
   flex-wrap: wrap;
   gap: 2px;
   margin: 0;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--carrier-blue);
 }
@@ -99,7 +99,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
 }
 

@@ -6,6 +6,7 @@ import { updateTripValue } from "../api/audit";
 import { IconChevronRight, IconSearch } from "./icons";
 import EditableNumberCell from "./EditableNumberCell";
 import ExcelTable from "./ExcelTable";
+import { CHART_COLORS } from "../utils/chartTheme";
 import "./OutlierTabs.css";
 
 const Plot = createPlotlyComponent(Plotly);
@@ -19,15 +20,15 @@ interface Props {
 // Same categorical palette as AnalysisChart.tsx / report_style.py -- a trip's
 // bar reads blue when in spec, the shared error red when it's the reason
 // the product got flagged.
-const COLOR_IN_SPEC = "#152C73";
-const COLOR_OUT_OF_RANGE = "#C0392B";
-const COLOR_LOW = "#1891F6";
-const COLOR_IDEAL = "#10B981";
-const COLOR_HIGH = "#C0392B";
-const COLOR_SELECTED = "#F59E0B";
+const COLOR_IN_SPEC = CHART_COLORS.primary;
+const COLOR_OUT_OF_RANGE = CHART_COLORS.negative;
+const COLOR_SELECTED = CHART_COLORS.highlight;
+const COLOR_LOW = CHART_COLORS.secondary;
+const COLOR_AVG = CHART_COLORS.neutral;
+const COLOR_OUTLIER_LINE = CHART_COLORS.highlight;
 
 // Columns of the affected-trips table (the Flags count is no longer shown). TRIP_REF carries each row's trip.
-const TRIP_COLUMNS = ["Serial Number", "Trip ID", "Mean Temp", "Status"];
+const TRIP_COLUMNS = ["Serial Number", "Trip ID", "Mean Temp", "Low Limit", "Status"];
 const TRIP_REF = "__trip";
 
 function statusLabel(status: ProductTemperatureTrip["status"]): string {
@@ -49,7 +50,7 @@ function ProductTempChart({
 }) {
   const trips = product.trips;
   const flaggedCount = product.too_warm + product.too_cold;
-  const withLimits = trips.find((t) => t.limit_low != null || t.limit_ideal != null || t.limit_high != null);
+  const lowLimit = trips.find((t) => t.limit_low != null)?.limit_low ?? null;
   const selectedTrip = selectedKey ? trips.find((t) => tripKey(t) === selectedKey) ?? null : null;
 
   const traces: Partial<Plotly.PlotData>[] = [
@@ -84,23 +85,21 @@ function ProductTempChart({
     if (y == null) return;
     shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, y0: y, y1: y, line: { color, width: 1.5, dash: "dash" } });
   };
-  addLine(withLimits?.limit_low, COLOR_LOW);
-  addLine(withLimits?.limit_ideal, COLOR_IDEAL);
-  addLine(withLimits?.limit_high, COLOR_HIGH);
+  addLine(lowLimit, COLOR_LOW);
+  addLine(product.avg_temp, COLOR_AVG);
+  addLine(product.outlier_line, COLOR_OUTLIER_LINE);
 
   return (
     <div className="temp-chart">
       <div className="temp-chart__head">
         <h3 className="temp-chart__title">{product.product}</h3>
         <div className="temp-chart__pills">
-          {withLimits?.limit_low != null && (
-            <span className="temp-chart__pill temp-chart__pill--low">Low: {withLimits.limit_low}°</span>
+          {lowLimit != null && <span className="temp-chart__pill temp-chart__pill--low">Low: {lowLimit}°</span>}
+          {product.avg_temp != null && (
+            <span className="temp-chart__pill temp-chart__pill--avg">Avg: {product.avg_temp}°</span>
           )}
-          {withLimits?.limit_ideal != null && (
-            <span className="temp-chart__pill temp-chart__pill--ideal">Ideal: {withLimits.limit_ideal}°</span>
-          )}
-          {withLimits?.limit_high != null && (
-            <span className="temp-chart__pill temp-chart__pill--high">High: {withLimits.limit_high}°</span>
+          {product.outlier_line != null && (
+            <span className="temp-chart__pill temp-chart__pill--cutoff">Outlier above: {product.outlier_line}°</span>
           )}
           <span className="temp-chart__pill temp-chart__pill--flagged">
             {flaggedCount} of {trips.length} flagged
@@ -116,10 +115,10 @@ function ProductTempChart({
           plot_bgcolor: "transparent",
           showlegend: false,
           xaxis: { title: { text: "Trip ID" }, type: "category", tickangle: -40 },
-          yaxis: { title: { text: "Mean Temp (°)" }, gridcolor: "#EEF1F6", zeroline: false },
+          yaxis: { title: { text: "Mean Temp (°)" }, gridcolor: CHART_COLORS.grid, zeroline: false },
           shapes,
         }}
-        config={{ displayModeBar: true, displaylogo: false, responsive: true }}
+        config={{ displayModeBar: "hover", displaylogo: false, responsive: true }}
         style={{ width: "100%" }}
         useResizeHandler
         onClick={(e) => {
@@ -198,6 +197,7 @@ function AffectedTripsPanel({
               "Serial Number": t.serial,
               "Trip ID": t.trip_id,
               "Mean Temp": t.mean_temp,
+              "Low Limit": t.limit_low,
               Status: statusLabel(t.status),
               [TRIP_REF]: t,
             }))}
@@ -317,7 +317,7 @@ export default function TemperatureOutlierTab({ data, sessionId, onUpdated }: Pr
     <div className="outlier-tab">
       <div className="outlier-tab__toolbar-row">
         <p className="outlier-tab__hint">
-          One card per product -- open one to see its mean-temperature chart and flagged trips. Too warm = the hottest 5% of that product's trips (by mean temperature); too cold = every trip whose mean is below its Low limit.
+          One card per product. Open one to see its mean-temperature chart and flagged trips. Too warm = far above the product's average (more than 2 standard deviations); too cold = below the Low limit.
         </p>
         {data.by_product.length > 0 && (
           <div className="outlier-tab__search">
@@ -341,7 +341,7 @@ export default function TemperatureOutlierTab({ data, sessionId, onUpdated }: Pr
       </div>
 
       {totalBreaches === 0 && (
-        <p className="outlier-tab__all-clear">No temperature outliers detected: no trip is in a product's hottest 5% or below its Low limit.</p>
+        <p className="outlier-tab__all-clear">No temperature outliers detected: no trip is far above its product's average or below its Low limit.</p>
       )}
 
       <div className="audit-report__issues">
@@ -359,7 +359,7 @@ export default function TemperatureOutlierTab({ data, sessionId, onUpdated }: Pr
                 <span className="audit-issue__affected">
                   {flaggedCount > 0
                     ? `${flaggedCount} of ${p.total} trip${p.total === 1 ? "" : "s"} flagged`
-                    : `${p.total} trip${p.total === 1 ? "" : "s"} -- none flagged`}
+                    : `${p.total} trip${p.total === 1 ? "" : "s"}, none flagged`}
                 </span>
               </button>
             </div>

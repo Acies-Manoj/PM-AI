@@ -5,17 +5,17 @@
 }
 
 .upload-page__error {
-  background: #fff0f0;
+  background: var(--color-error-bg);
   border: 1px solid #f5c2c2;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px 16px;
-  color: #c0392b;
+  color: var(--color-error);
   font-size: 13.5px;
   margin-bottom: 12px;
 }
 
 .upload-page__main {
-  max-width: 1080px;
+  max-width: var(--page-width);
   width: 100%;
   margin: 0 auto;
   padding: 28px 24px 60px;
@@ -32,8 +32,8 @@
 
 .upload-page__heading {
   margin: 0 0 8px;
-  font-size: 24px;
-  font-weight: 800;
+  font-size: 23px;
+  font-weight: var(--font-weight-title);
   color: var(--carrier-blue);
 }
 
@@ -42,7 +42,14 @@
   font-size: 14px;
   color: var(--color-text-muted);
   line-height: 1.5;
-  text-align: justify;
+}
+
+.upload-page__grid > div {
+  display: flex;
+}
+
+.upload-page__grid > div > .upload-card {
+  flex: 1;
 }
 
 .upload-page__grid {
@@ -69,8 +76,21 @@
   margin-bottom: 24px;
 }
 
+.upload-page__left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.upload-page__actions--bottom {
+  border-top: 1px solid var(--color-border);
+  margin-top: 24px;
+  margin-bottom: 8px;
+}
+
 .upload-page__count {
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--color-text-muted);
   font-weight: 600;
 }
@@ -80,39 +100,4 @@
   gap: 12px;
 }
 
-.upload-page__btn {
-  border-radius: var(--radius-sm);
-  padding: 11px 24px;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.upload-page__btn--primary {
-  background: var(--carrier-blue);
-  border: 1px solid var(--carrier-blue);
-  color: #fff;
-}
-
-.upload-page__btn--primary:hover {
-  background: var(--carrier-light-blue);
-  border-color: var(--carrier-light-blue);
-}
-
-.upload-page__btn--secondary {
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-}
-
-.upload-page__btn--secondary:hover {
-  border-color: var(--color-text-muted);
-  color: var(--color-text);
-}
-
-.upload-page__btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 

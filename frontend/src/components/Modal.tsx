@@ -34,7 +34,7 @@ export default function Modal({ title, onClose, children, headerExtra, resetScro
           <div className="modal__head-right">
             {headerExtra}
             <button type="button" className="modal__close" onClick={onClose} aria-label="Close">
-              ×
+              ✕
             </button>
           </div>
         </div>

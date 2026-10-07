@@ -26,4 +26,9 @@
   color: var(--color-text);
   background: transparent;
   cursor: pointer;
+  font-family: inherit;
+}
+
+.source-select__input option {
+  font-family: inherit;
 }

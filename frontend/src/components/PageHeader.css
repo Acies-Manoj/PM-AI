@@ -35,13 +35,13 @@
 .page-header__title {
   margin: 0 0 3px;
   font-size: 23px;
-  font-weight: 800;
+  font-weight: var(--font-weight-title);
   color: var(--carrier-blue);
 }
 
 .page-header__subtitle {
   margin: 0;
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--color-text-muted);
   line-height: 1.5;
 }

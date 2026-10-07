@@ -19,22 +19,24 @@
 .drilldown-panel__title {
   margin: 0;
   font-size: 12.5px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--carrier-blue);
 }
 
-.analysis-detail__suggest-more-btn svg {
-  width: 13px;
-  height: 13px;
+.drilldown-panel__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-text);
 }
 
-.drilldown-panel__label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+.drilldown-panel__label-hint {
+  font-size: 11.5px;
+  font-weight: 400;
   color: var(--color-text-muted);
 }
 
@@ -47,7 +49,7 @@
 .drilldown-focus {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   max-height: 150px;
   overflow-y: auto;
 }
@@ -56,40 +58,53 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 10px;
+  padding: 5px 12px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
-  background: #fff;
+  background: var(--color-surface);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--color-text);
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.drilldown-focus__item:hover {
+.drilldown-focus__item:hover:not(:disabled) {
   border-color: var(--carrier-blue);
+  background: var(--carrier-blue-tint);
 }
 
-.drilldown-focus__item--on {
+.drilldown-focus__item:focus-visible {
+  outline: 2px solid var(--carrier-light-blue);
+  outline-offset: 1px;
+}
+
+.drilldown-focus__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.drilldown-focus__item--on,
+.drilldown-focus__item--on:hover:not(:disabled) {
   border-color: var(--carrier-blue);
   background: var(--carrier-blue);
   color: #fff;
 }
 
 .drilldown-focus__value {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .drilldown-focus__meta {
-  font-size: 11px;
-  opacity: 0.8;
+  font-size: 11.5px;
+  opacity: 0.75;
 }
 
 .drilldown-tag {
   border-radius: 999px;
   padding: 1px 7px;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 10.5px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--accent-amber);
@@ -108,45 +123,13 @@
 
 .drilldown-tag--stale {
   color: var(--accent-amber);
-  background: #fff4dd;
-}
-
-.drilldown-btn {
-  flex-shrink: 0;
-  padding: 5px 14px;
-  border: 1px solid var(--carrier-blue);
-  border-radius: 999px;
-  background: none;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--carrier-blue);
-  cursor: pointer;
-}
-
-.drilldown-btn:hover:not(:disabled) {
-  background: var(--carrier-blue-tint);
-}
-
-.drilldown-btn--primary {
-  background: var(--carrier-blue);
-  color: #fff;
-}
-
-.drilldown-btn--primary:hover:not(:disabled) {
-  background: var(--carrier-blue);
-  opacity: 0.9;
-}
-
-.drilldown-btn:disabled {
-  opacity: 0.6;
-  cursor: progress;
+  background: var(--accent-amber-bg);
 }
 
 .drilldown-proposals {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 /* More than ~5 suggestions: cap the list's own height instead of letting
@@ -163,31 +146,39 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 14px 16px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: #fff;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
 .drilldown-proposal__body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drilldown-proposal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .drilldown-proposal__title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 12.5px;
+  min-width: 0;
+  font-size: 13.5px;
   font-weight: 700;
+  color: var(--color-text);
 }
 
 .drilldown-proposal__reason {
-  margin: 4px 0 0;
-  font-size: 11.5px;
+  margin: 0 0 6px;
+  font-size: 12.5px;
   line-height: 1.5;
-  color: var(--color-text);
+  color: var(--color-text-muted);
 }
 
 /* Chain level header, breadcrumb and card tree. */
@@ -201,10 +192,10 @@
 .drilldown-level__chip {
   border-radius: 999px;
   padding: 3px 10px;
-  font-size: 11px;
-  font-weight: 800;
-  color: var(--accent-purple);
-  background: var(--accent-purple-bg);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--carrier-blue);
+  background: var(--carrier-blue-tint-2);
 }
 
 .drilldown-stale {
@@ -214,9 +205,9 @@
   gap: 8px;
   padding: 8px 12px;
   border-radius: var(--radius-sm);
-  background: #fff4dd;
+  background: var(--accent-amber-bg);
   color: var(--accent-amber);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
 }
 
@@ -239,7 +230,7 @@
   font-family: inherit;
   font-size: inherit;
   font-weight: 700;
-  color: var(--accent-purple);
+  color: var(--carrier-blue);
   cursor: pointer;
 }
 
@@ -268,34 +259,15 @@
 .drilldown-proposal--stacked {
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 12px;
 }
 
-.drilldown-proposal--stacked > .drilldown-btn {
+.drilldown-proposal--stacked > .btn {
   align-self: flex-end;
 }
 
-.drilldown-tag--vars {
-  margin-left: 8px;
-  color: #6d3fc0;
-  background: rgba(109, 63, 192, 0.1);
+.drilldown-panel__show-more {
+  align-self: flex-start;
 }
 
 /* "Show N more" under the best suggestions. */
-.drilldown-panel__show-more {
-  align-self: flex-start;
-  margin-top: 8px;
-  padding: 6px 12px;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--carrier-blue);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.drilldown-panel__show-more:hover {
-  border-color: var(--carrier-blue);
-  background: var(--carrier-blue-tint);
-}

@@ -8,6 +8,8 @@
   --color-bg: #f4f6fb;
   --color-surface: #ffffff;
   --color-border: #dde3ef;
+  --color-bg-subtle: #f6f8fc; /* quiet panels, table headers, code blocks */
+  --color-surface-raised: #f6f8fc;
   --color-text: #1b2333;
   --color-text-muted: #5b6478;
   --color-success: #1a8f5e;
@@ -22,8 +24,9 @@
   --accent-purple-bg: #f1ebfa;
   --accent-teal: #0f8b8d;
   --accent-teal-bg: #e3f4f4;
-  --accent-amber: #8a5a10;
-  --accent-amber-bg: #fbf0dc;
+  --accent-amber: #b45309; /* amber text: orange, readable on the pale background */
+  --accent-amber-solid: #f59e0b; /* amber borders, dots and fills */
+  --accent-amber-bg: #fef3c7;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -31,6 +34,14 @@
 
   --shadow-sm: 0 1px 2px rgba(21, 44, 115, 0.06);
   --shadow-md: 0 4px 16px rgba(21, 44, 115, 0.08);
+
+  /* Page-title weight shared by every page heading (Welcome, Upload, and the PageHeader used by Planner etc.). */
+  --font-weight-title: 800;
+  --page-width: 1080px;
+  /* Every pop-up uses the same width and height limit and the same backdrop. */
+  --modal-width: 960px;
+  --modal-max-height: 88vh;
+  --modal-backdrop: rgba(13, 28, 77, 0.5);
 
   --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
 }
@@ -59,4 +70,142 @@ button {
 
 a {
   color: var(--carrier-light-blue);
+}
+
+
+/* =========================================================================
+   Shared UI standards
+   Buttons, nav bars and tags used across the flow, so every page looks and
+   reacts the same. Change them here, not per page.
+   ========================================================================= */
+
+/* -- Buttons: 14px bold, 6px radius, 11px 24px padding ----------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  padding: 11px 24px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.btn--sm {
+  padding: 7px 16px;
+  font-size: 12.5px;
+}
+
+.btn--primary {
+  background: var(--carrier-blue);
+  border: 1px solid var(--carrier-blue);
+  color: #fff;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--carrier-light-blue);
+  border-color: var(--carrier-light-blue);
+}
+
+.btn--secondary {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--color-bg);
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+
+/* AI actions: filled purple with a sparkle icon, so it is obvious the AI is doing the work. */
+.btn--ai {
+  background: var(--accent-purple);
+  border: 1px solid var(--accent-purple);
+  color: #fff;
+}
+
+.btn--ai:hover:not(:disabled) {
+  background: #5a34a6;
+  border-color: #5a34a6;
+}
+
+.btn--secondary.btn--selected {
+  background: var(--color-border);
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* -- Back (left) / Next (right) bar, used at the top and bottom of a page -- */
+.page-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.page-nav--top {
+  margin-bottom: 20px;
+}
+
+.page-nav--bottom {
+  border-top: 1px solid var(--color-border);
+  padding-top: 20px;
+  margin-top: 24px;
+}
+
+/* -- Tags: 10.5px bold uppercase pills. Colour = meaning:
+      blue = Feature / Analysis (the tab already says which), amber = Configuration or needs attention,
+      teal = Existing / reused, grey = New, green = accept / success only,
+      red = reject, required or error, purple = AI only (see .btn--ai). ---- */
+.tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.tag--feature { background: var(--carrier-blue-tint-2); color: var(--carrier-blue); }
+.tag--analysis { background: var(--carrier-blue-tint-2); color: var(--carrier-blue); }
+.tag--configuration { background: var(--accent-amber-bg); color: var(--accent-amber); }
+.tag--existing { background: var(--accent-teal-bg); color: var(--accent-teal); }
+.tag--attention { background: var(--accent-amber-bg); color: var(--accent-amber); }
+.tag--purple { background: var(--accent-purple-bg); color: var(--accent-purple); }
+.tag--success { background: var(--color-success-bg); color: var(--color-success); }
+.tag--error { background: var(--color-error-bg); color: var(--color-error); }
+.tag--new { background: transparent; color: var(--color-text-muted); border: 1px solid var(--color-border); }
+
+/* -- Tab count pill: same on every tab strip (Audit, Planner, ...) -------- */
+.count-pill {
+  font-size: 10.5px;
+  font-weight: 800;
+  background: var(--carrier-blue-tint-2);
+  color: var(--carrier-blue);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.is-active > .count-pill,
+.count-pill--active {
+  background: var(--carrier-blue);
+  color: #fff;
 }

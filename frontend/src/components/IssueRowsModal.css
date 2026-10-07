@@ -1,11 +1,11 @@
 .issue-rows-modal__backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(13, 28, 77, 0.45);
+  background: var(--modal-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px;
+  padding: 24px;
   z-index: 1000;
 }
 
@@ -14,8 +14,8 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   width: 100%;
-  max-width: 1080px;
-  max-height: 85vh;
+  max-width: var(--modal-width);
+  max-height: var(--modal-max-height);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -32,14 +32,14 @@
 
 .issue-rows-modal__title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--carrier-blue);
 }
 
 .issue-rows-modal__subtitle {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--color-text-muted);
 }
 
@@ -52,7 +52,7 @@
   height: 28px;
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 13.5px;
 }
 
 .issue-rows-modal__close:hover {
@@ -63,7 +63,7 @@
 .issue-rows-modal__status {
   padding: 30px 20px;
   text-align: center;
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--color-text-muted);
 }
 

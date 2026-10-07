@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
+import PageNav from "../components/PageNav";
 import StatTile from "../components/StatTile";
 import FeatureCard from "../components/FeatureCard";
 import FeatureDetailModal from "../components/FeatureDetailModal";
@@ -13,7 +14,7 @@ import Modal from "../components/Modal";
 import FeatureSuggestionCard from "../components/FeatureSuggestionCard";
 import AddKpiForm from "../components/AddKpiForm";
 import DataPreviewTable from "../components/DataPreviewTable";
-import { IconDoc, IconGrid, IconSparkle, IconWarnTriangle, IconShieldCheck, IconDownload, IconClipboard, IconChevronLeft, IconChevronRight } from "../components/icons";
+import { IconDoc, IconGrid, IconSparkle, IconWarnTriangle, IconShieldCheck, IconDownload, IconClipboard } from "../components/icons";
 import {
   acceptFeatureEntry,
   addCustomFeature,
@@ -194,7 +195,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
           <StepIndicator current={4} />
           <div className="features-page__empty">
             <p>No audited data yet.</p>
-            <button type="button" className="features-page__btn features-page__btn--primary" onClick={() => navigate("/upload")}>
+            <button type="button" className="btn btn--primary" onClick={() => navigate("/upload")}>
               Go to Upload
             </button>
           </div>
@@ -211,7 +212,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
           <StepIndicator current={4} />
           <div className="features-page__empty">
             <p>Finish resolving the data audit before features can be computed.</p>
-            <button type="button" className="features-page__btn features-page__btn--primary" onClick={() => navigate("/audit")}>
+            <button type="button" className="btn btn--primary" onClick={() => navigate("/audit")}>
               Back to Audit
             </button>
           </div>
@@ -226,17 +227,23 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
       <main className="features-page__main">
         <StepIndicator current={4} />
 
+        <PageNav position="top" onBack={() => navigate("/audit")}>
+          <button type="button" className="btn btn--primary" onClick={() => navigate("/analysis")}>
+            Proceed to Analysis
+          </button>
+        </PageNav>
+
         <PageHeader
           icon={<IconShieldCheck />}
           title="Feature Engineering"
-          subtitle="The Feature Agent computes every approved feature below -- predefined, planner-approved, custom, and AI-suggested -- by planning, writing, and validating pandas code for each one."
+          subtitle="The Feature Agent computes every approved feature below (predefined, planner-approved, custom, and AI-suggested) by planning, writing, and validating pandas code for each one."
         />
 
         {defsLoading && <ThinkingLoader variant="inline" messages={[`Reading ${files.customerKpis!.name}…`]} />}
         {defsError && <p className="features-page__error">{defsError}</p>}
         {!hasKpiFile && (
           <p className="features-page__hint">
-            No Customer KPI Profile uploaded -- predefined features are skipped, but planner-approved,
+            No Customer KPI Profile uploaded. Predefined features are skipped, but planner-approved,
             custom, and AI-suggested features below still work.
           </p>
         )}
@@ -262,14 +269,14 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                       <h3 className="features-page__ai-panel-title">AI Feature Suggestions</h3>
                       <p className="features-page__ai-panel-hint">
                         The agent looks at this data's column names and proposes new fields it can
-                        compute -- you choose which ones to add.
+                        compute. You choose which ones to add.
                       </p>
                     </div>
                   </div>
                 </div>
                 <button
                   type="button"
-                  className="features-page__btn features-page__btn--primary features-page__panel-btn"
+                  className="btn btn--ai features-page__panel-btn"
                   disabled={suggestLoading[id]}
                   onClick={() => {
                     if (pendingSuggestions.length === 0) runSuggest(id);
@@ -293,7 +300,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                     headerExtra={
                       <button
                         type="button"
-                        className="features-page__btn features-page__btn--secondary"
+                        className="btn btn--secondary"
                         disabled={suggestLoading[id]}
                         onClick={() => runSuggest(id)}
                       >
@@ -329,7 +336,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                     <div>
                       <h3 className="features-page__custom-kpi-title">Add a Custom KPI</h3>
                       <p className="features-page__custom-kpi-hint">
-                        Define your own feature straight from this data's columns -- no need to edit and
+                        Define your own feature straight from this data's columns, with no need to edit and
                         re-upload the Customer KPI Profile file.
                       </p>
                     </div>
@@ -337,7 +344,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                 </div>
                 <button
                   type="button"
-                  className="features-page__btn features-page__btn--secondary features-page__panel-btn"
+                  className="btn btn--secondary features-page__panel-btn"
                   onClick={() => setShowAddKpiForm((prev) => ({ ...prev, [id]: true }))}
                 >
                   + Add Custom KPI
@@ -385,7 +392,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
                   {report.features.length > 0 && (
                     <div className="features-page__summary">
                       <p className="features-page__summary-title">
-                        ✓ {report.features.length} feature{report.features.length === 1 ? "" : "s"} added in total
+                        {report.features.length} feature{report.features.length === 1 ? "" : "s"} added in total
                       </p>
                       {SOURCE_GROUP_LABELS.map(({ source, label }) => ({
                         label,
@@ -416,7 +423,7 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
 
                   {report.features.length === 0 ? (
                     <p className="features-page__none">
-                      No features computed yet for this data -- upload a Customer KPI Profile, wait for
+                      No features computed yet for this data. Upload a Customer KPI Profile, wait for
                       planner-approved features, or add a custom/AI-suggested one below.
                     </p>
                   ) : (
@@ -465,14 +472,11 @@ export default function FeaturesPage({ files, auditReports }: FeaturesPageProps)
           );
         })}
 
-        <div className="features-page__actions">
-          <button type="button" className="features-page__btn features-page__btn--secondary features-page__nav-btn" onClick={() => navigate("/audit")}>
-            <IconChevronLeft /> Back to Audit
+        <PageNav position="bottom" onBack={() => navigate("/audit")}>
+          <button type="button" className="btn btn--primary" onClick={() => navigate("/analysis")}>
+            Proceed to Analysis
           </button>
-          <button type="button" className="features-page__btn features-page__btn--primary features-page__nav-btn" onClick={() => navigate("/analysis")}>
-            Continue to Analysis <IconChevronRight />
-          </button>
-        </div>
+        </PageNav>
       </main>
 
       {openFeature &&

@@ -1,4 +1,5 @@
 import type { FeatureResult } from "../api/audit";
+import { tidyText } from "../utils/tidyText";
 import { IconExpand, IconTag, IconShieldCheck, IconClock, IconPercent, IconCalendar } from "./icons";
 import "./FeatureCard.css";
 
@@ -84,13 +85,13 @@ export default function FeatureCard({ feature, colorIndex = 0, requiredFor = [],
         </div>
         <div className="feature-card__badges">
           {feature.source !== "predefined" && (
-            <span className={feature.source === "ai_suggested" ? "feature-card__ai-badge" : "feature-card__custom-badge"}>
+            <span className={feature.source === "ai_suggested" || feature.source === "planner" ? "feature-card__ai-badge" : "feature-card__custom-badge"}>
               {SOURCE_LABELS[feature.source] ?? feature.source}
             </span>
           )}
         </div>
       </div>
-      <p className="feature-card__description">{feature.description}</p>
+      <p className="feature-card__description">{tidyText(feature.description)}</p>
       {requiredFor.length > 0 && (
         <p className="feature-card__needed-by">
           <strong>Needed by:</strong> {requiredFor.join(" · ")}
@@ -114,12 +115,12 @@ export default function FeatureCard({ feature, colorIndex = 0, requiredFor = [],
         </div>
       )}
 
-      {(distributionEntries.length > previewEntries.length || isNumeric) && (
-        <button type="button" className="feature-card__expand-btn" onClick={onExpand}>
+      <div className="feature-card__footer">
+        <button type="button" className="btn btn--secondary btn--sm feature-card__expand-btn" onClick={onExpand}>
           <IconExpand />
-          {isNumeric ? "View trend over time" : "View full breakdown"}
+          View details
         </button>
-      )}
+      </div>
     </div>
   );
 }

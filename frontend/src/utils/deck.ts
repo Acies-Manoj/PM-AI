@@ -6,6 +6,13 @@ export interface SlideEdit {
   caption?: string;
 }
 
+/** A slide the PM wrote by hand in the editor: a title and bullet points (already in the report language). */
+export interface CustomSlide {
+  id: string;
+  heading: string;
+  bullets: string[];
+}
+
 export interface DeckState {
   /** entry id -> ticked (= in the deck). Deleting a slide just unticks it, so the list on the page stays in step. */
   selected: Record<string, boolean>;
@@ -15,6 +22,8 @@ export interface DeckState {
   cover: { title?: string; subtitle?: string };
   /** The closing summary. null = not generated yet. */
   bullets: string[] | null;
+  /** Slides the PM added, in order. They sit after the analysis slides and before the summary. */
+  custom: CustomSlide[];
   /** True once the PM typed in the summary: it then stops auto-regenerating when slides change. */
   bulletsEdited: boolean;
 }

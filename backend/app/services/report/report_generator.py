@@ -1000,6 +1000,20 @@ class ReportBuilder:
             self._bullets(slide, bullets, style.MARGIN_X, body_top, style.CONTENT_W, body_h, size=size)
         self._footer(slide)
 
+    def add_text_slide(self, heading: str, bullets: list[str]):
+        """A slide the PM wrote themselves: a title and bullet points. The text is used exactly as given (the
+        Report editor already translated it into the report language), so nothing here goes through `_t`."""
+        slide = self._new_slide()
+        self._frame(slide, heading)
+        body_top = style.EXPLAIN_TOP + Inches(0.1)
+        body_h = style.BODY_BOTTOM - body_top
+        lines = [b for b in bullets if b.strip()]
+        if lines:
+            longest = max(len(b) for b in lines)
+            size = 18 if longest < 200 and len(lines) <= 4 else 16 if longest < 320 else 14
+            self._bullets(slide, lines, style.MARGIN_X, body_top, style.CONTENT_W, body_h, size=size)
+        self._footer(slide)
+
     def save_bytes(self) -> bytes:
         buffer = io.BytesIO()
         self.prs.save(buffer)
@@ -1216,6 +1230,7 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
 def build_report(
     source_label: str, df: pd.DataFrame | None, entries: list[dict], summary_bullets: list[str],
     language: str = "en", cover_title: str | None = None, cover_subtitle: str | None = None,
+    custom_slides: list[dict] | None = None,
 ) -> bytes:
     """Builds the deck from `entries` (already filtered by the router to
     run_status == "done" analyses the PM chose to include) plus
@@ -1236,6 +1251,9 @@ def build_report(
 
     for entry in entries:
         _add_entry_slide(builder, entry, content_phrases)
+
+    for custom in custom_slides or []:
+        builder.add_text_slide((custom.get("heading") or "").strip(), custom.get("bullets") or [])
 
     builder.add_summary_slide("Summary", summary_bullets)
     return builder.save_bytes()

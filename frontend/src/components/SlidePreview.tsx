@@ -120,6 +120,24 @@ const THUMB_BASE_WIDTH = 1000;
 
 /** Draws its children at a fixed 1000px width and shrinks the whole picture to fit the box it sits in,
  * so a thumbnail is a true miniature of the slide (chart text included) rather than a re-layout. */
+/** A slide the PM wrote: a title and bullet points, laid out like the summary slide. */
+export function TextSlidePreview({ heading, bullets }: { heading: string; bullets: string[] }) {
+  const lines = bullets.filter((b) => b.trim());
+  const longest = lines.reduce((m, b) => Math.max(m, b.length), 0);
+  const size = longest < 200 && lines.length <= 4 ? "bullets--lg" : longest < 320 ? "bullets--md" : "bullets--sm";
+  return (
+    <Frame label="Added slide">
+      <h4 className={`slide-preview__title slide-preview__${titleSize(heading)}`}>{heading}</h4>
+      <img className="slide-preview__logo" src={LOGO_SRC} alt="Carrier" />
+      <ul className={`slide-preview__bullets slide-preview__${size}`}>
+        {lines.map((b, i) => (
+          <li key={i}>{b}</li>
+        ))}
+      </ul>
+    </Frame>
+  );
+}
+
 export function ThumbScaler({ children }: { children: ReactNode }) {
   const outer = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.2);

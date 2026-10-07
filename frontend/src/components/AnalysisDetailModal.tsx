@@ -12,6 +12,7 @@ import type {
 } from "../api/audit";
 import { AuditApiError } from "../api/audit";
 import Modal from "./Modal";
+import { tidyText } from "../utils/tidyText";
 import AnalysisChart from "./AnalysisChart";
 import AnalysisFilterBar from "./AnalysisFilterBar";
 import DrilldownPanel from "./DrilldownPanel";
@@ -53,7 +54,7 @@ interface AnalysisDetailModalProps {
   /** Suggested drill-down PATHS (see DrilldownPaths): list, suggest, accept, reject. */
   onFetchPaths: () => Promise<DrilldownPath[]>;
   onSuggestPath: () => Promise<DrilldownPath>;
-  onAcceptPath: (pathId: string) => Promise<DrilldownPath>;
+  onAcceptPath: (pathId: string, levels: number[]) => Promise<DrilldownPath>;
   onRejectPath: (pathId: string) => Promise<DrilldownPath>;
   /** Increments after a guided drill-down is confirmed; switches to the Selected Drill-downs tab. */
   openSelectedSignal?: number;
@@ -224,7 +225,7 @@ export default function AnalysisDetailModal({
         </nav>
       )}
 
-      <p className="analysis-card__description">{entry.description}</p>
+      <p className="analysis-detail__description">{tidyText(entry.description)}</p>
 
       {chain && (
         <>
@@ -235,7 +236,7 @@ export default function AnalysisDetailModal({
           {chain.stale && (
             <div className="drilldown-stale" role="status">
               Stale - upstream changed
-              <button type="button" className="drilldown-btn" disabled={levelBusy} onClick={() => runLevelAction(onRefreshLevel)}>
+              <button type="button" className="btn btn--secondary btn--sm" disabled={levelBusy} onClick={() => runLevelAction(onRefreshLevel)}>
                 {levelBusy ? "Refreshing…" : "Refresh"}
               </button>
             </div>
@@ -247,7 +248,7 @@ export default function AnalysisDetailModal({
       {entry.run_status === "error" && (
         <div className="analysis-card__error-block">
           <p className="analysis-card__error">{entry.error ?? "This analysis couldn't be computed."}</p>
-          <button type="button" className="analysis-card__run-btn analysis-card__run-btn--retry" disabled={running} onClick={onRetry}>
+          <button type="button" className="btn btn--sm btn--secondary" disabled={running} onClick={onRetry}>
             {running ? "Retrying…" : "Retry"}
           </button>
         </div>
@@ -413,9 +414,9 @@ export default function AnalysisDetailModal({
                 <div className="analysis-detail__empty-drilldown-block">
                   <p className="analysis-detail__empty-drilldown">No drill-downs selected yet.</p>
                   <p className="analysis-detail__empty-drilldown-hint">
-                    Confirm a guided drill-down from the Analysis tab -- it'll show up here.
+                    Confirm a guided drill-down from the Analysis tab and it'll show up here.
                   </p>
-                  <button type="button" className="analysis-detail__add-drilldown-btn" onClick={() => setModalTab("analysis")}>
+                  <button type="button" className="btn btn--primary btn--sm" onClick={() => setModalTab("analysis")}>
                     + Add Drill-down
                   </button>
                 </div>

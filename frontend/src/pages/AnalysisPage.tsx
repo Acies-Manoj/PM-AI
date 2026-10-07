@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import StepIndicator from "../components/StepIndicator";
 import PageHeader from "../components/PageHeader";
+import PageNav from "../components/PageNav";
 import StatTile from "../components/StatTile";
 import AnalysisCard from "../components/AnalysisCard";
 import AnalysisToolbar, { type AnalysisSortKey, type AnalysisStatusFilter } from "../components/AnalysisToolbar";
@@ -96,6 +97,8 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
   const [featureCheckFailed, setFeatureCheckFailed] = useState<LoadingState>({});
 
   const [repositories, setRepositories] = useStoredState<RepositoryState>("analysis.repositories", {});
+  // The Report page's own selection, so a skipped drill-down level can be left out of the report from here.
+  const [, setReportSelected] = useStoredState<Record<string, boolean>>("report.selected", {});
   const [repoLoading, setRepoLoading] = useStoredState<LoadingState>("analysis.repoLoading", {});
   const [repoError, setRepoError] = useState<ErrorsState>({});
 
@@ -345,11 +348,18 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
 
   // Suggested drill-down paths. Accepting or rejecting refetches the repository so the
   // accepted levels show up under Selected Drill-downs (and the report) straight away.
-  const decidePath = (id: UploadSlotId, pathId: string, accept: boolean) => {
+  const decidePath = (id: UploadSlotId, pathId: string, accept: boolean, levels?: number[]) => {
     const sessionId = auditReports[id]!.session_id;
-    return (accept ? acceptDrilldownPath : rejectDrilldownPath)(sessionId, pathId).then((path) =>
-      refreshRepository(id, sessionId).then(() => path)
-    );
+    const request = accept ? acceptDrilldownPath(sessionId, pathId, levels) : rejectDrilldownPath(sessionId, pathId);
+    return request.then((path) => {
+      // A level the PM skipped is kept (the next level builds on it) but left out of the report by default.
+      const skipped = new Set(path.skipped_levels ?? []);
+      const skippedIds = path.steps.filter((st) => skipped.has(st.level)).flatMap((st) => st.entries.map((e) => e.entry_id));
+      if (skippedIds.length > 0) {
+        setReportSelected((prev) => ({ ...prev, ...Object.fromEntries(skippedIds.map((eid) => [eid, false])) }));
+      }
+      return refreshRepository(id, sessionId).then(() => path);
+    });
   };
 
   const refreshChainLevel = (id: UploadSlotId, entryId: string): Promise<void> => {
@@ -451,7 +461,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           <StepIndicator current={5} />
           <div className="analysis-page__empty">
             <p>No audited data yet.</p>
-            <button type="button" className="analysis-page__btn analysis-page__btn--primary" onClick={() => navigate("/upload")}>
+            <button type="button" className="btn btn--primary" onClick={() => navigate("/upload")}>
               Go to Upload
             </button>
           </div>
@@ -468,7 +478,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           <StepIndicator current={5} />
           <div className="analysis-page__empty">
             <p>Finish resolving the data audit before analysis can run.</p>
-            <button type="button" className="analysis-page__btn analysis-page__btn--primary" onClick={() => navigate("/audit")}>
+            <button type="button" className="btn btn--primary" onClick={() => navigate("/audit")}>
               Back to Audit
             </button>
           </div>
@@ -487,9 +497,9 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
             <p>
               {Object.values(featureCheckLoading).some(Boolean)
                 ? <ThinkingLoader variant="inline" messages={["Checking whether feature engineering has run…"]} />
-                : "No features have been computed yet -- an analysis can group by engineered columns (like Country of Origin or % In Spec), so finish the Features step first."}
+                : "No features have been computed yet. An analysis can group by engineered columns (like Country of Origin or % In Spec), so finish the Features step first."}
             </p>
-            <button type="button" className="analysis-page__btn analysis-page__btn--primary" onClick={() => navigate("/features")}>
+            <button type="button" className="btn btn--primary" onClick={() => navigate("/features")}>
               Go to Features
             </button>
           </div>
@@ -506,6 +516,12 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
       <main className="analysis-page__main">
         <StepIndicator current={5} />
 
+        <PageNav position="top" onBack={() => navigate("/features")}>
+          <button type="button" className="btn btn--primary" onClick={() => navigate("/report")}>
+            Proceed to Report
+          </button>
+        </PageNav>
+
         <PageHeader
           icon={<IconBarChart />}
           title="Analysis"
@@ -516,7 +532,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
         {defsError && <p className="analysis-page__error">{defsError}</p>}
         {!hasAnalysisProfileFile && (
           <p className="analysis-page__hint">
-            No Analysis Profile uploaded -- predefined analyses are skipped, but planner-approved, custom,
+            No Analysis Profile uploaded. Predefined analyses are skipped, but planner-approved, custom,
             and AI-suggested analyses below still work.
           </p>
         )}
@@ -590,7 +606,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
               {topLevelEntries.length > 0 && (
                 <div className="analysis-page__summary">
                   <p className="analysis-page__summary-title">
-                    ✓ {topLevelEntries.length} analys{topLevelEntries.length === 1 ? "is" : "es"} added in total
+                    {topLevelEntries.length} analys{topLevelEntries.length === 1 ? "is" : "es"} added in total
                   </p>
                   {SOURCE_GROUP_LABELS.map(({ source, label }) => ({
                     label,
@@ -620,7 +636,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
 
               {topLevelEntries.length === 0 ? (
                 <p className="analysis-page__none">
-                  No analyses in this session's repository yet -- upload an Analysis Profile, wait for
+                  No analyses in this session's repository yet. Upload an Analysis Profile, wait for
                   planner-approved analyses, or add a custom/AI-suggested one below.
                 </p>
               ) : (
@@ -726,13 +742,13 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                       <h3 className="analysis-page__ai-panel-title">AI Analysis Suggestions</h3>
                       <p className="analysis-page__ai-panel-hint">
                         The agent looks at this data's columns and proposes analysis tables it can
-                        compute -- you choose which ones to add.
+                        compute. You choose which ones to add.
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
-                    className="analysis-page__btn analysis-page__btn--primary analysis-page__panel-btn"
+                    className="btn btn--ai analysis-page__panel-btn"
                     disabled={!!suggestLoading[id]}
                     onClick={() => {
                       if (pendingSuggestions.length === 0) runSuggest(id);
@@ -758,13 +774,13 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                       <h3 className="analysis-page__custom-panel-title">Add a Custom Analysis</h3>
                       <p className="analysis-page__custom-panel-hint">
                         Define your own group-by + aggregation logic straight from this data's
-                        columns -- no need to edit and re-upload the Analysis Profile file.
+                        columns, with no need to edit and re-upload the Analysis Profile file.
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
-                    className="analysis-page__btn analysis-page__btn--secondary analysis-page__panel-btn"
+                    className="btn btn--secondary analysis-page__panel-btn"
                     onClick={() => setShowAddForm((prev) => ({ ...prev, [id]: true }))}
                   >
                     + Add Custom Analysis
@@ -779,7 +795,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
                   headerExtra={
                     <button
                       type="button"
-                      className="analysis-page__btn analysis-page__btn--secondary"
+                      className="btn btn--secondary"
                       disabled={suggestLoading[id]}
                       onClick={() => runSuggest(id)}
                     >
@@ -826,14 +842,11 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
           </p>
         )}
 
-        <div className="analysis-page__actions">
-          <button type="button" className="analysis-page__btn analysis-page__btn--secondary analysis-page__nav-btn" onClick={() => navigate("/features")}>
-            <IconChevronLeft /> Back to Features
+        <PageNav position="bottom" onBack={() => navigate("/features")}>
+          <button type="button" className="btn btn--primary" onClick={() => navigate("/report")}>
+            Proceed to Report
           </button>
-          <button type="button" className="analysis-page__btn analysis-page__btn--primary analysis-page__nav-btn" onClick={() => navigate("/report")}>
-            Continue to Report <IconChevronRight />
-          </button>
-        </div>
+        </PageNav>
       </main>
 
       {openEntry &&
@@ -863,7 +876,7 @@ export default function AnalysisPage({ files, auditReports }: AnalysisPageProps)
               openSelectedSignal={openSelectedSignal}
               onFetchPaths={() => fetchDrilldownPaths(auditReports[openEntry.slotId]!.session_id, openEntry.entryId)}
               onSuggestPath={() => suggestDrilldownPath(auditReports[openEntry.slotId]!.session_id, openEntry.entryId)}
-              onAcceptPath={(pathId) => decidePath(openEntry.slotId, pathId, true)}
+              onAcceptPath={(pathId, levels) => decidePath(openEntry.slotId, pathId, true, levels)}
               onRejectPath={(pathId) => decidePath(openEntry.slotId, pathId, false)}
               onApplyFilters={(filters: AnalysisFilterSelections) =>
                 filterAnalysisEntry(auditReports[openEntry.slotId]!.session_id, openEntry.entryId, filters)

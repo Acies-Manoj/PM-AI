@@ -2,6 +2,7 @@ import { Spinner } from "../components/ThinkingLoader";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
+import { IconChevronLeft } from "../components/icons";
 import SourceSelect from "../components/SourceSelect";
 import FileUploadCard from "../components/FileUploadCard";
 import StepIndicator from "../components/StepIndicator";
@@ -58,6 +59,7 @@ export default function UploadPage({
   const [highlighted, setHighlighted] = useState<UploadSlotId | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [briefError, setBriefError] = useState<string | undefined>();
   const [samplesLoading, setSamplesLoading] = useState(false);
   const cardRefs: Partial<Record<UploadSlotId, HTMLDivElement | null>> = {};
 
@@ -94,7 +96,10 @@ export default function UploadPage({
       }
     }
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    const missingBrief = !brief.rawText.trim();
+    setBriefError(missingBrief ? "Client brief is required." : undefined);
+    if (missingBrief) window.scrollTo({ top: 0, behavior: "smooth" });
+    if (missingBrief || Object.keys(nextErrors).length > 0) return;
 
     setUploading(true);
     setUploadError(null);
@@ -124,6 +129,9 @@ export default function UploadPage({
     }
   };
 
+  // A full page load (not a router navigation) so the app starts completely fresh on the Get Started page.
+  const handleBack = () => window.location.assign("/");
+
   const handleJumpTo = (id: UploadSlotId) => {
     cardRefs[id]?.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlighted(id);
@@ -138,7 +146,14 @@ export default function UploadPage({
       <main className="upload-page__main">
         <StepIndicator current={1} />
 
-        <ClientBriefInput value={brief} onChange={onBriefChange} />
+        <ClientBriefInput
+          value={brief}
+          error={briefError}
+          onChange={(state) => {
+            setBriefError(undefined);
+            onBriefChange(state);
+          }}
+        />
 
         <div className="upload-page__search-row">
           <SourceSelect files={files} onSelect={handleJumpTo} />
@@ -147,9 +162,9 @@ export default function UploadPage({
         <div className="upload-page__intro">
           <h1 className="upload-page__heading">Upload Source Data</h1>
           <p className="upload-page__lede">
-            Provide the SensiWatch export to begin. ColdStream data, threshold references, and
-            customer KPI documents are optional but improve triage and reporting accuracy. SensiWatch
-            and ColdStream files go through the data audit on the next page.
+            Provide the SensiWatch export and a client brief to begin. ColdStream data, the Customer KPI
+            Profile, and the Analysis Profile are optional but improve triage and reporting accuracy.
+            SensiWatch and ColdStream files go through the data audit on the next page.
           </p>
         </div>
 
@@ -158,23 +173,28 @@ export default function UploadPage({
         )}
 
         <div className="upload-page__actions">
-          <span className="upload-page__count">{selectedCount} of {UPLOAD_SLOTS.length} files selected</span>
+          <div className="upload-page__left">
+            <button type="button" className="btn btn--secondary" onClick={handleBack} disabled={uploading}>
+              <IconChevronLeft /> Back
+            </button>
+            <span className="upload-page__count">{selectedCount} of {UPLOAD_SLOTS.length} files selected</span>
+          </div>
           <div className="upload-page__buttons">
             <button
               type="button"
-              className="upload-page__btn upload-page__btn--secondary"
+              className="btn btn--secondary"
               onClick={handleAddAllSamples}
               disabled={uploading || samplesLoading}
               title="Fills every slot with a bundled example file, so you can skip hunting one down each time you try the app."
             >
               {samplesLoading ? <><Spinner />Loading samples…</> : "Add all samples"}
             </button>
-            <button type="button" className="upload-page__btn upload-page__btn--secondary" onClick={onClearAll} disabled={uploading}>
+            <button type="button" className="btn btn--secondary" onClick={onClearAll} disabled={uploading}>
               Clear All
             </button>
             <button
               type="button"
-              className="upload-page__btn upload-page__btn--primary"
+              className="btn btn--primary"
               onClick={handleContinue}
               disabled={uploading}
             >
@@ -201,6 +221,20 @@ export default function UploadPage({
               />
             </div>
           ))}
+        </div>
+
+        <div className="upload-page__actions upload-page__actions--bottom">
+          <button type="button" className="btn btn--secondary" onClick={handleBack} disabled={uploading}>
+            <IconChevronLeft /> Back
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={handleContinue}
+            disabled={uploading}
+          >
+            {uploading ? <><Spinner />Uploading…</> : "Upload & Continue"}
+          </button>
         </div>
       </main>
     </div>

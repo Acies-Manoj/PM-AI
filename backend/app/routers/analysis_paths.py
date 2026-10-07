@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException
 
 from app.routers import analysis as analysis_router
-from app.schemas import DrilldownPath, DrilldownPathEntry, DrilldownPathStep
+from app.schemas import DrilldownPath, DrilldownPathAccept, DrilldownPathEntry, DrilldownPathStep
 from app.services.analysis import (
     analysis_agent,
     analysis_dependencies,
@@ -259,15 +259,33 @@ def _set_levels(session_id: str, path: dict, status: str) -> None:
 
 
 @router.post("/repository/{session_id}/paths/{path_id}/accept", response_model=DrilldownPath)
-def accept_path(session_id: str, path_id: str) -> DrilldownPath:
-    """Accept: every level of the path becomes a real drill-down (listed under
-    Selected Drill-downs, numbered in the report)."""
+def accept_path(session_id: str, path_id: str, body: DrilldownPathAccept | None = None) -> DrilldownPath:
+    """Accept the levels the PM kept as real drill-downs (listed under Selected Drill-downs, numbered in the
+    report). Levels deeper than the deepest kept one are discarded. A level skipped in the middle stays
+    calculated, because the next level is built from its results, but is marked so the report leaves it out."""
     session = analysis_router._get_session_or_404(session_id)
     path = analysis_paths.get(session_id, path_id)
     if path is None:
         raise HTTPException(status_code=404, detail="That drill-down path doesn't exist.")
     if path["status"] != "pending":
         raise HTTPException(status_code=409, detail=f"This path was already {path['status']}.")
+
+    path = _normalise(path)
+    all_levels = [st["level"] for st in path["steps"]]
+    keep = set(body.levels) & set(all_levels) if body and body.levels is not None else set(all_levels)
+    if not keep:
+        raise HTTPException(status_code=422, detail="Keep at least one level of the path.")
+    deepest = max(keep)
+
+    # Levels below the deepest kept one are discarded; the path then ends where the PM chose to stop.
+    for st in path["steps"]:
+        if st["level"] > deepest:
+            for e in st["entries"]:
+                if e.get("created"):
+                    analysis_repository.update_entry(session_id, e["entry_id"], {"status": "rejected"})
+    path["steps"] = [st for st in path["steps"] if st["level"] <= deepest]
+    path["skipped_levels"] = sorted(lvl for lvl in all_levels if lvl <= deepest and lvl not in keep)
+
     _set_levels(session_id, path, "approved")
     path["status"] = "accepted"
     analysis_paths.upsert(session_id, path)

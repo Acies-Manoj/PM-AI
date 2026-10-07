@@ -13,8 +13,17 @@ interface Props {
 }
 
 // Columns of the flagged-trips table. TRIP_REF carries each row's source record.
-const COLUMNS = ["Serial Number", "Trip ID", "Segment Days", "Mode of Transport", "Origin", "Destination", "Lower Fence", "Upper Fence", "Status"];
+const COLUMNS = ["Serial Number", "Trip ID", "Segment Days", "Origin", "Destination", "Lower Fence", "Upper Fence", "Status"];
 const TRIP_REF = "__trip";
+
+type ModeGroup = "Road" | "Ocean" | "Others";
+const MODE_GROUPS: ModeGroup[] = ["Road", "Ocean", "Others"];
+
+// Anything that isn't Road or Ocean (Rail, blank, ...) is bucketed under "Others".
+function modeGroup(mode: string | null): ModeGroup {
+  const m = (mode ?? "").trim().toLowerCase();
+  return m === "road" ? "Road" : m === "ocean" ? "Ocean" : "Others";
+}
 
 function statusLabel(row: SegmentOutlierRow): string {
   if (row.status.startsWith("Two Trips")) return "Pair disagrees";
@@ -27,14 +36,31 @@ function statusLabel(row: SegmentOutlierRow): string {
 
 export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props) {
   const [query, setQuery] = useState("");
+  // Mode groups switched OFF (everything is shown by default).
+  const [hiddenGroups, setHiddenGroups] = useState<Set<ModeGroup>>(new Set());
+
+  const groupCounts = useMemo(() => {
+    const out: Record<ModeGroup, number> = { Road: 0, Ocean: 0, Others: 0 };
+    for (const r of data.outlier_rows) out[modeGroup(r.mode)] += 1;
+    return out;
+  }, [data.outlier_rows]);
+
+  const toggleGroup = (g: ModeGroup) =>
+    setHiddenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g);
+      else next.add(g);
+      return next;
+    });
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return data.outlier_rows
+      .filter((r) => !hiddenGroups.has(modeGroup(r.mode)))
       .filter(
         (r) =>
           !q ||
-          [r.serial, r.trip_id, r.mode, r.origin, r.destination, r.segment_days, statusLabel(r)].some((v) =>
+          [r.serial, r.trip_id, r.origin, r.destination, r.segment_days, statusLabel(r)].some((v) =>
             String(v ?? "").toLowerCase().includes(q)
           )
       )
@@ -42,7 +68,6 @@ export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props)
         "Serial Number": r.serial,
         "Trip ID": r.trip_id,
         "Segment Days": r.segment_days,
-        "Mode of Transport": r.mode,
         Origin: r.origin,
         Destination: r.destination,
         "Lower Fence": r.lower_fence_days != null ? Math.round(r.lower_fence_days * 100) / 100 : null,
@@ -50,7 +75,7 @@ export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props)
         Status: statusLabel(r),
         [TRIP_REF]: r,
       }));
-  }, [data.outlier_rows, query]);
+  }, [data.outlier_rows, query, hiddenGroups]);
 
   if (!data.column_found) {
     return (
@@ -64,9 +89,7 @@ export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props)
     <div className="outlier-tab">
       <div className="outlier-tab__toolbar-row">
       <p className="outlier-tab__hint">
-        Trips whose transit duration (Segment Length) falls outside their lane's 5th-95th percentile fence, computed
-        only from that exact route's own trips. A lane with 1 trip uses it as the baseline; a lane with 2 trips is
-        flagged only if they differ by 3+ days and 1.5x or more. Click a Segment Days value to correct it.
+        Trips outside their lane's normal duration range (5th–95th percentile) by more than 15%. Click a Segment Days value to correct it.
       </p>
       {data.outlier_rows.length > 0 && (
         <div className="outlier-tab__search">
@@ -89,6 +112,28 @@ export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props)
       )}
       </div>
 
+      {data.outlier_rows.length > 0 && (
+        <div className="outlier-tab__modes" role="group" aria-labelledby="seg-mode-title">
+          <span id="seg-mode-title" className="outlier-tab__modes-title">Mode of transport</span>
+          <div className="outlier-tab__modes-pills">
+          {MODE_GROUPS.map((g) => {
+            const on = !hiddenGroups.has(g);
+            return (
+              <button
+                key={g}
+                type="button"
+                aria-pressed={on}
+                className={`outlier-tab__mode${on ? " is-on" : ""}`}
+                onClick={() => toggleGroup(g)}
+              >
+                {g} <span className="outlier-tab__mode-n">({groupCounts[g]})</span>
+              </button>
+            );
+          })}
+          </div>
+        </div>
+      )}
+
       {data.flagged_trips === 0 ? (
         <p className="outlier-tab__all-clear">No trips fell outside their lane's duration fence.</p>
       ) : (
@@ -98,7 +143,7 @@ export default function SegmentOutlierTab({ data, sessionId, onUpdated }: Props)
             rows={rows}
             frozen={["Serial Number", "Trip ID", "Segment Days"]}
             highlight="Segment Days"
-            emptyText={query ? `No trips match "${query}".` : undefined}
+            emptyText={query || hiddenGroups.size > 0 ? "No trips match the current search or mode selection." : undefined}
             renderCell={(col, row) => {
               if (col !== "Segment Days") return undefined;
               const t = row[TRIP_REF] as SegmentOutlierRow;

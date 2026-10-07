@@ -21,9 +21,11 @@ import pandas as pd
 from app.services.audit import anomaly_detection
 
 
-# Temperature outliers: "too warm" = the trip's mean temp is among the hottest
-# TEMP_WARM_TOP_PERCENT % of that product's trips; "too cold" = mean below the trip's Limit Low.
-TEMP_WARM_TOP_PERCENT = 5
+# Temperature outliers: "too warm" = the trip's mean temp is more than TEMP_WARM_SD_MULTIPLIER
+# standard deviations above the average mean temp of that product's trips (needs at least
+# TEMP_MIN_TRIPS trips); "too cold" = mean below the trip's Limit Low.
+TEMP_WARM_SD_MULTIPLIER = 2.0
+TEMP_MIN_TRIPS = 3
 
 _STATUS_TYPE_BY_LABEL = {
     anomaly_detection.STATUS_OWN_LANE: "own_lane",
@@ -266,13 +268,16 @@ def detect_temperature_outliers(df: pd.DataFrame) -> dict:
         else pd.Series(["Unknown"] * len(analysis_df), dtype=str)
     )
 
-    # Too warm: only the extreme top of each product's own mean temperatures, not every
-    # trip above the product's average (that would flag about half of them).
+    # Too warm: only the extremes above each product's own average line -- more than
+    # TEMP_WARM_SD_MULTIPLIER standard deviations over it, not every trip above the average
+    # (that would flag about half of them).
     products_key = pd.Series(products.values, index=analysis_df.index)
-    warm_cutoff = mean_temp.groupby(products_key).transform(
-        lambda s: s.quantile(1 - TEMP_WARM_TOP_PERCENT / 100)
-    )
-    too_warm = (mean_temp > warm_cutoff).fillna(False)
+    grouped_mean = mean_temp.groupby(products_key)
+    product_avg = grouped_mean.transform("mean")
+    product_sd = grouped_mean.transform("std")
+    product_n = grouped_mean.transform("count")
+    outlier_line = product_avg + TEMP_WARM_SD_MULTIPLIER * product_sd
+    too_warm = ((mean_temp > outlier_line) & (product_n >= TEMP_MIN_TRIPS) & (product_sd > 0)).fillna(False)
 
     by_product: list[dict] = []
     for product in sorted(products.unique()):
@@ -281,6 +286,9 @@ def detect_temperature_outliers(df: pd.DataFrame) -> dict:
         n_total = int(mask.sum())
         n_warm = int(too_warm[mask].sum())
         n_cold = int(too_cold[mask].sum())
+        first = idxs[0]
+        line = outlier_line.at[first]
+        has_line = bool(n_total and product_n.at[first] >= TEMP_MIN_TRIPS and product_sd.at[first] > 0)
 
         trips: list[dict] = []
         for i in idxs:
@@ -306,6 +314,8 @@ def detect_temperature_outliers(df: pd.DataFrame) -> dict:
             "too_warm": n_warm,
             "too_cold": n_cold,
             "in_spec": max(0, n_total - n_warm - n_cold),
+            "avg_temp": round(float(product_avg.at[first]), 2) if pd.notna(product_avg.at[first]) else None,
+            "outlier_line": round(float(line), 2) if has_line and pd.notna(line) else None,
             "trips": trips,
         })
 

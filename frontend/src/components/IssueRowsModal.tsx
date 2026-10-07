@@ -2,6 +2,7 @@ import ThinkingLoader from "./ThinkingLoader";
 import { LOADING } from "../utils/loadingMessages";
 import { useEffect, useState } from "react";
 import { fetchIssueRows, AuditApiError } from "../api/audit";
+import ExcelTable from "./ExcelTable";
 import "./IssueRowsModal.css";
 
 interface IssueRowsModalProps {
@@ -11,10 +12,6 @@ interface IssueRowsModalProps {
   onClose: () => void;
 }
 
-function formatCell(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  return String(value);
-}
 
 export default function IssueRowsModal({ title, sessionId, issueId, onClose }: IssueRowsModalProps) {
   const [loading, setLoading] = useState(true);
@@ -73,24 +70,7 @@ export default function IssueRowsModal({ title, sessionId, issueId, onClose }: I
 
         {data && (
           <div className="issue-rows-modal__scroll">
-            <table className="issue-rows-modal__table">
-              <thead>
-                <tr>
-                  {data.columns.map((col) => (
-                    <th key={col}>{col}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((row, idx) => (
-                  <tr key={idx}>
-                    {data.columns.map((col) => (
-                      <td key={col}>{formatCell(row[col])}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ExcelTable columns={data.columns} rows={data.rows} />
           </div>
         )}
       </div>

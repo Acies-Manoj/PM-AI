@@ -16,7 +16,7 @@ template-level presence check.
 import pandas as pd
 
 from app.schemas import FeatureResult
-from app.services.common import ai_code_executor
+from app.services.common import ai_code_executor, code_run_log, request_context
 from app.services.features import feature_agent, feature_cache
 
 TOP_N_DISTRIBUTION = 12
@@ -64,7 +64,8 @@ def _compute_with_cache(session_id: str, entry: dict, df: pd.DataFrame) -> featu
                 validation_note="Reused a previously validated computation.",
                 error=None,
             )
-        except Exception:
+        except Exception as exc:
+            code_run_log.fallback("feature", entry, reason="cache_replay_failed", detail=str(exc))
             feature_cache.invalidate(session_id, entry["id"])
 
     return feature_agent.compute_feature(entry, df)
@@ -80,7 +81,11 @@ def apply_features(session_id: str, df: pd.DataFrame, entries: list[dict]) -> tu
     skipped_notes: list[str] = []
 
     for entry in entries:
-        computation = _compute_with_cache(session_id, entry, working)
+        token = request_context.current_entry_id.set(entry["id"])
+        try:
+            computation = _compute_with_cache(session_id, entry, working)
+        finally:
+            request_context.current_entry_id.reset(token)
 
         if computation.values is None:
             skipped_notes.append(f"{entry['name']}: {computation.error}")

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from app.config import DEFAULT_MAX_TOKENS, FEATURE_AGENT_MODEL, model_for
-from app.services.common import ai_code_executor, llm
+from app.services.common import ai_code_executor, code_run_log, llm
 
 MAX_ATTEMPTS = 3
 # A pre-supplied formula (Planner-generated and PM-approved, or a fully
@@ -202,24 +202,37 @@ def compute_feature(entry: dict, df: pd.DataFrame) -> FeatureComputation:
     (regenerating code against the same plan first, then rethinking the plan
     itself as a last resort) up to MAX_ATTEMPTS times."""
     columns_block = _columns_block(df)
+    tally = {"attempts": 0}
     if entry.get("formula"):
-        return _compute_with_fixed_plan(entry, df, columns_block)
-    return _compute_with_generated_plan(entry, df, columns_block)
+        result = _compute_with_fixed_plan(entry, df, columns_block, tally)
+    else:
+        result = _compute_with_generated_plan(entry, df, columns_block, tally)
+    code_run_log.outcome(
+        "feature", entry, attempts=tally["attempts"], status="ok" if result.error is None else "failed", error=result.error,
+        extra={"used_fixed_formula": bool(entry.get("formula"))},
+    )
+    return result
 
 
-def _compute_with_fixed_plan(entry: dict, df: pd.DataFrame, columns_block: str) -> FeatureComputation:
+def _compute_with_fixed_plan(entry: dict, df: pd.DataFrame, columns_block: str, tally: dict) -> FeatureComputation:
     plan = {"plan": entry["formula"]}
     last_feedback: str | None = None
 
     for attempt in range(1, FIXED_FORMULA_MAX_ATTEMPTS + 1):
+        tally["attempts"] += 1
+        stage, code = "generate", None
         try:
             code_feedback = last_feedback if attempt > 1 else None
             code = generate_code(entry, plan, columns_block, feedback=code_feedback)
+            stage = "execute"
             values = ai_code_executor.run_generated_code(code, df)
+            stage = "validate"
             sample = _sample_block(df, entry, values, code=code)
             verdict = validate(entry, plan, sample)
 
             if verdict.get("valid"):
+                code_run_log.attempt("feature", entry, path="fixed_formula", attempt_no=attempt, status="ok",
+                                     code=code, validation=verdict.get("reason"))
                 return FeatureComputation(
                     values=values,
                     plan_text=plan["plan"],
@@ -228,8 +241,12 @@ def _compute_with_fixed_plan(entry: dict, df: pd.DataFrame, columns_block: str) 
                     error=None,
                 )
             last_feedback = verdict.get("reason") or "Validation failed for an unspecified reason."
+            code_run_log.attempt("feature", entry, path="fixed_formula", attempt_no=attempt, status="failed",
+                                 stage="validate", code=code, validation=last_feedback)
         except Exception as exc:
             last_feedback = str(exc)
+            code_run_log.attempt("feature", entry, path="fixed_formula", attempt_no=attempt, status="failed",
+                                 stage=stage, code=code, error=last_feedback)
 
     # The approved plan's WORDING was never the problem here -- every retry
     # kept making the same CODE-level mistake against it (e.g. a backwards
@@ -239,28 +256,37 @@ def _compute_with_fixed_plan(entry: dict, df: pd.DataFrame, columns_block: str) 
     # that can never self-correct. As a last resort, fall through to a fresh
     # Think -- carrying the validator's own feedback forward -- rather than
     # permanently failing a feature the data can very likely still support.
-    return _compute_with_generated_plan(entry, df, columns_block, seed_feedback=last_feedback)
+    return _compute_with_generated_plan(entry, df, columns_block, tally, seed_feedback=last_feedback)
 
 
-def _compute_with_generated_plan(entry: dict, df: pd.DataFrame, columns_block: str, seed_feedback: str | None = None) -> FeatureComputation:
+def _compute_with_generated_plan(
+    entry: dict, df: pd.DataFrame, columns_block: str, tally: dict, seed_feedback: str | None = None
+) -> FeatureComputation:
     plan: dict | None = None
     last_feedback: str | None = seed_feedback
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        tally["attempts"] += 1
+        stage, code = "think", None
         try:
             if plan is None or attempt == MAX_ATTEMPTS:
                 # First attempt, or last-resort rethink after a code-level fix
                 # already failed once.
                 plan = think(entry, columns_block, feedback=last_feedback)
 
+            stage = "generate"
             code_feedback = last_feedback if attempt > 1 else None
             code = generate_code(entry, plan, columns_block, feedback=code_feedback)
+            stage = "execute"
             values = ai_code_executor.run_generated_code(code, df)
 
+            stage = "validate"
             sample = _sample_block(df, entry, values, code=code)
             verdict = validate(entry, plan, sample)
 
             if verdict.get("valid"):
+                code_run_log.attempt("feature", entry, path="generated_plan", attempt_no=attempt, status="ok",
+                                     code=code, validation=verdict.get("reason"))
                 return FeatureComputation(
                     values=values,
                     plan_text=plan.get("plan"),
@@ -269,8 +295,12 @@ def _compute_with_generated_plan(entry: dict, df: pd.DataFrame, columns_block: s
                     error=None,
                 )
             last_feedback = verdict.get("reason") or "Validation failed for an unspecified reason."
+            code_run_log.attempt("feature", entry, path="generated_plan", attempt_no=attempt, status="failed",
+                                 stage="validate", code=code, validation=last_feedback)
         except Exception as exc:
             last_feedback = str(exc)
+            code_run_log.attempt("feature", entry, path="generated_plan", attempt_no=attempt, status="failed",
+                                 stage=stage, code=code, error=last_feedback)
 
     prefix = "This feature's approved formula couldn't be implemented correctly, and a fresh plan also failed: " if seed_feedback else ""
     return FeatureComputation(

@@ -41,7 +41,7 @@ from app.services.analysis.analysis_agent import AnalysisComputation
 from app.routers import deps
 from app.routers.deps import User, get_user
 from app.services.audit.audit_store import AuditSession, store
-from app.services.common import request_context
+from app.services.common import request_context, selections
 from app.services.common.audit_log import log_event
 from app.services.features import feature_repository
 
@@ -212,7 +212,8 @@ def add_custom_analysis(session_id: str, body: AddCustomAnalysisRequest, user: U
         session_id, body.name.strip(), body.description.strip(), body.calculation_intent.strip(), body.input_columns,
         formula=formula, template=template, chart_recommendation=chart_recommendation, filters=filters,
     )
-    log_event(session_id, user.id, "analysis_custom_added", {"entry_id": entry["id"], "name": entry.get("name")})
+    log_event(session_id, user.id, "analysis_custom_added", {"entry_id": entry["id"], "name": entry.get("name"), "formula": entry.get("formula")})
+    selections.refresh(session_id, user.id, "analysis_custom_added")
     return _merge_entry(session, entry)
 
 
@@ -240,6 +241,7 @@ def accept_entry(session_id: str, entry_id: str, user: User = Depends(get_user))
     if entry is None:
         raise HTTPException(status_code=404, detail="Analysis entry not found in this session's repository.")
     log_event(session_id, user.id, "analysis_accepted", {"entry_id": entry_id, "name": entry.get("name")})
+    selections.refresh(session_id, user.id, "analysis_accepted")
     return _merge_entry(session, entry)
 
 
@@ -250,6 +252,7 @@ def reject_entry(session_id: str, entry_id: str, user: User = Depends(get_user))
     if entry is None:
         raise HTTPException(status_code=404, detail="Analysis entry not found in this session's repository.")
     log_event(session_id, user.id, "analysis_rejected", {"entry_id": entry_id, "name": entry.get("name")})
+    selections.refresh(session_id, user.id, "analysis_rejected")
     return _merge_entry(session, entry)
 
 
@@ -259,10 +262,21 @@ def _run_entry(session: AuditSession, session_id: str, entry: dict) -> AnalysisR
     recorded as run_status="error" so one entry's failure never blocks the
     rest of the page, mirroring the feature system's skipped_notes
     philosophy."""
-    computation = analysis_engine.run_analysis(
-        session_id, analysis_dependencies.prepare_entry(session_id, entry, session.df), session.df,
-    )
-    session.analysis_results[entry["id"]] = _to_result(entry, computation)
+    previous = session.analysis_results.get(entry["id"])
+    token = request_context.current_entry_id.set(entry["id"])
+    try:
+        computation = analysis_engine.run_analysis(
+            session_id, analysis_dependencies.prepare_entry(session_id, entry, session.df), session.df,
+        )
+    finally:
+        request_context.current_entry_id.reset(token)
+    result = _to_result(entry, computation)
+    if previous is not None and result.result_table is not None and result.result_table == previous.result_table:
+        # Same numbers as before: the drill-down suggestions already made (and paid for) still
+        # apply, so keep them instead of asking the model again on the next open.
+        result.drilldown_suggestions = previous.drilldown_suggestions
+        result.guided_proposals = previous.guided_proposals
+    session.analysis_results[entry["id"]] = result
     return _merge_entry(session, entry)  # callers save the session once they are done
 
 
@@ -304,7 +318,12 @@ def run_entry(session_id: str, entry_id: str, user: User = Depends(get_user)) ->
         raise HTTPException(status_code=422, detail=blocked)
     out = _run_entry(session, session_id, entry)
     store.save(session)
-    log_event(session_id, user.id, "analysis_run", {"entry_id": entry_id, "name": entry.get("name"), "run_status": out.run_status})
+    log_event(session_id, user.id, "analysis_run", {
+        "entry_id": entry_id, "name": entry.get("name"), "run_status": out.run_status,
+        "computation_mode": getattr(out, "computation_mode", None), "error": out.error,
+        "has_code": bool(out.generated_code), "has_template": bool(out.template),
+    })
+    selections.refresh(session_id, user.id, "analysis_run")
     return out
 
 
@@ -393,6 +412,7 @@ def suggest_more_drilldowns(session_id: str, entry_id: str, user: User = Depends
         raise HTTPException(status_code=409, detail="Run this analysis before asking for more drill-downs.")
 
     existing = result.drilldown_suggestions
+    had = len(existing)
     try:
         fresh = analysis_agent.suggest_drilldowns(
             analysis_dependencies.prepare_entry(session_id, entry, session.df),
@@ -416,6 +436,12 @@ def suggest_more_drilldowns(session_id: str, entry_id: str, user: User = Depends
         next_index += 1
     session.analysis_results[entry_id] = result  # list extended in place: re-assign so it is saved
     store.save(session)
+    log_event(session_id, user.id, "drilldown_suggested", {
+        "entry_id": entry_id, "name": entry.get("name"),
+        "added": [{"id": d.id, "name": d.name} for d in existing[had:]],
+        "total": len(existing),
+    })
+    selections.refresh(session_id, user.id, "drilldown_suggested", session)
     return _merge_entry(session, entry)
 
 
@@ -558,6 +584,14 @@ def propose_drilldowns(session_id: str, entry_id: str, more: bool = False, user:
     result.guided_proposals = result.guided_proposals + [DrilldownProposal(**p) for p in new_proposals]
     session.analysis_results[entry_id] = result
     store.save(session)
+    log_event(session_id, user.id, "drilldown_proposed", {
+        "entry_id": entry_id, "name": entry.get("name"), "dimension": dimension,
+        "new_proposals": len(new_proposals), "total": len(result.guided_proposals), "more": more,
+        "proposals": [
+            {"dimensions": p.child_dimensions or [p.child_dimension], "metric": p.metric, "focus_values": p.focus_values[:10]}
+            for p in result.guided_proposals[len(result.guided_proposals) - len(new_proposals):]
+        ],
+    })
     return result.guided_proposals
 
 

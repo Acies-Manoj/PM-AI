@@ -40,7 +40,7 @@ from app.services.analysis import analysis_agent, analysis_cache, analysis_depen
 from app.services.analysis.analysis_agent import AnalysisComputation
 from app.services.analysis.analysis_filters import FilterSelection
 from app.services.analysis.analysis_templates import TemplateError
-from app.services.common import ai_code_executor, request_context
+from app.services.common import ai_code_executor, code_run_log, request_context
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,7 @@ def _replay_cached(session_id: str, entry: dict, df: pd.DataFrame, cached: dict,
         return computation
     except Exception as exc:
         logger.info("cached computation for %s no longer fits the data: %s", entry["id"], exc)
+        code_run_log.fallback("analysis", entry, reason="cache_replay_failed", detail=str(exc))
         analysis_cache.invalidate(session_id, entry["id"])
         return None
 
@@ -183,7 +184,9 @@ def _design_and_run(session_id: str, entry: dict, df: pd.DataFrame, chart_type: 
             computation = _run_template(entry, df, match["template"], chart, True, steps)
         except TemplateError as exc:
             logger.info("matched template failed on the full run for %s: %s", entry["id"], exc)
+            code_run_log.fallback("analysis", entry, reason="template_failed", detail=str(exc))
         else:
+            code_run_log.fallback("analysis", entry, reason="template_ok", detail=str(match["template"])[:500])
             computation.chart_recommendation = recommendation
             computation.filters = options["filters"]
             computation.notes[:0] = notes
@@ -231,6 +234,7 @@ def run_analysis(session_id: str, entry: dict, df: pd.DataFrame) -> AnalysisComp
             return _run_template(entry, df, entry["template"], chart_type, narrate=True)
         except TemplateError as exc:
             fallback_note = f"The template no longer fits the current data ({exc}), so code generation was used."
+            code_run_log.fallback("analysis", entry, reason="template_failed", detail=str(exc))
 
     computation = None
     cached = analysis_cache.get(session_id, entry)

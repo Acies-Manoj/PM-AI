@@ -16,6 +16,11 @@ current_user_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("cu
 current_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_session_id", default=None)
 
 
+# The feature / analysis entry being computed right now, so an LLM call can be tied to the stored
+# document its output ends up in (see token_usage.output_ref).
+current_entry_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_entry_id", default=None)
+
+
 def wrap(fn: Callable[..., T]) -> Callable[..., T]:
     """Bind `fn` to a copy of the caller's context: `executor.submit(wrap(fn), *args)`."""
     ctx = contextvars.copy_context()

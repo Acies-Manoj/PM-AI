@@ -129,6 +129,10 @@ class AuditSession:
         self.summary = summary
         self.features: list[FeatureResult] = []
         self.feature_skipped_notes: list[str] = []
+        # Snapshot of the PM's decisions and final selected features / analyses (see
+        # services/common/selections.py). Stored in the header so the Sessions table row alone
+        # answers "what did this user decide".
+        self.selections: dict = {}
         # Undo support for resolved issues that actually mutated `df` (dropped columns /
         # removed rows). Any of them can be reverted, in any order: `audit_baseline` is the data
         # before the FIRST change and `audit_events` is every change since, in order (audit
@@ -285,6 +289,7 @@ class AuditSession:
             "issues": [i.model_dump(mode="json") for i in self.issues],
             "features": [f.model_dump(mode="json") for f in self.features],
             "feature_skipped_notes": list(self.feature_skipped_notes),
+            "selections": self.selections,
             "mutation_stack": list(self.mutation_stack),
             "audit_events": list(self.audit_events),
             "frames": self._frame_refs,
@@ -305,6 +310,7 @@ class AuditSession:
         session.issues = [AuditIssue.model_validate(i) for i in header.get("issues", [])]
         session.features = [FeatureResult.model_validate(f) for f in header.get("features", [])]
         session.feature_skipped_notes = list(header.get("feature_skipped_notes", []))
+        session.selections = dict(header.get("selections") or {})
         session.mutation_stack = list(header.get("mutation_stack", []))
         session.audit_events = list(header.get("audit_events", []))
         session.created_at = header.get("created_at", session.created_at)

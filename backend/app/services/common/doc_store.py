@@ -210,6 +210,10 @@ def get_with_version(session_id: str, doc: str) -> tuple[Any | None, int | None]
 def put(session_id: str, doc: str, data: Any, *, expected_version: Any = ANY, ttl_days: int | None = None) -> int:
     """Create or replace a document; returns the new version."""
     if USE_AWS_STORAGE:
+        from app.services.common import request_context
+
+        # Stamp the writer on the item so a doc can be traced to a user without joining on the session.
+        user_id = request_context.current_user_id.get()
         return blob_put(
             DDB_DOCS,
             {"session_id": safe_session_id(session_id), "doc": doc},
@@ -217,6 +221,7 @@ def put(session_id: str, doc: str, data: Any, *, expected_version: Any = ANY, tt
             s3_prefix=_s3_prefix(session_id, doc),
             expected_version=expected_version,
             ttl_days=ttl_days,
+            extra={"user_id": user_id} if user_id else None,
         )
     path = _local_path(session_id, doc)
     with _local_lock:

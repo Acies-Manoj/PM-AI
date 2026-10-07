@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.routers.deps import User, get_user, require_owned
-from app.services.common import audit_log, doc_store
+from app.services.common import audit_log, doc_store, selections
 from app.services.planner import planner as planner_service
 
 router = APIRouter(prefix="/api/planner", tags=["planner"])
@@ -76,5 +76,6 @@ def save_decisions(req: SaveRequest, user: User = Depends(get_user)):
         req.session_id, user.id, "planner_save",
         {"decisions": [d.model_dump() for d in req.decisions]},
     )
+    selections.refresh(req.session_id, user.id, "planner_save")
 
     return SaveResponse(session_id=req.session_id, saved=True)

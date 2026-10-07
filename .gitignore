@@ -30,3 +30,6 @@ backend/prompts_export/
 .idea/
 .DS_Store
 ~$*
+
+# chat exports (contain account ids and resource names)
+docs/exports/

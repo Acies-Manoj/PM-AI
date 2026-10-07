@@ -2,6 +2,7 @@ import io
 import json
 import re
 import uuid
+from typing import Literal
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -16,8 +17,9 @@ from app.services.audit import data_audit
 from app.services.audit.audit_agent import generate_audit_analysis
 from app.services.audit.audit_store import AuditSession, store
 from app.services.audit.column_profiler import profile_dataframe
+from app.services.audit import outlier_audit
 from app.services.audit.excel_parser import load_spreadsheet
-from app.services.common import audit_log, aws_clients, doc_store
+from app.services.common import audit_log, aws_clients, doc_store, selections
 from app.services.features import feature_engineering, feature_repository
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
@@ -280,6 +282,7 @@ def resolve_issue(session_id: str, body: ResolveRequest, user: User = Depends(ge
         {"issue_id": issue.id, "decision_id": body.decision_id,
          "selected_items": list(body.selected_items) if body.selected_items else None},
     )
+    selections.refresh(session_id, user.id, "audit_decision", session)
     return _to_report(session)
 
 
@@ -455,8 +458,14 @@ def apply_features(session_id: str, user: User = Depends(get_user)) -> FeatureRe
     store.save(session)
     audit_log.log_event(
         session_id, user.id, "apply_features",
-        {"features": [f.output_column for f in results], "rows": len(new_df), "cols": len(new_df.columns)},
+        {
+            "features": [f.output_column for f in results], "rows": len(new_df), "cols": len(new_df.columns),
+            "requested": [e["name"] for e in entries],
+            "validation": {f.output_column: f.validation_note for f in results},
+            "skipped": skipped_notes,
+        },
     )
+    selections.refresh(session_id, user.id, "apply_features", session)
     return _to_feature_report(session)
 
 
@@ -469,11 +478,41 @@ def get_features(session_id: str, user: User = Depends(get_user)) -> FeatureRepo
 def get_outliers(session_id: str, user: User = Depends(get_user)):
     from app.services.audit.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
     session = load_owned_session(session_id, user)
-    return {
-        "session_id": session_id,
-        "segment": detect_segment_outliers(session.df),
-        "temperature": detect_temperature_outliers(session.df),
-    }
+    segment = detect_segment_outliers(session.df)
+    temperature = detect_temperature_outliers(session.df)
+    outlier_audit.record_detection(session_id, user.id, segment, temperature)
+    return {"session_id": session_id, "segment": segment, "temperature": temperature}
+
+
+class OutlierReviewRequest(BaseModel):
+    """A PM closing out one outlier tab: `completed` (reviewed, possibly edited) or `skipped`
+    (kept every flagged value as-is). `note` is optional free text."""
+    tab: Literal["segment", "temperature"]
+    action: Literal["completed", "skipped"]
+    note: str | None = None
+
+
+@router.post("/{session_id}/outliers/review")
+def review_outliers(session_id: str, body: OutlierReviewRequest, user: User = Depends(get_user)):
+    from app.services.audit.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
+    session = load_owned_session(session_id, user)
+    segment = detect_segment_outliers(session.df)
+    temperature = detect_temperature_outliers(session.df)
+    summary = outlier_audit.summarize(segment, temperature)
+    outlier_audit.record(session_id, user.id, "review", {
+        "tab": body.tab, "decision": body.action, "note": body.note,
+        "flagged_remaining": summary[body.tab]["flagged"] if body.tab == "segment"
+        else summary["temperature"]["too_warm"] + summary["temperature"]["too_cold"],
+        "trips_remaining": summary[body.tab]["trips"],
+    })
+    return {"ok": True}
+
+
+@router.get("/{session_id}/outliers/audit")
+def get_outlier_audit(session_id: str, user: User = Depends(get_user)):
+    """Every recorded outlier detection, edit and review for this session."""
+    load_owned_session(session_id, user)
+    return outlier_audit.entries(session_id)
 
 
 @router.patch("/{session_id}/trip-value")
@@ -491,6 +530,11 @@ def edit_trip_value(session_id: str, body: UpdateTripValueRequest, user: User = 
     from app.services.audit.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
     from app.services.audit.outlier_detectors import update_trip_value as apply_trip_value_edit
     session = load_owned_session(session_id, user)
+    # What the detector says about this trip BEFORE the edit (old value, flag, fence), for the audit trail.
+    before = outlier_audit.trip_context(
+        body.field, body.serial, body.trip_id,
+        detect_segment_outliers(session.df), detect_temperature_outliers(session.df),
+    )
     try:
         session.df = apply_trip_value_edit(session.df, body.serial, body.trip_id, body.field, body.value)
     except ValueError as exc:
@@ -518,8 +562,13 @@ def edit_trip_value(session_id: str, body: UpdateTripValueRequest, user: User = 
         session_id, user.id, "edit",
         {"serial": body.serial, "trip_id": body.trip_id, "field": body.field, "value": body.value},
     )
-    return {
-        "session_id": session_id,
-        "segment": detect_segment_outliers(session.df),
-        "temperature": detect_temperature_outliers(session.df),
-    }
+    segment = detect_segment_outliers(session.df)
+    temperature = detect_temperature_outliers(session.df)
+    after = outlier_audit.trip_context(body.field, body.serial, body.trip_id, segment, temperature)
+    outlier_audit.record(session_id, user.id, "edit", {
+        "field": body.field, "serial": body.serial, "trip_id": body.trip_id,
+        "old_value": before.get("value"), "new_value": body.value,
+        "was_flagged": before["was_flagged"], "still_flagged": after["was_flagged"],
+        "context": {k: v for k, v in before.items() if k not in ("value", "was_flagged")},
+    })
+    return {"session_id": session_id, "segment": segment, "temperature": temperature}

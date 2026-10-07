@@ -15,6 +15,7 @@ from app.schemas import (
 from app.routers import deps
 from app.routers.deps import User, get_user
 from app.services.audit.audit_store import store as audit_store
+from app.services.common import selections
 from app.services.common.audit_log import log_event
 from app.services.features import feature_definitions_store as defs_store
 from app.services.features import feature_designer, feature_repository, feature_suggester
@@ -83,7 +84,8 @@ def add_custom_feature(session_id: str, body: AddCustomFeatureRequest, user: Use
     if formula:
         feature_designer.seed_cache_from_draft(session_id, session.feature_drafts, body.draft_token, entry)
         audit_store.save(session)  # the used draft is popped from session.feature_drafts
-    log_event(session_id, user.id, "feature_custom_added", {"entry_id": entry.get("id"), "name": entry.get("name")})
+    log_event(session_id, user.id, "feature_custom_added", {"entry_id": entry.get("id"), "name": entry.get("name"), "formula": entry.get("formula")})
+    selections.refresh(session_id, user.id, "feature_custom_added")
     return FeatureRepositoryEntry(**entry)
 
 
@@ -131,6 +133,7 @@ def accept_entry(session_id: str, entry_id: str, user: User = Depends(get_user))
     if entry is None:
         raise HTTPException(status_code=404, detail="Feature entry not found in this session's repository.")
     log_event(session_id, user.id, "feature_accepted", {"entry_id": entry_id, "name": entry.get("name")})
+    selections.refresh(session_id, user.id, "feature_accepted")
     return FeatureRepositoryEntry(**entry)
 
 
@@ -141,4 +144,5 @@ def reject_entry(session_id: str, entry_id: str, user: User = Depends(get_user))
     if entry is None:
         raise HTTPException(status_code=404, detail="Feature entry not found in this session's repository.")
     log_event(session_id, user.id, "feature_rejected", {"entry_id": entry_id, "name": entry.get("name")})
+    selections.refresh(session_id, user.id, "feature_rejected")
     return FeatureRepositoryEntry(**entry)

@@ -11,6 +11,7 @@ Run from the backend folder, with AWS credentials that may use Prompt Management
 (bedrock:CreatePrompt, UpdatePrompt, CreatePromptVersion, GetPrompt, ListPrompts):
 
   python scripts/bedrock_prompts.py create --dry-run    show what would be created
+  (--region eu-north-1 may go before or after the command)
   python scripts/bedrock_prompts.py create              upload every prompt file (+ a version each)
   python scripts/bedrock_prompts.py verify              compare Bedrock with the files
   python scripts/bedrock_prompts.py pull                download Bedrock's text back into the files (a backup)
@@ -315,6 +316,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("create", help="upload the prompt files to Bedrock (and a version each)")
+    p.add_argument("--region", default=argparse.SUPPRESS, help="Bedrock region (same as the global --region)")
     p.add_argument("--out", default="prompts_export")
     p.add_argument("--only")
     p.add_argument("--model", help="model id stored on the prompt variant (default BEDROCK_DEFAULT_MODEL)")
@@ -323,12 +325,14 @@ def main() -> int:
     p.set_defaults(fn=cmd_create)
 
     p = sub.add_parser("verify", help="compare Bedrock's text with the files")
+    p.add_argument("--region", default=argparse.SUPPRESS, help="Bedrock region (same as the global --region)")
     p.add_argument("--only")
     p.add_argument("--ids", dest="ids_file", help="JSON file of {call: 'ID:version'} (default: BEDROCK_PROMPT_IDS)")
     p.add_argument("--diff", action="store_true")
     p.set_defaults(fn=cmd_verify)
 
     p = sub.add_parser("pull", help="download Bedrock's text into backend/prompts/ (a backup)")
+    p.add_argument("--region", default=argparse.SUPPRESS, help="Bedrock region (same as the global --region)")
     p.add_argument("--only")
     p.add_argument("--ids", dest="ids_file", help="JSON file of {call: 'ID:version'} (default: BEDROCK_PROMPT_IDS)")
     p.set_defaults(fn=cmd_pull)

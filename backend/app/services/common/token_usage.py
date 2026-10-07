@@ -36,6 +36,42 @@ class TokenUsage:
     user_id: str | None = None
 
 
+# Where the output of each kind of call is stored. `{e}` is the feature / analysis entry being
+# computed (request_context.current_entry_id); a call with no stored output maps to None.
+_OUTPUT_REFS: dict[str, str | None] = {
+    "feature_agent_think": "FCACHE#{e}",
+    "feature_agent_write_code": "FCACHE#{e}",
+    "feature_agent_validate": "FCACHE#{e}",
+    "analysis_agent_think": "ACACHE#{e}",
+    "analysis_agent_write_code": "ACACHE#{e}",
+    "analysis_agent_chart_suggestion": "ACACHE#{e}",
+    "analysis_designer_template_match": "ACACHE#{e}",
+    "analysis_designer_chart": "ACACHE#{e}",
+    "analysis_agent_interpret": "RESULT#{e}",
+    "analysis_agent_drilldown": "RESULT#{e}",
+    "drilldown_agent": "RESULT#{e}",
+    "drilldown_agent_more": "RESULT#{e}",
+    "drilldown_path": "PATHS",
+    "planner_agent": "PLANNER_SUGGEST",
+    "feature_suggester": "FEATURE_REPO",
+    "analysis_suggester": "ANALYSIS_REPO",
+    "overall_analysis_agent": "OVERALL",
+    "audit_agent": "session.json",
+    "report_final_summary_agent": None,
+}
+
+
+def output_ref(call_name: str) -> str | None:
+    """Name of the stored document/file this call's output lands in (not the output itself)."""
+    template = _OUTPUT_REFS.get(call_name)
+    if template is None:
+        return None
+    entry_id = request_context.current_entry_id.get()
+    if "{e}" in template:
+        return template.format(e=entry_id) if entry_id else None
+    return template
+
+
 def record(call_name: str, model: str, usage: dict[str, Any] | None) -> TokenUsage | None:
     """Store the usage block of a Bedrock Converse response (`inputTokens`, `outputTokens`,
     `totalTokens`). Returns None if there is no usage block -- callers must not fail on that."""
@@ -71,6 +107,7 @@ def record(call_name: str, model: str, usage: dict[str, Any] | None) -> TokenUsa
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": total,
+            "output_ref": output_ref(call_name),
         },
     )
     return entry

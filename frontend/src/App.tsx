@@ -8,7 +8,7 @@ import AuditPage from "./pages/AuditPage";
 import FeaturesPage from "./pages/FeaturesPage";
 import AnalysisPage from "./pages/AnalysisPage";
 import ReportPage from "./pages/ReportPage";
-import { AuditApiError, resolveIssue, revertIssue, runAudit, uploadOnly } from "./api/audit";
+import { AuditApiError, resolveIssue, reuploadCorrected, revertIssue, runAudit } from "./api/audit";
 import type { AuditReport as AuditReportData } from "./api/audit";
 import { isAudited } from "./constants/uploadSlots";
 import type { UploadSlotId } from "./types/upload";
@@ -138,21 +138,25 @@ function App() {
   };
 
   // A corrected file re-uploaded from the SensiWatch outlier-correction step
-  // (see AuditPage / OutlierCorrectionStep) -- treated as a fresh upload for
-  // that slot, same session-reset shape as handleSelect uses for a normal
-  // first upload, so the audit pipeline re-runs cleanly from scratch on it.
-  const handleReuploadSensiwatch = async (file: File) => {
+  // (see AuditPage / OutlierCorrectionStep) -- uploaded into the SAME session, with
+  // the audit state cleared so the pipeline re-runs from scratch on the corrected data.
+  // Resolves to the (unchanged) session id, or null if the upload failed.
+  const handleReuploadSensiwatch = async (file: File): Promise<string | null> => {
+    const sessionId = sessionIdsRef.current.sensiwatch;
+    if (!sessionId) return null;
     setReuploadingSensiwatch(true);
     setReuploadError(null);
     try {
-      const result = await uploadOnly("sensiwatch", file);
+      // Same session: the backend diffs the corrected file against the original upload and swaps the data in.
+      await reuploadCorrected(sessionId, file);
       resetAllState();
       setFiles((prev) => ({ ...prev, sensiwatch: file }));
-      setUploadedSessionIds((prev) => ({ ...prev, sensiwatch: result.session_id }));
       setAuditReports((prev) => ({ ...prev, sensiwatch: undefined }));
       setAuditErrors((prev) => ({ ...prev, sensiwatch: undefined }));
+      return sessionId;
     } catch (err) {
       setReuploadError(err instanceof AuditApiError ? err.message : "Could not upload the corrected file.");
+      return null;
     } finally {
       setReuploadingSensiwatch(false);
     }

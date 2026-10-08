@@ -32,6 +32,7 @@ _STATUS_TYPE_BY_LABEL = {
     anomaly_detection.STATUS_SINGLE: "single_trip",
     anomaly_detection.STATUS_PAIR_OK: "pair_consistent",
     anomaly_detection.STATUS_PAIR_FLAG: "pair_inconsistent",
+    anomaly_detection.STATUS_PAIR_OCEAN: "pair_inconsistent",
     anomaly_detection.STATUS_INSUFFICIENT: "insufficient",
 }
 

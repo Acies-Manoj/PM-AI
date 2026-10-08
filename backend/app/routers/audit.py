@@ -66,36 +66,21 @@ class UploadOnlyResponse(BaseModel):
     row_count: int
     column_count: int
     columns: list[str]
+    change_summary: dict | None = None
 
 
-@router.post("/upload", response_model=UploadOnlyResponse)
-async def upload_for_profiling(
-    file: UploadFile = File(...), source: str = Form(...)
-) -> UploadOnlyResponse:
-    """Upload a file, create a session, and profile its columns.
-    Does NOT run the audit agent — call /{session_id}/run for that."""
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=422, detail="Uploaded file is empty.")
-
+def _write_column_metadata(session: AuditSession) -> None:
     try:
-        df, _warnings = load_spreadsheet(raw, file.filename or "upload")
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    session = store.create(source=source, filename=file.filename or "upload", df=df)
-
-    try:
-        col_meta = profile_dataframe(df)
+        df = session.df
         session_dir = _SESSIONS_DIR / session.session_id
         session_dir.mkdir(parents=True, exist_ok=True)
         combined = {
             "session_id": session.session_id,
             "filename": session.filename,
-            "source": source,
+            "source": session.source,
             "row_count": len(df),
             "column_count": len(df.columns),
-            "columns": col_meta,
+            "columns": profile_dataframe(df),
         }
         (session_dir / "column_metadata.json").write_text(
             json.dumps(combined, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -103,12 +88,105 @@ async def upload_for_profiling(
     except Exception:
         pass
 
+
+def _change_log_xlsx(log: pd.DataFrame, summary: dict) -> bytes:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        log.to_excel(writer, index=False, sheet_name="Change Log")
+        flat = {k: ", ".join(v) if isinstance(v, list) else v for k, v in summary.items()}
+        pd.DataFrame({"Metric": list(flat), "Value": list(flat.values())}).to_excel(
+            writer, index=False, sheet_name="Summary"
+        )
+    return buffer.getvalue()
+
+
+def _to_upload_response(session: AuditSession) -> UploadOnlyResponse:
     return UploadOnlyResponse(
         session_id=session.session_id,
         filename=session.filename,
-        row_count=len(df),
-        column_count=len(df.columns),
-        columns=[str(c) for c in df.columns],
+        row_count=len(session.df),
+        column_count=len(session.df.columns),
+        columns=[str(c) for c in session.df.columns],
+        change_summary=session.change_summary,
+    )
+
+
+async def _read_spreadsheet(file: UploadFile) -> pd.DataFrame:
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Uploaded file is empty.")
+    try:
+        df, _warnings = load_spreadsheet(raw, file.filename or "upload")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return df
+
+
+@router.post("/upload", response_model=UploadOnlyResponse)
+async def upload_for_profiling(file: UploadFile = File(...), source: str = Form(...)) -> UploadOnlyResponse:
+    """Upload a file, create a session, and profile its columns.
+    Does NOT run the audit agent — call /{session_id}/run for that."""
+    df = await _read_spreadsheet(file)
+    session = store.create(source=source, filename=file.filename or "upload", df=df)
+    _write_column_metadata(session)
+    return _to_upload_response(session)
+
+
+@router.post("/{session_id}/reupload", response_model=UploadOnlyResponse)
+async def reupload_corrected_file(session_id: str, file: UploadFile = File(...)) -> UploadOnlyResponse:
+    """The PM's corrected export, uploaded into the SAME session. The corrected data is diffed
+    against the untouched original upload (every re-upload compares to the original, not the
+    previous re-upload) and saved as change_log.xlsx, then replaces the session's data.
+    Everything derived from the old data (audit findings, decisions, features, analyses) is
+    reset so the remaining steps run on the corrected file only. The brief and the Planner's
+    files live in the session folder and stay as they were."""
+    from app.services.audit.change_tracker import compute_change_log
+
+    session = _get_session_or_404(session_id)
+    corrected = await _read_spreadsheet(file)
+
+    try:
+        if session.raw_df is None:
+            raise ValueError("The original upload is no longer available to compare against.")
+        log, summary = compute_change_log(session.raw_df, corrected, session.flagged_trips or {})
+        summary["flagged_snapshot_available"] = session.flagged_trips is not None
+        session.change_log, session.change_summary = log, summary
+        session_dir = _SESSIONS_DIR / session.session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / "change_log.xlsx").write_bytes(_change_log_xlsx(log, summary))
+    except Exception as exc:
+        session.change_log, session.change_summary = None, {"error": str(exc)}
+
+    session.df = corrected
+    session.filename = file.filename or session.filename
+    session.issues, session.summary = [], ""
+    session.features, session.feature_skipped_notes = [], []
+    session.mutation_stack, session.audit_baseline, session.audit_events = [], None, []
+    session.pre_feature_df = None
+    session.analysis_results, session.overall_analysis, session.feature_drafts = {}, None, {}
+    _write_column_metadata(session)
+    return _to_upload_response(session)
+
+
+@router.get("/{session_id}/changes")
+def get_changes(session_id: str):
+    """Summary of what the PM changed between the original upload and the corrected upload."""
+    session = _get_session_or_404(session_id)
+    if session.change_summary is None:
+        raise HTTPException(status_code=404, detail="No corrected file has been uploaded for this session.")
+    return session.change_summary
+
+
+@router.get("/{session_id}/changes/download")
+def download_changes(session_id: str):
+    """The full change log (all columns of every changed trip + tags) as .xlsx."""
+    session = _get_session_or_404(session_id)
+    if session.change_log is None:
+        raise HTTPException(status_code=404, detail="No change log for this session.")
+    return Response(
+        content=_change_log_xlsx(session.change_log, session.change_summary or {}),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="change_log.xlsx"'},
     )
 
 
@@ -382,12 +460,14 @@ def get_features(session_id: str) -> FeatureReport:
 @router.get("/{session_id}/outliers")
 def get_outliers(session_id: str):
     from app.services.audit.outlier_detectors import detect_segment_outliers, detect_temperature_outliers
+    from app.services.audit.change_tracker import flagged_trips_from_outliers
     session = _get_session_or_404(session_id)
-    return {
-        "session_id": session_id,
-        "segment": detect_segment_outliers(session.df),
-        "temperature": detect_temperature_outliers(session.df),
-    }
+    segment = detect_segment_outliers(session.df)
+    temperature = detect_temperature_outliers(session.df)
+    if session.flagged_trips is None:
+        # First check on this session = the original flags; kept for the change log.
+        session.flagged_trips = flagged_trips_from_outliers(segment, temperature)
+    return {"session_id": session_id, "segment": segment, "temperature": temperature}
 
 
 @router.patch("/{session_id}/trip-value")

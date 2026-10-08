@@ -33,7 +33,7 @@ interface AuditPageProps {
   onRunAudit: (id: UploadSlotId) => void;
   onResolveIssue: (id: UploadSlotId, issueId: string, decisionId: string, selectedItems?: string[]) => Promise<void>;
   onRevertIssue: (id: UploadSlotId, issueId: string) => void;
-  onReuploadSensiwatch: (file: File) => Promise<void>;
+  onReuploadSensiwatch: (file: File) => Promise<string | null>;
   reuploadingSensiwatch: boolean;
   reuploadError: string | null;
 }
@@ -80,16 +80,23 @@ export default function AuditPage({
 
   useEffect(() => {
     for (const id of AUDITED_SLOTS) {
-      if (id === WIZARD_SLOT) continue; // deferred until the outlier step is passed -- see below
+      // SensiWatch's audit is deferred until the outlier step is passed (skipped or corrected file uploaded).
+      if (id === WIZARD_SLOT && !sensiwatchStandardUnlocked) continue;
       if (needsAudit(id)) onRunAudit(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uploadedSessionIds, auditReports, auditLoading, auditErrors]);
+  }, [uploadedSessionIds, auditReports, auditLoading, auditErrors, sensiwatchStandardUnlocked]);
 
-  const advanceSensiwatchToStandard = () => {
-    setUnlockedForSession(sensiwatchSessionId ?? null);
+  const advanceSensiwatchToStandard = (sessionId: string | null | undefined = sensiwatchSessionId) => {
+    setUnlockedForSession(sessionId ?? null);
     setWizardActiveTab("standard");
-    if (needsAudit(WIZARD_SLOT)) onRunAudit(WIZARD_SLOT);
+  };
+
+  // The corrected file replaces the original: skip a second outlier review and go straight to
+  // the Standard Check on the new session.
+  const handleCorrectedFile = async (file: File) => {
+    const newSessionId = await onReuploadSensiwatch(file);
+    if (newSessionId) advanceSensiwatchToStandard(newSessionId);
   };
 
   const auditedSlotsWithFiles = AUDITED_SLOTS.filter((id) => uploadedSessionIds[id]);
@@ -209,8 +216,8 @@ export default function AuditPage({
                   {wizardActiveTab === "outliers" ? (
                     <OutlierCorrectionStep
                       sessionId={uploadedSessionIds[id]!}
-                      onFileCorrected={(file) => onReuploadSensiwatch(file)}
-                      onProceed={advanceSensiwatchToStandard}
+                      onFileCorrected={handleCorrectedFile}
+                      onProceed={() => advanceSensiwatchToStandard()}
                       uploading={reuploadingSensiwatch}
                       uploadError={reuploadError}
                     />

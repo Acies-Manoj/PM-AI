@@ -12,7 +12,7 @@ import "./OutlierCorrectionStep.css";
 
 interface OutlierCorrectionStepProps {
   sessionId: string;
-  onFileCorrected: (file: File) => void;
+  onFileCorrected: (file: File) => void | Promise<unknown>;
   onProceed: () => void;
   uploading: boolean;
   uploadError: string | null;

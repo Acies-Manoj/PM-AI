@@ -58,6 +58,17 @@ class AuditSession:
     # cache from here, so the validated code is reused instead of regenerated
     # -- the browser never sends code back.
     feature_drafts: dict[str, dict] = field(default_factory=dict)
+    # Untouched copy of the file exactly as first uploaded (audit decisions and
+    # inline edits mutate `df`, never this). A corrected re-upload replaces `df`
+    # in this same session and is diffed against this copy: the result lands in
+    # `change_log` / `change_summary`.
+    raw_df: pd.DataFrame | None = None
+    # Trips flagged the FIRST time the Outliers Check ran on this session (before
+    # any inline edit), {trip key: outlier type}. Stored so the change log reuses
+    # it instead of re-running detection. None until that first check.
+    flagged_trips: dict[str, str] | None = None
+    change_log: pd.DataFrame | None = None
+    change_summary: dict | None = None
 
 
 class AuditStore:
@@ -80,6 +91,7 @@ class AuditStore:
             df=df,
             issues=issues if issues is not None else [],
             summary=summary,
+            raw_df=df.copy(),
         )
         with self._lock:
             self._sessions[session.session_id] = session

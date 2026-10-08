@@ -59,15 +59,18 @@ PERCENTILE = 0.95
 
 # Lane duration-outlier thresholds (see compute_lane_duration_outliers).
 LANE_MIN_TRIPS_FOR_FENCE = 3  # lanes with FEWER trips than this (i.e. 1-2) get no percentile fence
-# Thin lanes: a single trip is its own baseline (never flagged); a pair is flagged
-# (both trips, for review) only when it disagrees by BOTH an absolute gap and a ratio.
-PAIR_MIN_GAP_DAYS = 3.0
+# Thin lanes: a single trip is its own baseline (never flagged). A pair is flagged only when
+# the longer trip is at least PAIR_MIN_RATIO x the shorter (no absolute-gap check). For an
+# OCEAN pair whose shorter trip is under OCEAN_MIN_SEGMENT_DAYS (no real ocean leg is that
+# quick), only that short trip is the outlier; otherwise both trips are flagged for review.
 PAIR_MIN_RATIO = 1.5
+OCEAN_MIN_SEGMENT_DAYS = 7.0
 
 STATUS_OWN_LANE = "Own-Lane Fence"
 STATUS_SINGLE = "Single Trip (Baseline)"
 STATUS_PAIR_OK = "Two Trips (Consistent)"
 STATUS_PAIR_FLAG = "Two Trips (Inconsistent Pair)"
+STATUS_PAIR_OCEAN = "Two Trips (Ocean Below Minimum)"
 STATUS_INSUFFICIENT = "Insufficient History"
 DURATION_FENCE_LOWER_PERCENTILE = 0.05
 DURATION_FENCE_UPPER_PERCENTILE = 0.95
@@ -168,12 +171,18 @@ def compute_lane_duration_outliers(
       than DURATION_FENCE_TOLERANCE (the reported fence itself is unchanged).
     - Lanes with exactly 1 usable trip: that trip is the lane's baseline
       (fence = its own value), never flagged.
-    - Lanes with exactly 2 usable trips: fence = [min, max]. Neither trip can be
-      singled out, so both are flagged for review only when the pair disagrees
-      by at least PAIR_MIN_GAP_DAYS AND PAIR_MIN_RATIO.
+    - Lanes with exactly 2 usable trips: fence = [min, max]. Flagged only when the longer
+      trip is at least PAIR_MIN_RATIO x the shorter. Then both trips are flagged, except
+      an ocean pair with a trip under OCEAN_MIN_SEGMENT_DAYS, where only that trip is.
     - Lanes with 0 usable trips: "Insufficient History", nothing to judge.
     """
     duration = pd.to_numeric(df[duration_col], errors="coerce")
+    mode_col = next((c for c in df.columns if "mode" in str(c).lower() and "transport" in str(c).lower()), None)
+    is_ocean = (
+        df[mode_col].astype(str).str.strip().str.lower().eq("ocean")
+        if mode_col is not None
+        else pd.Series(False, index=df.index)
+    )
     lane = list(zip(df[origin_col].fillna("(blank)"), df[destination_col].fillna("(blank)")))
     lane_series = pd.Series(lane, index=df.index)
 
@@ -195,9 +204,15 @@ def compute_lane_duration_outliers(
             if n == 1:
                 status.loc[idx] = STATUS_SINGLE
             else:
-                inconsistent = (hi - lo) >= PAIR_MIN_GAP_DAYS and hi >= PAIR_MIN_RATIO * max(lo, 1e-9)
-                status.loc[idx] = STATUS_PAIR_FLAG if inconsistent else STATUS_PAIR_OK
-                if inconsistent:
+                if hi < PAIR_MIN_RATIO * max(lo, 1e-9):
+                    status.loc[idx] = STATUS_PAIR_OK
+                    continue
+                too_short_ocean = is_ocean.loc[idx] & (duration.loc[idx] < OCEAN_MIN_SEGMENT_DAYS)
+                if too_short_ocean.any():
+                    status.loc[idx] = STATUS_PAIR_OCEAN
+                    is_outlier.loc[idx] = too_short_ocean
+                else:
+                    status.loc[idx] = STATUS_PAIR_FLAG
                     is_outlier.loc[idx] = duration.loc[idx].notna()
             continue
 

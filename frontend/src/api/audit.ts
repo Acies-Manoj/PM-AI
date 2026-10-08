@@ -450,6 +450,23 @@ export async function uploadOnly(source: string, file: File): Promise<UploadOnly
   return response.json();
 }
 
+/** Upload the PM's corrected export into the SAME session: the backend diffs it against the
+ * original upload, saves the change log, and replaces the session's data (audit state is reset). */
+export async function reuploadCorrected(sessionId: string, file: File): Promise<UploadOnlyResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/reupload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new AuditApiError(await parseErrorDetail(response));
+  }
+  return response.json();
+}
+
 /** Run the audit agent on an already-uploaded session. */
 export async function runAudit(sessionId: string): Promise<AuditReport> {
   const response = await fetch(`${API_BASE_URL}/api/audit/${sessionId}/run`, {

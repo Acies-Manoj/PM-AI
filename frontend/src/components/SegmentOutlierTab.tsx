@@ -26,6 +26,7 @@ function modeGroup(mode: string | null): ModeGroup {
 }
 
 function statusLabel(row: SegmentOutlierRow): string {
+  if (row.status.includes("Ocean Below Minimum")) return "Ocean below minimum";
   if (row.status.startsWith("Two Trips")) return "Pair disagrees";
   const days = row.segment_days;
   if (days == null) return "Outlier";

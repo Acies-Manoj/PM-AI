@@ -1,0 +1,8 @@
+# Rename/copy to backend.hcl only after CG provides remote state details.
+# Then run: tofu init -backend-config=environments/opentofu/backend.hcl
+bucket = "CHANGE_ME_CG_TOFU_STATE_BUCKET"
+key    = "pmai/opentofu/tofu.tfstate"
+region = "CHANGE_ME_CG_REGION"
+# dynamodb_table = "CHANGE_ME_STATE_LOCK_TABLE" # if CG uses DynamoDB locking
+# encrypt        = true
+# kms_key_id     = "CHANGE_ME_KMS_KEY_ID"       # if CG requires KMS

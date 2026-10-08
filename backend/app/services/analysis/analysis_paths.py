@@ -43,19 +43,23 @@ _SYSTEM = None  # the system prompt lives in Amazon Bedrock Prompt Management (d
 # --- storage -----------------------------------------------------------------------------------------
 
 
-PATHS_DOC = "PATHS"
+# One document per path: DRILL#<analysis id>#<path id> (the analysis is the path's `root_id`).
+DOC_PREFIX = "DRILL#"
+
+
+def _doc(path: dict) -> str:
+    return f"{DOC_PREFIX}{path['root_id']}#{path['path_id']}"
 
 
 def load(session_id: str) -> list[dict]:
+    """Every drill-down path of the session, oldest first."""
     try:
-        data = doc_store.get(session_id, PATHS_DOC)
-        return data.get("paths", []) if isinstance(data, dict) else []
+        docs = doc_store.list_docs(session_id, DOC_PREFIX)
     except Exception:
         return []
-
-
-def save(session_id: str, paths: list[dict]) -> None:
-    doc_store.put(session_id, PATHS_DOC, {"session_id": session_id, "paths": paths})
+    paths = [d for d in docs.values() if isinstance(d, dict) and "path_id" in d]
+    paths.sort(key=lambda p: (p.get("created_at", ""), p["path_id"]))
+    return paths
 
 
 def get(session_id: str, path_id: str) -> dict | None:
@@ -63,12 +67,7 @@ def get(session_id: str, path_id: str) -> dict | None:
 
 
 def upsert(session_id: str, path: dict) -> None:
-    def _merge(data):
-        paths = [p for p in ((data or {}).get("paths") or []) if p["path_id"] != path["path_id"]]
-        paths.append(path)
-        return {"session_id": session_id, "paths": paths}
-
-    doc_store.update(session_id, PATHS_DOC, _merge, default={})
+    doc_store.put(session_id, _doc(path), path)
 
 
 def new_path_id() -> str:

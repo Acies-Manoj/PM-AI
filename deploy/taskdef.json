@@ -18,7 +18,6 @@
         { "name": "BEDROCK_REGION", "value": "eu-north-1" },
         { "name": "TRANSLATE_REGION", "value": "eu-north-1" },
         { "name": "S3_BUCKET", "value": "pmai-data-<ACCOUNT_ID>-eu-north-1" },
-        { "name": "DDB_SESSIONS", "value": "pmai-sessions" },
         { "name": "DDB_DOCS", "value": "pmai-docs" },
         { "name": "DDB_PROFILES", "value": "pmai-profiles" },
         { "name": "DDB_AUDIT", "value": "pmai-audit-log" },

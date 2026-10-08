@@ -1,7 +1,7 @@
 """Audit trail for the Segment and Mean Temperature outlier review.
 
 Every outlier-related action is written twice: to the audit log as an `outlier_*` event (so it
-shows on the Audit Log page next to everything else) and to the session's `OUTLIER_AUDIT` doc
+shows on the Audit Log page next to everything else) and to the session's `OUTLIER` doc
 (one ordered list, so "what happened to the outliers in this session" is one read).
 
 Actions recorded:
@@ -17,7 +17,7 @@ from typing import Any
 
 from app.services.common import audit_log, doc_store
 
-DOC = "OUTLIER_AUDIT"
+DOC = "OUTLIER"
 _MAX_ENTRIES = 2000
 _MAX_TRIP_KEYS = 500
 

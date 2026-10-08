@@ -143,7 +143,7 @@ def finalize(req: FinalizeRequest, user: User = Depends(get_user)):
     """Merge brief + all uploaded datasets into one metadata.json.
 
     Uses the first audit session as the canonical session: the brief is stored
-    as that session's BRIEF_META document.
+    as that session's BRIEF document.
     """
     if not req.audit_session_ids:
         raise HTTPException(status_code=400, detail="At least one audit_session_id is required.")
@@ -165,7 +165,7 @@ def finalize(req: FinalizeRequest, user: User = Depends(get_user)):
         "files": [f.model_dump() for f in req.files],
     }
 
-    doc_store.put(primary_sid, "BRIEF_META", metadata)
+    doc_store.put(primary_sid, "BRIEF", metadata)
     audit_log.log_event(
         primary_sid, user.id, "brief_finalize",
         {"audit_session_ids": req.audit_session_ids, "files": [f.filename for f in req.files]},

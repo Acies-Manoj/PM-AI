@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.services.common import doc_store
+from app.services.planner import planner_store
 
 log = logging.getLogger(__name__)
 
@@ -54,11 +55,11 @@ def build(session_id: str, user_id: str, session: Any | None = None) -> dict[str
 
     session = session or store.get(session_id)
 
-    planner = doc_store.get(session_id, "PLANNER_OUTPUT") or {}
+    planner_recs = planner_store.load(session_id)
     planner_decisions = [
         {"index": i, "name": r.get("name"), "type": r.get("type"),
          "pm_decision": r.get("pm_decision", "pending"), "pm_notes": r.get("pm_notes", "")}
-        for i, r in enumerate(planner.get("recommendations", []))
+        for i, r in enumerate(planner_recs)
     ]
 
     features = feature_repository.get_repository(session_id)
@@ -100,7 +101,7 @@ def build(session_id: str, user_id: str, session: Any | None = None) -> dict[str
             for r in session.analysis_results.values()
         ]
 
-    outlier = doc_store.get(session_id, "OUTLIER_AUDIT") or []
+    outlier = doc_store.get(session_id, "OUTLIER") or []
     snapshot["outlier_review"] = {
         "edits": sum(1 for e in outlier if e.get("action") == "edit"),
         "reviews": [{"tab": e.get("tab"), "decision": e.get("decision"), "ts": e.get("ts")}

@@ -280,7 +280,7 @@ def accept_path(session_id: str, path_id: str, user: User = Depends(get_user)) -
     _set_levels(session_id, path, "approved")
     path["status"] = "accepted"
     analysis_paths.upsert(session_id, path)
-    log_event(session_id, user.id, "drilldown_path_accepted", {"path_id": path_id})
+    log_event(session_id, user.id, "drilldown_path_accepted", {"entry_id": path.get("root_id"), "path_id": path_id})
     return _response(session, session_id, path)
 
 
@@ -296,5 +296,5 @@ def reject_path(session_id: str, path_id: str, user: User = Depends(get_user)) -
     _set_levels(session_id, path, "rejected")
     path["status"] = "rejected"
     analysis_paths.upsert(session_id, path)
-    log_event(session_id, user.id, "drilldown_path_rejected", {"path_id": path_id})
+    log_event(session_id, user.id, "drilldown_path_rejected", {"entry_id": path.get("root_id"), "path_id": path_id})
     return _response(session, session_id, path)

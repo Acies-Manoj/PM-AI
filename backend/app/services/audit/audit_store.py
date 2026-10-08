@@ -6,7 +6,9 @@ returns a mutable `AuditSession` and routers still assign to its fields -- with 
 **after changing a session, call `store.save(session)`**. Nothing is written until then.
 
 Where the pieces live (see services/common/session_repo.py and doc_store.py):
-  * header  (owner, filename, issues, features, events, ...)  -> DynamoDB `DDB_SESSIONS`
+  * header  (owner, filename, features, events, ...)           -> doc `SESSIONS` in `DDB_DOCS`
+  * issues (one per audit finding)                            -> doc `ISSUE#<issue id>`
+  * proposals (drill-down suggestions)                        -> doc `PROPOSAL#<analysis id>#<nnn>`
   * df / pre_feature_df / audit_baseline (DataFrames)         -> S3 `frames/<id>/<name>.parquet`
   * analysis_results (one per entry)                          -> doc `RESULT#<entry id>`
   * overall_analysis                                          -> doc `OVERALL`
@@ -39,6 +41,8 @@ from app.services.common.doc_store import VersionConflict
 FRAME_NAMES = ("df", "pre_feature_df", "audit_baseline")
 RESULT_PREFIX = "RESULT#"
 DRAFT_PREFIX = "DRAFT#"
+ISSUE_PREFIX = "ISSUE#"
+PROPOSAL_PREFIX = "PROPOSAL#"
 OVERALL_DOC = "OVERALL"
 # A feature draft is only meant to live for one editing sitting.
 DRAFT_TTL_DAYS = 2
@@ -104,6 +108,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _issue_doc_name(issue_id: str) -> str:
+    return f"{ISSUE_PREFIX}{issue_id}"
+
+
+def _proposal_doc_name(analysis_id: str, index: int) -> str:
+    return f"{PROPOSAL_PREFIX}{analysis_id}#{index:03d}"
+
+
+def _group_proposals(docs: dict[str, Any]) -> dict[str, list[dict]]:
+    """{analysis id: [proposal, ...] in order} from the PROPOSAL#<analysis id>#<nnn> documents."""
+    grouped: dict[str, list[dict]] = {}
+    for name in sorted(docs):
+        analysis_id = name[len(PROPOSAL_PREFIX):].rsplit("#", 1)[0]
+        grouped.setdefault(analysis_id, []).append(docs[name])
+    return grouped
+
+
 class AuditSession:
     """One uploaded file's audit/feature/analysis state. Same fields as before; the large ones
     are lazy properties (see module docstring)."""
@@ -127,6 +148,10 @@ class AuditSession:
         self.raw_key = raw_key
         self.issues: list[AuditIssue] = issues if issues is not None else []
         self.summary = summary
+        # Size of the dataset as uploaded (the Planner reads these; the column profiles are the
+        # COLUMN#<name> documents).
+        self.row_count = len(df) if df is not None else 0
+        self.column_count = len(df.columns) if df is not None else 0
         self.features: list[FeatureResult] = []
         self.feature_skipped_notes: list[str] = []
         # Snapshot of the PM's decisions and final selected features / analyses (see
@@ -157,6 +182,10 @@ class AuditSession:
             self._frames["df"] = _UNLOADED
         self._frames["pre_feature_df"] = None
         self._frames["audit_baseline"] = None
+
+        # What is stored for each ISSUE# / PROPOSAL# document, so save() writes only what changed.
+        self._issue_docs: dict[str, dict] = {}
+        self._proposal_docs: dict[str, list[dict]] = {}
 
         self._analysis_results: _TrackedDict | None = None
         self._overall: Any = _UNLOADED
@@ -223,11 +252,17 @@ class AuditSession:
             with self._lock:
                 if self._analysis_results is None:
                     loaded = _TrackedDict()
+                    # The drill-down proposals of each result are their own PROPOSAL# documents.
+                    proposals = _group_proposals(doc_store.list_docs(self.session_id, PROPOSAL_PREFIX))
                     for doc, data in doc_store.list_docs(self.session_id, RESULT_PREFIX).items():
+                        key = doc[len(RESULT_PREFIX):]
                         try:
-                            dict.__setitem__(loaded, doc[len(RESULT_PREFIX):], AnalysisResult.model_validate(data))
+                            if key in proposals:
+                                data = {**data, "guided_proposals": proposals[key]}
+                            dict.__setitem__(loaded, key, AnalysisResult.model_validate(data))
                         except Exception:  # a result from an older schema: drop it, it can be re-run
                             continue
+                        self._proposal_docs[key] = list(proposals.get(key, []))
                     self._analysis_results = loaded
         return self._analysis_results
 
@@ -286,7 +321,8 @@ class AuditSession:
             "filename": self.filename,
             "raw_key": self.raw_key,
             "summary": self.summary,
-            "issues": [i.model_dump(mode="json") for i in self.issues],
+            "row_count": self.row_count,
+            "column_count": self.column_count,
             "features": [f.model_dump(mode="json") for f in self.features],
             "feature_skipped_notes": list(self.feature_skipped_notes),
             "selections": self.selections,
@@ -296,6 +332,25 @@ class AuditSession:
             "created_at": self.created_at,
             "updated_at": _now(),
         }
+
+    def _issue_doc(self, issue: AuditIssue, order: int) -> dict:
+        """The ISSUE#<id> document: the finding as shown to the PM (title, options, AI
+        recommendation, status, resolution) plus `applied`, the decision that was applied to the
+        data (also kept in `audit_events` of the header, which the undo replays)."""
+        doc = issue.model_dump(mode="json")
+        doc["order"] = order
+        applied = None
+        if issue.status == "resolved":
+            applied = next(
+                (
+                    {"decision_id": e.get("decision_id"), "selected_items": e.get("selected_items")}
+                    for e in self.audit_events
+                    if e.get("type") == "decision" and e.get("issue_id") == issue.id
+                ),
+                None,
+            )
+        doc["applied"] = applied
+        return doc
 
     @classmethod
     def _from_header(cls, header: dict, version: int) -> "AuditSession":
@@ -307,7 +362,16 @@ class AuditSession:
             raw_key=header.get("raw_key"),
         )
         session.summary = header.get("summary", "")
-        session.issues = [AuditIssue.model_validate(i) for i in header.get("issues", [])]
+        session.row_count = int(header.get("row_count", 0) or 0)
+        session.column_count = int(header.get("column_count", 0) or 0)
+        # Issues are ISSUE#<id> documents; a session saved before that still has them in its header.
+        issue_docs = doc_store.list_docs(session.session_id, ISSUE_PREFIX)
+        if issue_docs:
+            ordered = sorted(issue_docs.values(), key=lambda d: d.get("order", 0))
+            session.issues = [AuditIssue.model_validate(d) for d in ordered]
+            session._issue_docs = {d["id"]: d for d in ordered}
+        else:
+            session.issues = [AuditIssue.model_validate(i) for i in header.get("issues", [])]
         session.features = [FeatureResult.model_validate(f) for f in header.get("features", [])]
         session.feature_skipped_notes = list(header.get("feature_skipped_notes", []))
         session.selections = dict(header.get("selections") or {})
@@ -408,10 +472,30 @@ class AuditStore:
             results = session._analysis_results
             if results is not None:
                 for key in sorted(results.changed):
-                    doc_store.put(session.session_id, RESULT_PREFIX + key, results[key].model_dump(mode="json"))
+                    data = results[key].model_dump(mode="json")
+                    proposals = data.pop("guided_proposals", None) or []  # stored as PROPOSAL# documents
+                    doc_store.put(session.session_id, RESULT_PREFIX + key, data)
+                    previous = session._proposal_docs.get(key)
+                    if previous != proposals:
+                        doc_store.put_many(
+                            session.session_id, {_proposal_doc_name(key, i): p for i, p in enumerate(proposals)}
+                        )
+                        for i in range(len(proposals), len(previous or [])):
+                            doc_store.delete(session.session_id, _proposal_doc_name(key, i))
+                        session._proposal_docs[key] = proposals
                 for key in sorted(results.removed):
                     doc_store.delete(session.session_id, RESULT_PREFIX + key)
+                    for i in range(len(session._proposal_docs.pop(key, []))):
+                        doc_store.delete(session.session_id, _proposal_doc_name(key, i))
                 results.mark_clean()
+            # issues: only the ones that changed since they were loaded / last saved
+            current_issues = {i.id: session._issue_doc(i, n) for n, i in enumerate(session.issues)}
+            changed = {_issue_doc_name(k): d for k, d in current_issues.items() if session._issue_docs.get(k) != d}
+            if changed:
+                doc_store.put_many(session.session_id, changed)
+            for gone in set(session._issue_docs) - set(current_issues):
+                doc_store.delete(session.session_id, _issue_doc_name(gone))
+            session._issue_docs = current_issues
             drafts = session._feature_drafts
             if drafts is not None:
                 for key in sorted(drafts.changed):

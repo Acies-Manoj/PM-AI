@@ -1,11 +1,9 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.routers.deps import User, get_user, require_owned
-from app.services.common import audit_log, doc_store, selections
-from app.services.planner import planner as planner_service
+from app.services.common import audit_log, selections
+from app.services.planner import planner as planner_service, planner_store
 
 router = APIRouter(prefix="/api/planner", tags=["planner"])
 
@@ -49,29 +47,16 @@ def suggest(req: SuggestRequest, user: User = Depends(get_user)):
 @router.post("/save", response_model=SaveResponse)
 def save_decisions(req: SaveRequest, user: User = Depends(get_user)):
     require_owned(req.session_id, user)
-    planner_data = doc_store.get(req.session_id, "PLANNER_SUGGEST")
-
-    if planner_data is None:
+    if not planner_store.load(req.session_id):
         raise HTTPException(
             status_code=404,
             detail="No planner suggestions found for this session. Call /suggest first.",
         )
 
-    recommendations = planner_data.get("recommendations", [])
-
-    decision_map = {d.recommendation_index: d for d in req.decisions}
-    for i, rec in enumerate(recommendations):
-        decision = decision_map.get(i)
-        rec["pm_decision"] = decision.pm_decision if decision else "pending"
-        rec["pm_notes"] = decision.pm_notes if decision else ""
-
-    output = {
-        "session_id": req.session_id,
-        "saved_at": datetime.now(timezone.utc).isoformat(),
-        "recommendations": recommendations,
-    }
-
-    doc_store.put(req.session_id, "PLANNER_OUTPUT", output)
+    # The decision lands on the recommendation's own PLAN#<n> document.
+    planner_store.apply_decisions(
+        req.session_id, {d.recommendation_index: (d.pm_decision, d.pm_notes) for d in req.decisions}
+    )
     audit_log.log_event(
         req.session_id, user.id, "planner_save",
         {"decisions": [d.model_dump() for d in req.decisions]},

@@ -1,7 +1,7 @@
 """Persistence for an audit session: the small header (DynamoDB) and its DataFrames (S3).
 
   header  -- JSON: owner, filename, issues, features, audit events, which frames exist, ...
-             DynamoDB table DDB_SESSIONS (item overflows to S3 if it ever gets big).
+             DynamoDB table DDB_DOCS, item `SESSIONS` (overflows to S3 if it ever gets big).
   frames  -- the pandas DataFrames (`df`, `pre_feature_df`, `audit_baseline`), one object each
              at s3://<bucket>/frames/<session_id>/<name>.parquet.
 
@@ -21,7 +21,7 @@ from typing import Any
 
 import pandas as pd
 
-from app.config import DATA_DIR, DDB_SESSIONS, S3_BUCKET, USE_AWS_STORAGE
+from app.config import DATA_DIR, DDB_DOCS, S3_BUCKET, USE_AWS_STORAGE
 from app.services.common.doc_store import (
     ANY,
     VersionConflict,
@@ -34,13 +34,20 @@ from app.services.common.doc_store import (
 _SESSIONS_DIR = DATA_DIR / "sessions"
 _local_lock = threading.RLock()
 
+# The header is one item of the docs table, next to the session's other records.
+HEADER_DOC = "SESSIONS"
+
+
+def _header_key(sid: str) -> dict[str, str]:
+    return {"session_id": sid, "doc": HEADER_DOC}
+
 
 # --------------------------------------------------------------------------- header
 def load_header(session_id: str) -> tuple[dict | None, int | None]:
     """(header dict, version) or (None, None) if the session does not exist."""
     sid = safe_session_id(session_id)
     if USE_AWS_STORAGE:
-        return blob_get(DDB_SESSIONS, {"session_id": sid}, s3_prefix=f"overflow/{sid}/__session")
+        return blob_get(DDB_DOCS, _header_key(sid), s3_prefix=f"overflow/{sid}/{HEADER_DOC}")
     path = _SESSIONS_DIR / sid / "session.json"
     with _local_lock:
         if not path.exists():
@@ -58,10 +65,10 @@ def save_header(session_id: str, header: dict, *, expected_version: Any = ANY) -
     sid = safe_session_id(session_id)
     if USE_AWS_STORAGE:
         return blob_put(
-            DDB_SESSIONS,
-            {"session_id": sid},
+            DDB_DOCS,
+            _header_key(sid),
             header,
-            s3_prefix=f"overflow/{sid}/__session",
+            s3_prefix=f"overflow/{sid}/{HEADER_DOC}",
             expected_version=expected_version,
             extra={"user_id": str(header.get("user_id", ""))} if header.get("user_id") else None,
         )

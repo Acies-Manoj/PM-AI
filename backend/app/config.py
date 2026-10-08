@@ -24,12 +24,12 @@ BEDROCK_REGION = os.getenv("BEDROCK_REGION", AWS_REGION)
 TRANSLATE_REGION = os.getenv("TRANSLATE_REGION", AWS_REGION)
 
 S3_BUCKET = os.getenv("S3_BUCKET", "")
-DDB_SESSIONS = os.getenv("DDB_SESSIONS", "")
 DDB_DOCS = os.getenv("DDB_DOCS", "")
 DDB_PROFILES = os.getenv("DDB_PROFILES", "")
 DDB_AUDIT = os.getenv("DDB_AUDIT", "")
 
-USE_AWS_STORAGE = bool(S3_BUCKET and DDB_SESSIONS and DDB_DOCS)
+# The session header lives in the docs table too (doc "SESSIONS"), so two settings are enough.
+USE_AWS_STORAGE = bool(S3_BUCKET and DDB_DOCS)
 
 # Sessions and their documents expire (DynamoDB TTL) this many days after last write.
 SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "30"))

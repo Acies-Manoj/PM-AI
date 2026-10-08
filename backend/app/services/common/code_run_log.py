@@ -2,8 +2,9 @@
 
 The agents retry code generation against validator / executor feedback; without a trace the
 only evidence of that is the final winning code. Each attempt is written to the audit log as a
-`code_attempt` event (attempt number, which path, the code, the stage that failed, the error or
-validator verdict), and each finished run as a `code_run` event (total attempts, final status).
+`code_attempt` event (attempt number, which path, ok/failed, the stage that failed -- no code or
+error text; the winning code is kept in the analysis cache doc), and each finished run as a
+`code_run` event (total attempts, final status).
 
 Session and user come from `request_context`, so the agents need no extra parameters. Logging
 never raises (see audit_log.log_event).
@@ -51,9 +52,6 @@ def attempt(
             "attempt": attempt_no,
             "status": status,
             "stage": stage,
-            "code": _clip(code, _MAX_CODE_CHARS),
-            "error": _clip(error, _MAX_TEXT_CHARS),
-            "validation": _clip(validation, _MAX_TEXT_CHARS),
         },
     )
 

@@ -13,21 +13,25 @@ whatever is currently in the global Analysis Profile store / that session's
 planner_output.json, so re-uploading a profile or re-approving planner
 recommendations is picked up automatically. `custom`, `ai_suggested`, and
 `drilldown` are the only entries actually persisted to
-analysis_repository.json (their accept/reject state and PM-authored/
+one ANALYSIS#<id> document each (their accept/reject state and PM-authored/
 PM-triggered content can't be re-derived from anywhere else). Every read
 rebuilds the full merged view.
 """
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from app.services.analysis import analysis_definitions_store as defs_store
 from app.services.common import doc_store
+from app.services.planner import planner_store
 
 _PERSISTED_SOURCES = {"custom", "ai_suggested", "drilldown"}
 
-REPO_DOC = "ANALYSIS_REPO"
-PLANNER_DOC = "PLANNER_OUTPUT"
+# One document per persisted analysis: ANALYSIS#<id> (see also analysis_cache.py, which keeps the
+# final code in the same document under "cache").
+DOC_PREFIX = "ANALYSIS#"
+_INTERNAL_KEYS = ("cache", "persisted", "created_at")
 
 
 def _predefined_entries(session_id: str | None = None) -> list[dict]:
@@ -82,15 +86,12 @@ def predefined_catalog_lines(session_id: str | None = None) -> list[str]:
 
 def _planner_entries(session_id: str) -> list[dict]:
     try:
-        data = doc_store.get(session_id, PLANNER_DOC)
+        recs = planner_store.load(session_id)
     except Exception:
-        return []
-    if not isinstance(data, dict):
         return []
     # Imported here: planner_dependencies itself reads this module's predefined entries.
     from app.services.planner import planner_dependencies
 
-    recs = data.get("recommendations", [])
     slug_to_index = {
         planner_dependencies.slug(r.get("name", "")): j
         for j, r in enumerate(recs) if r.get("type") in ("feature", "feature_and_analysis")
@@ -139,18 +140,45 @@ def _planner_entries(session_id: str) -> list[dict]:
     return entries
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _doc(entry_id: str) -> str:
+    return f"{DOC_PREFIX}{entry_id}"
+
+
+def _public(doc: dict) -> dict:
+    """The entry as the rest of the app knows it (without the document's bookkeeping keys)."""
+    return {k: v for k, v in doc.items() if k not in _INTERNAL_KEYS}
+
+
 def _load_persisted(session_id: str) -> list[dict]:
+    """The custom / AI-suggested / drill-down analyses of the session, oldest first."""
     try:
-        data = doc_store.get(session_id, REPO_DOC)
+        docs = doc_store.list_docs(session_id, DOC_PREFIX)
     except Exception:
         return []
-    if not isinstance(data, dict):
-        return []
-    return [e for e in data.get("entries", []) if e.get("source") in _PERSISTED_SOURCES]
+    rows = [
+        d for d in docs.values()
+        if isinstance(d, dict) and d.get("persisted") and d.get("source") in _PERSISTED_SOURCES
+    ]
+    rows.sort(key=lambda d: (d.get("created_at", ""), d.get("id", "")))
+    return [_public(d) for d in rows]
 
 
-def _save(session_id: str, entries: list[dict]) -> None:
-    doc_store.put(session_id, REPO_DOC, {"session_id": session_id, "entries": entries})
+def _store(session_id: str, entry: dict) -> None:
+    """Write one persisted analysis to its own ANALYSIS#<id> document, keeping the final code
+    (`cache`) and creation time the document may already hold."""
+
+    def merge(current):
+        current = current if isinstance(current, dict) else {}
+        doc = {**entry, "persisted": True, "created_at": current.get("created_at") or _now()}
+        if current.get("cache"):
+            doc["cache"] = current["cache"]
+        return doc
+
+    doc_store.update(session_id, _doc(entry["id"]), merge)
 
 
 def get_repository(session_id: str) -> list[dict]:
@@ -185,10 +213,7 @@ def add_custom_entry(
         "chart_recommendation": chart_recommendation,
         "filters": filters or [],
     }
-    persisted = _load_persisted(session_id)
-    persisted.append(entry)
-    entries = _predefined_entries(session_id) + _planner_entries(session_id) + persisted
-    _save(session_id, entries)
+    _store(session_id, entry)
     return entry
 
 
@@ -203,7 +228,6 @@ def add_ai_suggested_entries(session_id: str, suggestions: list[dict]) -> list[d
     so re-running suggestions doesn't pile up duplicates."""
     existing = get_repository(session_id)
     existing_names = {_normalize_name(e["name"]) for e in existing}
-    persisted = _load_persisted(session_id)
 
     new_entries = []
     for s in suggestions:
@@ -220,12 +244,9 @@ def add_ai_suggested_entries(session_id: str, suggestions: list[dict]) -> list[d
             "formula": None,
             "parent_id": None,
         }
-        persisted.append(entry)
+        _store(session_id, entry)
         new_entries.append(entry)
         existing_names.add(_normalize_name(entry["name"]))
-
-    entries = _predefined_entries(session_id) + _planner_entries(session_id) + persisted
-    _save(session_id, entries)
     return new_entries
 
 
@@ -256,10 +277,7 @@ def add_drilldown_entry(session_id: str, parent_id: str, drilldown: dict) -> dic
             if chart_type_hint else None
         ),
     }
-    persisted = _load_persisted(session_id)
-    persisted.append(entry)
-    entries = _predefined_entries(session_id) + _planner_entries(session_id) + persisted
-    _save(session_id, entries)
+    _store(session_id, entry)
     return entry
 
 
@@ -285,41 +303,30 @@ def add_chain_entry(
         "filters": filters,
         "chain": chain,
     }
-    persisted = _load_persisted(session_id)
-    persisted.append(entry)
-    _save(session_id, _predefined_entries(session_id) + _planner_entries(session_id) + persisted)
+    _store(session_id, entry)
     return entry
 
 
 def update_entry(session_id: str, entry_id: str, fields: dict) -> dict | None:
     """Merges `fields` into one persisted entry (predefined and planner
     entries are derived, so they can't be edited here)."""
-    persisted = _load_persisted(session_id)
-    found = None
-    for e in persisted:
-        if e["id"] == entry_id:
-            e.update(fields)
-            found = e
-            break
-    if found is None:
+    found: dict = {}
+
+    def change(current):
+        if not isinstance(current, dict) or not current.get("persisted"):
+            return current
+        current.update(fields)
+        found["entry"] = _public(current)
+        return current
+
+    if doc_store.get(session_id, _doc(entry_id)) is None:
         return None
-    _save(session_id, _predefined_entries(session_id) + _planner_entries(session_id) + persisted)
-    return found
+    doc_store.update(session_id, _doc(entry_id), change)
+    return found.get("entry")
 
 
 def set_entry_status(session_id: str, entry_id: str, status: str) -> dict | None:
-    persisted = _load_persisted(session_id)
-    found = None
-    for e in persisted:
-        if e["id"] == entry_id:
-            e["status"] = status
-            found = e
-            break
-    if found is None:
-        return None
-    entries = _predefined_entries(session_id) + _planner_entries(session_id) + persisted
-    _save(session_id, entries)
-    return found
+    return update_entry(session_id, entry_id, {"status": status})
 
 
 def get_entry(session_id: str, entry_id: str) -> dict | None:

@@ -1,7 +1,7 @@
 """Per-session JSON documents: the replacement for the `data/sessions/<id>/*.json` files.
 
 A document is addressed by (session_id, doc) -- `doc` is a short name such as
-"PLANNER_OUTPUT" or "ACACHE#<entry id>". Two backends, chosen once by config:
+"BRIEF", "FEATURE#<id>" or "PLAN#<nnn>". Two backends, chosen once by config:
 
   * AWS   -- one DynamoDB item per document in the DDB_DOCS table. The JSON is stored as a
              string (`payload`) so floats / big numbers never hit DynamoDB's number rules.
@@ -16,6 +16,7 @@ two tasks or two threads race.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import threading
@@ -50,7 +51,12 @@ def safe_session_id(session_id: str) -> str:
 
 
 def _safe_doc(doc: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_\-.]", "_", doc.replace("#", "__"))
+    """Local file stem for a doc name. If a character had to be replaced (e.g. a column called
+    "Temp (C)"), a short hash of the original keeps two different names from sharing a file."""
+    cleaned = re.sub(r"[^A-Za-z0-9_\-.]", "_", doc.replace("#", "__"))
+    if cleaned != doc.replace("#", "__"):
+        cleaned += "~" + hashlib.sha1(doc.encode("utf-8")).hexdigest()[:6]
+    return cleaned
 
 
 def json_default(o: Any):
@@ -234,8 +240,31 @@ def put(session_id: str, doc: str, data: Any, *, expected_version: Any = ANY, tt
         if expected_version is not ANY and expected_version != current:
             raise VersionConflict(f"{session_id}/{doc} changed since it was read")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(dumps({"version": current + 1, "data": data}), encoding="utf-8")
+        path.write_text(dumps({"version": current + 1, "doc": doc, "data": data}), encoding="utf-8")
         return current + 1
+
+
+def put_many(session_id: str, docs: dict[str, Any], *, ttl_days: int | None = None, workers: int = 8) -> None:
+    """Write several documents of one session. On AWS the writes run in parallel (a session can
+    have dozens of ISSUE# / COLUMN# items); each worker carries the request's user, which put()
+    stamps on the item."""
+    if len(docs) <= 1 or not USE_AWS_STORAGE:
+        for name, data in docs.items():
+            put(session_id, name, data, ttl_days=ttl_days)
+        return
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.services.common import request_context
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        # One wrap() per task, made here on the request thread: a wrapped context can only run
+        # on one thread at a time.
+        futures = [
+            pool.submit(request_context.wrap(put), session_id, name, data, ttl_days=ttl_days)
+            for name, data in docs.items()
+        ]
+        for f in futures:
+            f.result()
 
 
 def update(
@@ -315,6 +344,15 @@ def list_docs(session_id: str, prefix: str = "") -> dict[str, Any]:
             except (OSError, json.JSONDecodeError):
                 continue
             if isinstance(wrapper, dict) and "data" in wrapper and "version" in wrapper:
-                # local names are the sanitized form ("ACACHE__<id>"); map "__" back to "#".
-                out[path.stem.replace("__", "#", 1)] = wrapper["data"]
+                # the wrapper keeps the real doc name; older files only have the sanitized stem
+                # ("FEATURE__<id>"), so map "__" back to "#" for those.
+                out[wrapper.get("doc") or path.stem.replace("__", "#", 1)] = wrapper["data"]
     return out
+
+
+def delete_prefix(session_id: str, prefix: str) -> int:
+    """Delete every document of a session whose name starts with `prefix`; returns how many."""
+    names = list(list_docs(session_id, prefix))
+    for name in names:
+        delete(session_id, name)
+    return len(names)

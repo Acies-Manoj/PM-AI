@@ -1,4 +1,4 @@
-"""Planner Agent service: reads the BRIEF_META + COLUMN_META documents for a session
+"""Planner Agent service: reads the BRIEF + COLUMN#<name> documents for a session
 and calls Bedrock to produce structured feature/analysis recommendations."""
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.config import PLANNER_AGENT_MODEL, model_for
 from app.services.analysis import analysis_agent
-from app.services.common import doc_store, llm, request_context
+from app.services.common import column_meta, doc_store, llm, request_context
 from app.services.features import feature_agent
-from app.services.planner import planner_dependencies
+from app.services.planner import planner_dependencies, planner_store
 
 _SYSTEM_PROMPT = None  # the system prompt lives in Amazon Bedrock Prompt Management (planner_agent); default text: backend/prompts/<name>.txt
 
@@ -82,13 +82,13 @@ def _build_user_prompt(
 
 def suggest(session_id: str, additional_context: str = "") -> dict:
     """Call the Planner LLM and return the structured recommendations dict."""
-    col_data = doc_store.get(session_id, "COLUMN_META")
-    meta_data = doc_store.get(session_id, "BRIEF_META")
+    col_data = column_meta.load(session_id)
+    meta_data = doc_store.get(session_id, "BRIEF")
 
     if col_data is None:
-        raise FileNotFoundError(f"COLUMN_META (column metadata) not found for session {session_id}")
+        raise FileNotFoundError(f"COLUMN# (column metadata) not found for session {session_id}")
     if meta_data is None:
-        raise FileNotFoundError(f"BRIEF_META (brief metadata) not found for session {session_id}")
+        raise FileNotFoundError(f"BRIEF (client brief) not found for session {session_id}")
 
     brief_block = meta_data.get("client_brief", {})
     final_brief = (
@@ -147,8 +147,9 @@ def suggest(session_id: str, additional_context: str = "") -> dict:
     _prune_features(result["recommendations"])
     _sync_feature_columns(result["recommendations"], set(col_data.get("columns", {})))
 
-    # Cache the raw planner output so /save can attach decisions to it
-    doc_store.put(session_id, "PLANNER_SUGGEST", result)
+    # One PLAN#<n> document per recommendation, so /save can attach the PM's decision to each.
+    # A request for MORE suggestions appends; the first call replaces the list.
+    planner_store.save_suggestions(session_id, result["recommendations"], append=bool(additional_context.strip()))
 
     return result
 

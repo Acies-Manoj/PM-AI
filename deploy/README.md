@@ -12,7 +12,7 @@ The OpenRouter and DeepL secrets are no longer used, so the task definition has 
 
 | Variable | Purpose |
 |---|---|
-| `S3_BUCKET`, `DDB_SESSIONS`, `DDB_DOCS` | If **all three** are set, sessions use S3 + DynamoDB. Otherwise local files (dev). |
+| `S3_BUCKET`, `DDB_DOCS` | If **both** are set, sessions use S3 + DynamoDB. Otherwise local files (dev). |
 | `DDB_PROFILES`, `DDB_AUDIT` | Per-user KPI/Analysis profiles; the audit log. |
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID` | If **both** are set, every `/api` request needs a valid Entra bearer token. |
 | `CORS_ORIGINS` | Comma-separated allowed browser origins (your Amplify URL). |
@@ -22,9 +22,10 @@ The OpenRouter and DeepL secrets are no longer used, so the task definition has 
 
 ## Resources the backend expects
 
-DynamoDB (on-demand): `pmai-sessions` (`session_id`), `pmai-docs` (`session_id`, `doc`),
-`pmai-profiles` (`user_id`, `profile`), `pmai-audit-log` (`session_id`, `ts_event`, plus GSI
-`by-user` on `user_id`, `ts_event`). TTL attribute `ttl` on sessions, docs and the audit log.
+DynamoDB (on-demand), three tables: `pmai-docs` (`session_id`, `doc`; also holds the session header as
+doc `SESSIONS`), `pmai-profiles` (`user_id`, `profile`), `pmai-audit-log` (`session_id`, `ts_event`, plus
+GSI `by-user` on `user_id`, `ts_event` and GSI `by-target` on `target_key`, `ts_event`, both projecting all
+attributes). TTL attribute `ttl` on docs, profiles and the audit log. See `docs/DYNAMODB_REDESIGN_PLAN.md`.
 S3: one private bucket with CORS allowing `PUT`/`GET` from the Amplify origin.
 
 ## Prompts in Amazon Bedrock Prompt Management (optional)

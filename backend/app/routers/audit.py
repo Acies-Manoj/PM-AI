@@ -16,10 +16,9 @@ from app.schemas import AuditIssue, AuditReport, FeatureReport, ResolveRequest, 
 from app.services.audit import data_audit
 from app.services.audit.audit_agent import generate_audit_analysis
 from app.services.audit.audit_store import AuditSession, store
-from app.services.audit.column_profiler import profile_dataframe
 from app.services.audit import outlier_audit
 from app.services.audit.excel_parser import load_spreadsheet
-from app.services.common import audit_log, aws_clients, doc_store, selections
+from app.services.common import audit_log, aws_clients, column_meta, selections
 from app.services.features import feature_engineering, feature_repository
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
@@ -112,15 +111,7 @@ def _create_session_from_bytes(
     session = store.create(source=source, filename=filename, df=df, user_id=user.id, raw_key=raw_key)
 
     try:
-        combined = {
-            "session_id": session.session_id,
-            "filename": session.filename,
-            "source": source,
-            "row_count": len(df),
-            "column_count": len(df.columns),
-            "columns": profile_dataframe(df),
-        }
-        doc_store.put(session.session_id, "COLUMN_META", combined)
+        column_meta.save(session.session_id, df)
     except Exception:
         pass
 

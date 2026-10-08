@@ -39,17 +39,15 @@ image_tag      = "1.1.0"
 
 # First apply: keep 0 until ECR image + secret values are ready.
 # After pushing image and adding secret values, set this to 1 and apply again.
-desired_count = 1
+desired_count = 0
 
 # Frontend/API CORS. Add Amplify URL after it is created.
 api_gateway_cors_allowed_origins = [
-  "http://localhost:5173",
-  "https://enhanced-with-agents.d1hpje21fp462y.amplifyapp.com"
+  "http://localhost:5173"
 ]
 
 s3_cors_allowed_origins = [
-  "http://localhost:5173",
-  "https://enhanced-with-agents.d1hpje21fp462y.amplifyapp.com"
+  "http://localhost:5173"
 ]
 
 # ECR / app resources are created by OpenTofu.

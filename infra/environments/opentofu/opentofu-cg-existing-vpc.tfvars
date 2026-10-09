@@ -95,6 +95,12 @@ bedrock_model_arns = [
   "CHANGE_ME_CG_APPROVED_BEDROCK_MODEL_ARN_OR_STAR_FOR_INITIAL_TEST"
 ]
 
+# API sign-in (Microsoft Entra). Required when AWS storage is on, unless allow_anon = true.
+# Keep allow_anon = false for CG.
+allow_anon      = false
+entra_tenant_id = "CHANGE_ME_ENTRA_TENANT_ID"
+entra_client_id = "CHANGE_ME_ENTRA_API_CLIENT_ID"
+
 # Amplify. Enable after repo details/access are ready.
 enable_amplify         = true
 amplify_repository_url = "CHANGE_ME_REPO_URL"

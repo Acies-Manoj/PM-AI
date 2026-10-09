@@ -305,6 +305,12 @@ variable "ecr_image_retention_count" {
   default     = 10
 }
 
+variable "ecr_force_delete" {
+  description = "true = `tofu destroy` also deletes the repo with its images inside. Practice/dev only; keep false for prod. Must be applied once BEFORE the destroy."
+  type        = bool
+  default     = false
+}
+
 variable "ecr_image_tag_mutability" {
   description = "ECR image tag mutability. MUTABLE is easier for practice; IMMUTABLE is better for prod."
   type        = string
@@ -404,6 +410,28 @@ variable "enable_translate" {
 }
 
 # -----------------------------
+# API sign-in (read by the backend as ENTRA_TENANT_ID / ENTRA_CLIENT_ID / ALLOW_ANON)
+# With AWS storage on, the backend refuses requests unless Entra is set or allow_anon = true.
+# -----------------------------
+variable "entra_tenant_id" {
+  description = "Microsoft Entra tenant ID. Set together with entra_client_id to require sign-in. Empty = not set."
+  type        = string
+  default     = ""
+}
+
+variable "entra_client_id" {
+  description = "Microsoft Entra API app (client) ID. Set together with entra_tenant_id. Empty = not set."
+  type        = string
+  default     = ""
+}
+
+variable "allow_anon" {
+  description = "true = run the API without sign-in (ALLOW_ANON=1). Practice only; leave false for client environments."
+  type        = bool
+  default     = false
+}
+
+# -----------------------------
 # S3
 # -----------------------------
 variable "create_s3_bucket" {
@@ -416,6 +444,12 @@ variable "existing_s3_bucket_name" {
   description = "Existing app data S3 bucket name when create_s3_bucket=false."
   type        = string
   default     = ""
+}
+
+variable "s3_force_destroy" {
+  description = "true = `tofu destroy` also deletes every object and version in the bucket. Practice/dev only; keep false for prod. Must be applied once BEFORE the destroy."
+  type        = bool
+  default     = false
 }
 
 variable "s3_bucket_name" {
@@ -486,20 +520,8 @@ variable "dynamodb_billing_mode" {
   default     = "PAY_PER_REQUEST"
 }
 
-variable "dynamodb_hash_key" {
-  description = "Generic partition key used by app tables. Backend code must match this."
-  type        = string
-  default     = "pk"
-}
-
-variable "dynamodb_range_key" {
-  description = "Generic sort key used by app tables. Backend code must match this."
-  type        = string
-  default     = "sk"
-}
-
 variable "dynamodb_ttl_attribute" {
-  description = "TTL attribute name. Backend writes epoch seconds here."
+  description = "TTL attribute name. Backend writes epoch seconds here. Table keys are fixed per table in storage.tf to match the backend (sessions: session_id; docs: session_id+doc; profiles: user_id+profile; audit-log: session_id+ts_event + by-user index)."
   type        = string
   default     = "ttl"
 }

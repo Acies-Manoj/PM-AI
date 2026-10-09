@@ -55,6 +55,11 @@ create_ecr                = true
 ecr_image_retention_count = 10
 ecr_image_tag_mutability  = "MUTABLE"
 
+# Practice only: let `tofu destroy` delete the ECR repo and S3 bucket even when they hold data.
+# Apply once with these set to true BEFORE running `tofu destroy`.
+ecr_force_delete = true
+s3_force_destroy = true
+
 create_s3_bucket           = true
 create_dynamodb_tables     = true
 create_iam_roles           = true
@@ -71,7 +76,19 @@ enable_translate   = true
 bedrock_model_id   = "openai.gpt-oss-20b-1:0"
 bedrock_model_arns = ["*"]
 
+# API sign-in. With AWS storage on, the backend needs Entra OR allow_anon.
+# Practice only: no sign-in. For a client environment set the two Entra IDs instead.
+allow_anon      = true
+entra_tenant_id = ""
+entra_client_id = ""
+
 # Amplify is part of target architecture, but enable only after repo URL/access is ready.
 enable_amplify         = true
 amplify_repository_url = "https://github.com/acies-Thakshana/PM-AI"
 amplify_branch_name    = "enhanced-with-agents"
+
+# Bedrock Prompt Management ids (from: python scripts/bedrock_prompts.py create).
+# Without these the backend answers 503 "No system prompt for 'planner_agent'".
+bedrock_prompt_ids = {
+
+}

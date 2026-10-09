@@ -1,7 +1,8 @@
 resource "aws_s3_bucket" "data" {
   count = var.create_s3_bucket ? 1 : 0
 
-  bucket = local.s3_bucket_name
+  bucket        = local.s3_bucket_name
+  force_destroy = var.s3_force_destroy
 
   tags = {
     Name = "${local.name_prefix}-data-bucket"
@@ -125,21 +126,16 @@ resource "aws_s3_bucket_policy" "data" {
   policy = data.aws_iam_policy_document.data_bucket[0].json
 }
 
+# Table keys match what the backend reads and writes (backend/app/services/common/*, deploy/README.md).
 resource "aws_dynamodb_table" "sessions" {
   count = var.create_dynamodb_tables ? 1 : 0
 
   name         = "${local.name_prefix}-sessions"
   billing_mode = var.dynamodb_billing_mode
-  hash_key     = var.dynamodb_hash_key
-  range_key    = var.dynamodb_range_key
+  hash_key     = "session_id"
 
   attribute {
-    name = var.dynamodb_hash_key
-    type = "S"
-  }
-
-  attribute {
-    name = var.dynamodb_range_key
+    name = "session_id"
     type = "S"
   }
 
@@ -162,16 +158,16 @@ resource "aws_dynamodb_table" "profiles" {
 
   name         = "${local.name_prefix}-profiles"
   billing_mode = var.dynamodb_billing_mode
-  hash_key     = var.dynamodb_hash_key
-  range_key    = var.dynamodb_range_key
+  hash_key     = "user_id"
+  range_key    = "profile"
 
   attribute {
-    name = var.dynamodb_hash_key
+    name = "user_id"
     type = "S"
   }
 
   attribute {
-    name = var.dynamodb_range_key
+    name = "profile"
     type = "S"
   }
 
@@ -185,16 +181,16 @@ resource "aws_dynamodb_table" "docs" {
 
   name         = "${local.name_prefix}-docs"
   billing_mode = var.dynamodb_billing_mode
-  hash_key     = var.dynamodb_hash_key
-  range_key    = var.dynamodb_range_key
+  hash_key     = "session_id"
+  range_key    = "doc"
 
   attribute {
-    name = var.dynamodb_hash_key
+    name = "session_id"
     type = "S"
   }
 
   attribute {
-    name = var.dynamodb_range_key
+    name = "doc"
     type = "S"
   }
 
@@ -217,17 +213,38 @@ resource "aws_dynamodb_table" "audit_log" {
 
   name         = "${local.name_prefix}-audit-log"
   billing_mode = var.dynamodb_billing_mode
-  hash_key     = var.dynamodb_hash_key
-  range_key    = var.dynamodb_range_key
+  hash_key     = "session_id"
+  range_key    = "ts_event"
 
   attribute {
-    name = var.dynamodb_hash_key
+    name = "session_id"
     type = "S"
   }
 
   attribute {
-    name = var.dynamodb_range_key
+    name = "ts_event"
     type = "S"
+  }
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  # "Everything this user did" lookup (audit_log.py queries IndexName="by-user").
+  global_secondary_index {
+    name            = "by-user"
+    projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "user_id"
+      key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "ts_event"
+      key_type       = "RANGE"
+    }
   }
 
   ttl {

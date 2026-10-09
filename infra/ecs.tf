@@ -102,4 +102,11 @@ resource "aws_ecs_service" "backend" {
   tags = {
     Name = "${local.name_prefix}-backend-service"
   }
+
+  # The application pipeline (.github/workflows/app.yml) deploys new image versions by
+  # registering a task definition revision and pointing the service at it. OpenTofu must not
+  # point the service back at the revision it created.
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 }

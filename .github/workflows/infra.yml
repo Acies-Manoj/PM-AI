@@ -1,0 +1,91 @@
+name: infra
+
+# Plan on every pull request that touches infra/. After a merge to the infra branch the same plan
+# runs, then the apply job waits for a reviewer to approve the "practice" environment.
+#
+# Needs in the GitHub repo:
+#   Variables: AWS_ROLE_ARN, TF_STATE_BUCKET
+#   Secret:    TF_VAR_amplify_access_token
+#   Environment: practice (with a required reviewer)
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra.yml"
+  push:
+    branches: [enhanced-with-agents-infra]
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: tofu-practice-manoj
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  TF_VAR_FILE: environments/opentofu/manoj-existing-vpc.tfvars
+  TF_BACKEND_FILE: environments/opentofu/backend-practice-manoj.hcl
+  TF_VAR_amplify_access_token: ${{ secrets.TF_VAR_amplify_access_token }}
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.13.0
+          tofu_wrapper: false
+
+      - name: Init
+        run: tofu init -input=false -backend-config="$TF_BACKEND_FILE" -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+
+      - name: Validate
+        run: tofu validate
+
+      # aws_profile is blank in CI: the role from OIDC supplies the credentials.
+      - name: Plan
+        run: tofu plan -input=false -lock-timeout=5m -var-file="$TF_VAR_FILE" -var="aws_profile="
+
+  apply:
+    needs: plan
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: practice
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.13.0
+          tofu_wrapper: false
+
+      - name: Init
+        run: tofu init -input=false -backend-config="$TF_BACKEND_FILE" -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+
+      # The reviewer approved the environment after reading the plan job. This step plans again
+      # and applies, so it can differ from that plan if infra changed in between.
+      - name: Apply
+        run: tofu apply -auto-approve -input=false -lock-timeout=5m -var-file="$TF_VAR_FILE" -var="aws_profile="

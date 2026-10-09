@@ -1,0 +1,76 @@
+name: app
+
+# Builds the backend image, pushes it to ECR tagged with the commit id, and deploys it to the
+# ECS service. Infrastructure (the service, roles, tables) is managed by infra.yml, not here.
+#
+# Needs in the GitHub repo: Variable AWS_ROLE_ARN
+
+on:
+  push:
+    branches: [enhanced-with-agents-infra]
+    paths:
+      - "backend/**"
+      - ".github/workflows/app.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-practice-manoj
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  ECR_REPOSITORY: pmai/backend-practice-manoj
+  ECS_CLUSTER: pmai-practice-manoj-cluster
+  ECS_SERVICE: pmai-practice-manoj-backend-service
+  ECS_TASK_FAMILY: pmai-practice-manoj-backend
+  CONTAINER_NAME: backend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push the image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          TAG="${GITHUB_SHA::7}"
+          IMAGE="$REGISTRY/$ECR_REPOSITORY:$TAG"
+          docker build -t "$IMAGE" backend
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      # The latest revision of the family carries the environment variables OpenTofu set.
+      - name: Get the current task definition
+        run: aws ecs describe-task-definition --task-definition "$ECS_TASK_FAMILY" --query taskDefinition > task-definition.json
+
+      - name: Put the new image into it
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.image.outputs.image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          wait-for-service-stability: true

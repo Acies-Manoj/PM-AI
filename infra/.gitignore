@@ -6,3 +6,5 @@ crash.*.log
 *.tfvars.local
 backend.hcl
 .terraform.lock.hcl
+# Local copies of the CI role JSON with the real account id filled in (see infra/ci/README.md)
+*.local.json

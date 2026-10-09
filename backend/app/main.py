@@ -11,7 +11,7 @@ from app.services.common import doc_store, token_usage
 
 app = FastAPI(title="Cold Chain Data Audit API")
 
-# Browsers may call this API from the origins in CORS_ORIGINS (the deployed frontend, set
+# Browsers might call this API from the origins in CORS_ORIGINS (the deployed frontend, set
 # explicitly). In local development Vite's dev server auto-increments past a taken port
 # (5173 -> 5174 -> ...), which drifts past any fixed list, so any localhost/127.0.0.1 port is
 # also allowed while CORS_ALLOW_LOCALHOST is on (set it to 0 in production). Authentication

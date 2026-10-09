@@ -981,6 +981,102 @@ class ReportBuilder:
         self._caption(slide, subtitle)
         self._footer(slide)
 
+    def add_heatmap_slide(
+        self, heading: str, description: str, x_labels: list[str], y_labels: list[str],
+        z: list[list[float | None]], x_title: str = "", y_title: str = "", value_title: str = "",
+        subtitle: str | None = None,
+    ):
+        """A heatmap drawn from native shapes, laid out like the on-screen chart: borderless cells shaded from
+        pale blue to the primary navy, row labels on the left, column labels and axis titles around the grid and
+        a colour bar on the right. `y_labels` is top-to-bottom."""
+        slide = self._new_slide()
+        self._frame(slide, heading, description)
+        left, top, width, height = self._body_box()
+
+        n_rows, n_cols = len(y_labels), len(x_labels)
+        pale, deep = RGBColor(0xEA, 0xF1, 0xFB), RGBColor(0x01, 0x01, 0x98)
+        values = [v for row in z for v in row if v is not None]
+        lo, hi = (min(values), max(values)) if values else (0.0, 0.0)
+        muted = RGBColor.from_string(style.MUTED_TEXT_HEX)
+        grid_line = RGBColor.from_string("EEF0F5")
+
+        axis_w, label_w, bar_zone = Inches(0.3), Inches(2.5), Inches(2.1)
+        x_label_h, x_title_h = Inches(0.35), Inches(0.3)
+        grid_left = left + axis_w + label_w + Inches(0.1)
+        grid_w = left + width - bar_zone - grid_left
+        cell_w = int(grid_w / n_cols)
+        cell_h = min(int((height - x_label_h - x_title_h) / n_rows), Inches(0.62))
+        grid_h = cell_h * n_rows
+        grid_w = cell_w * n_cols
+
+        def rect(x, y, w, h, fill, line=None):
+            shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
+            shape.shadow.inherit = False
+            shape.fill.solid()
+            shape.fill.fore_color.rgb = fill
+            if line is None:
+                shape.line.fill.background()
+            else:
+                shape.line.color.rgb = line
+                shape.line.width = Pt(0.5)
+            return shape
+
+        for r, row_label in enumerate(y_labels):
+            y = top + r * cell_h
+            self._text(slide, left + axis_w, y, label_w, cell_h, _short_label(row_label, 30), style.CHART_FONT_PT,
+                       DARK_TEXT, align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
+            for c in range(n_cols):
+                value = z[r][c] if c < len(z[r]) else None
+                if value is None:
+                    rect(grid_left + c * cell_w, y, cell_w, cell_h, WHITE, grid_line)
+                    continue
+                t = (value - lo) / (hi - lo) if hi > lo else 1.0
+                rgb = RGBColor(*(round(p + (d - p) * t) for p, d in zip(tuple(pale), tuple(deep))))
+                rect(grid_left + c * cell_w, y, cell_w, cell_h, rgb)
+
+        for c, col_label in enumerate(x_labels):
+            self._text(slide, grid_left + c * cell_w, top + grid_h + Inches(0.05), cell_w, x_label_h,
+                       _short_label(col_label, 24), style.CHART_FONT_PT, DARK_TEXT, align=PP_ALIGN.CENTER)
+        if x_title:
+            self._text(slide, grid_left, top + grid_h + x_label_h + Inches(0.05), grid_w, x_title_h, x_title,
+                       style.CHART_FONT_PT, muted, align=PP_ALIGN.CENTER)
+        if y_title:
+            box = self._text(slide, left + axis_w / 2 - grid_h / 2, top + grid_h / 2 - Inches(0.15), grid_h,
+                             Inches(0.3), y_title, style.CHART_FONT_PT, muted, align=PP_ALIGN.CENTER,
+                             anchor=MSO_ANCHOR.MIDDLE)
+            box.rotation = 270
+
+        # Colour bar: pale at the bottom, navy at the top, with a few round-number ticks.
+        bar_x = grid_left + grid_w + Inches(0.45)
+        bar_w = Inches(0.28)
+        bar_top = top + Inches(0.4)
+        bar_h = max(min(grid_h - Inches(0.4), Inches(2.4)), Inches(0.8))
+        if value_title:
+            self._text(slide, bar_x - Inches(0.1), top, bar_zone - Inches(0.35), Inches(0.35), value_title,
+                       style.CHART_FONT_PT, muted)
+        bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, bar_x, bar_top, bar_w, bar_h)
+        bar.shadow.inherit = False
+        bar.fill.gradient()
+        bar.fill.gradient_angle = 90
+        bar.fill.gradient_stops[0].color.rgb = pale
+        bar.fill.gradient_stops[1].color.rgb = deep
+        bar.line.color.rgb = muted
+        bar.line.width = Pt(0.75)
+        if hi > lo:
+            raw = (hi - lo) / 4
+            mag = 10 ** math.floor(math.log10(raw))
+            step = next(m * mag for m in (1, 2, 5, 10) if m * mag >= raw)
+            tick = math.ceil(lo / step) * step
+            while tick <= hi + 1e-9:
+                y = bar_top + bar_h * (1 - (tick - lo) / (hi - lo))
+                self._text(slide, bar_x + bar_w + Inches(0.08), y - Inches(0.1), Inches(0.8), Inches(0.2),
+                           f"{tick:,.0f}" if float(tick).is_integer() else f"{tick:,.2f}", style.CHART_FONT_PT, muted,
+                           anchor=MSO_ANCHOR.MIDDLE)
+                tick += step
+
+        self._caption(slide, subtitle)
+        self._footer(slide)
+
     def add_summary_slide(self, heading: str, bullets: list[str]):
         """Closing summary slide -- bullet points, not a prose paragraph,
         matching the reference deck's own closing slide (see
@@ -1052,6 +1148,36 @@ def _numeric_xy(trace: dict) -> bool:
     xs, ys = _trace_xy(trace)
     pairs = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
     return len(pairs) >= 2 and all(_is_numeric(x) and _is_numeric(y) for x, y in pairs)
+
+
+def _heatmap_grid(
+    trace: dict, max_rows: int = 14, max_cols: int = 8,
+) -> tuple[list[str], list[str], list[list[float | None]]]:
+    """A heatmap trace as a (x labels, y labels top-to-bottom, z rows) grid. Plotly draws the first y row at
+    the bottom, so rows are reversed to read the same as the on-screen chart; with more rows/columns than fit,
+    the ones with the largest totals are kept (in their original order)."""
+    xs = [str(x) for x in (trace.get("x") or [])]
+    ys = [str(y) for y in (trace.get("y") or [])]
+    z = trace.get("z") or []
+    if not xs or not ys or not z:
+        return [], [], []
+    grid = []
+    for row in list(z)[: len(ys)]:
+        cells = [None if v is None else _to_number(v) for v in list(row)[: len(xs)]]
+        grid.append(cells + [None] * (len(xs) - len(cells)))
+    ys = ys[: len(grid)]
+
+    def total(values) -> float:
+        return sum(v for v in values if v is not None)
+
+    row_keep = sorted(sorted(range(len(ys)), key=lambda i: total(grid[i]), reverse=True)[:max_rows])
+    col_keep = sorted(sorted(range(len(xs)), key=lambda j: total(r[j] for r in grid), reverse=True)[:max_cols])
+    row_keep.reverse()
+    return (
+        [xs[j] for j in col_keep],
+        [ys[i] for i in row_keep],
+        [[grid[i][j] for j in col_keep] for i in row_keep],
+    )
 
 
 def _heatmap_series(trace: dict, max_series: int = 6) -> tuple[list[str], list[tuple[str, list[float]]]]:
@@ -1155,18 +1281,17 @@ def _add_entry_slide(builder: ReportBuilder, entry: dict, content_phrases: dict[
     result_table = entry.get("result_table") or []
     result_columns = entry.get("result_columns") or []
 
-    # A heatmap's trace is a matrix (x columns, y rows, z cells), not x/y series: drawn as grouped columns
-    # (one series per row), the closest native chart. This is decided by the trace itself, so a heatmap that
+    # A heatmap's trace is a matrix (x columns, y rows, z cells), not x/y series: drawn as a shaded grid so the
+    # download matches the on-screen heatmap. This is decided by the trace itself, so a heatmap that
     # arrives labelled as another chart type is never turned into a row of zeros.
     if traces and traces[0].get("type") == "heatmap":
-        categories, series = _heatmap_series(traces[0])
-        if categories and series:
-            colorbar = ((traces[0].get("colorbar") or {}).get("title") or {})
-            builder.add_bar_or_line_slide(
-                heading, description, categories, series,
-                value_axis_title=colorbar.get("text") or "Value",
-                category_axis_title=_axis_title(chart_spec, "xaxis", result_columns[0] if result_columns else ""),
-                is_line=False, subtitle=subtitle,
+        x_labels, y_labels, z = _heatmap_grid(traces[0])
+        if x_labels and y_labels:
+            builder.add_heatmap_slide(
+                heading, description, x_labels, y_labels, z,
+                x_title=_axis_title(chart_spec, "xaxis", ""), y_title=_axis_title(chart_spec, "yaxis", ""),
+                value_title=((traces[0].get("colorbar") or {}).get("title") or {}).get("text") or "",
+                subtitle=subtitle,
             )
             return True
 

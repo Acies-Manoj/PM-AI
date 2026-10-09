@@ -116,7 +116,7 @@ function App() {
     }
   };
 
-  // A corrected file re-uploaded from the SensiWatch outlier-correction step
+  // A corrected file is re-uploaded from the SensiWatch outlier-correction step
   // (see AuditPage / OutlierCorrectionStep) -- treated as a fresh upload for
   // that slot, same session-reset shape as handleSelect uses for a normal
   // first upload, so the audit pipeline re-runs cleanly from scratch on it.
@@ -156,50 +156,50 @@ function App() {
   return (
     <BrowserRouter>
       <PlannerSkippedContext.Provider value={plannerSkipped}>
-      <Routes>
-        <Route path="/" element={<WelcomePage />} />
-        <Route
-          path="/upload"
-          element={
-            <UploadPage
-              files={files}
-              brief={brief}
-              onSelect={handleSelect}
-              onRemove={handleRemove}
-              onClearAll={handleClearAll}
-              onBriefChange={setBrief}
-              onUploadComplete={handleUploadComplete}
-            />
-          }
-        />
-        <Route
-          path="/planner"
-          element={<PlannerPage sessionId={plannerSessionId} files={files} />}
-        />
-        <Route
-          path="/audit"
-          element={
-            <AuditPage
-              files={files}
-              uploadedSessionIds={uploadedSessionIds}
-              auditReports={auditReports}
-              auditLoading={auditLoading}
-              auditErrors={auditErrors}
-              resolvingIssueId={resolvingIssueId}
-              onRunAudit={handleRunAudit}
-              onResolveIssue={handleResolveIssue}
-              onRevertIssue={handleRevertIssue}
-              onReuploadSensiwatch={handleReuploadSensiwatch}
-              reuploadingSensiwatch={reuploadingSensiwatch}
-              reuploadError={reuploadError}
-            />
-          }
-        />
-        <Route path="/features" element={<FeaturesPage files={files} auditReports={auditReports} />} />
-        <Route path="/analysis" element={<AnalysisPage files={files} auditReports={auditReports} />} />
-        <Route path="/report" element={<ReportPage files={files} auditReports={auditReports} />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+        <Routes>
+          <Route path="/" element={<WelcomePage />} />
+          <Route
+            path="/upload"
+            element={
+              <UploadPage
+                files={files}
+                brief={brief}
+                onSelect={handleSelect}
+                onRemove={handleRemove}
+                onClearAll={handleClearAll}
+                onBriefChange={setBrief}
+                onUploadComplete={handleUploadComplete}
+              />
+            }
+          />
+          <Route
+            path="/planner"
+            element={<PlannerPage sessionId={plannerSessionId} files={files} />}
+          />
+          <Route
+            path="/audit"
+            element={
+              <AuditPage
+                files={files}
+                uploadedSessionIds={uploadedSessionIds}
+                auditReports={auditReports}
+                auditLoading={auditLoading}
+                auditErrors={auditErrors}
+                resolvingIssueId={resolvingIssueId}
+                onRunAudit={handleRunAudit}
+                onResolveIssue={handleResolveIssue}
+                onRevertIssue={handleRevertIssue}
+                onReuploadSensiwatch={handleReuploadSensiwatch}
+                reuploadingSensiwatch={reuploadingSensiwatch}
+                reuploadError={reuploadError}
+              />
+            }
+          />
+          <Route path="/features" element={<FeaturesPage files={files} auditReports={auditReports} />} />
+          <Route path="/analysis" element={<AnalysisPage files={files} auditReports={auditReports} />} />
+          <Route path="/report" element={<ReportPage files={files} auditReports={auditReports} />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </PlannerSkippedContext.Provider>
     </BrowserRouter>
   );

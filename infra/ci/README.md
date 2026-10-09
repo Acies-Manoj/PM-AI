@@ -8,7 +8,15 @@ in GitHub. GitHub proves which repo and branch is running, and AWS lets that ide
 | `github-oidc-trust-policy.json` | Who may assume the role: only this repo, the infra branch, the `practice` environment and pull requests |
 | `pipeline-permissions-policy.json` | What the role may do: the services the stack uses, IAM only for `pmai-*` roles, S3 only for `pmai-*` buckets (including the state bucket) |
 
-Both files hold placeholders: `<ACCOUNT_ID>`, `<GITHUB_USER>`, `<REPO>`. Do **not** commit real values.
+Both files hold placeholders: `<ACCOUNT_ID>`, `<GITHUB_USER>`, `<OWNER_ID>`, `<REPO>`, `<REPO_ID>`.
+Do **not** commit real values.
+
+Newer GitHub repositories put numeric ids in the OIDC subject, for example
+`repo:<GITHUB_USER>@<OWNER_ID>/<REPO>@<REPO_ID>:ref:refs/heads/<branch>`. If the login fails with
+"Not authorized to perform sts:AssumeRoleWithWebIdentity" although the names look right, print the real
+`sub` claim (a temporary workflow step that decodes the OIDC token and prints `sub`) and match it exactly.
+The ids are public: `https://api.github.com/repos/<GITHUB_USER>/<REPO>` returns `id` (the repo id) and
+`owner.id` (the owner id).
 Copy each file to a name ending `.local.json` (git-ignored), replace the placeholders, then run, with an
 identity that may create IAM roles:
 

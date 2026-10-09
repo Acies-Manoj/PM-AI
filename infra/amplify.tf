@@ -36,6 +36,13 @@ resource "aws_amplify_app" "frontend" {
   tags = {
     Name = "${local.name_prefix}-frontend"
   }
+
+  # The token is only needed when the app is first created. Re-sending it on a later apply makes
+  # Amplify fall back to the token connection and show "Update required" again, which stops builds
+  # on push until the GitHub App is re-authorised in the Amplify console.
+  lifecycle {
+    ignore_changes = [access_token]
+  }
 }
 
 resource "aws_amplify_branch" "frontend" {

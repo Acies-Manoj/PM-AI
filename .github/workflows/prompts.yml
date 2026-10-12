@@ -20,7 +20,7 @@ on:
       - "backend/prompts/**"
       - "backend/scripts/bedrock_prompts.py"
   push:
-    branches: [enhanced-with-agents-infra]
+    branches: [single-1step]
     paths:
       - "backend/prompts/**"
   workflow_dispatch:

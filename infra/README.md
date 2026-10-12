@@ -1,7 +1,9 @@
-# PMAI OpenTofu Infrastructure (Approach 1: staged first deployment)
+# PMAI OpenTofu Infrastructure (Approach 2: single-step first deployment)
 
-This folder builds the PMAI AWS setup with OpenTofu. This branch is **Approach 1**: the staged
-(3-step) first deployment, with GitHub Actions for day-to-day changes and for Bedrock prompt versions.
+This folder builds the PMAI AWS setup with OpenTofu. This branch is **Approach 2**: one `tofu apply`
+creates everything (including the container, `desired_count = 1`) and the CORS origin is derived
+automatically from the Amplify app. GitHub Actions handle the first deployment, day-to-day changes and
+Bedrock prompt versions.
 
 ```text
 Amplify frontend
@@ -27,7 +29,7 @@ access for private containers (a NAT gateway or VPC endpoints) and permission to
 | `environments/opentofu/opentofu-cg-existing-vpc.tfvars` | Template for a client environment. Replace every `CHANGE_ME`. |
 | `environments/opentofu/backend.hcl.template` | Template for the remote state settings of another account |
 | `ci/github-oidc-trust-policy.json`, `ci/pipeline-permissions-policy.json` | The AWS role the workflows assume, with placeholders (see "The pipeline role") |
-| `../.github/workflows/` | `infra.yml`, `app.yml`, `prompts.yml` |
+| `../.github/workflows/` | `deploy-single.yml`, `infra.yml`, `app.yml`, `prompts.yml` |
 | `../.github/actions/sync-task-definition/` | Rolls the latest task definition out with the image that is running |
 
 No file holds credentials, account ids or secret values. Real ids belong only in `*.local.json` copies
@@ -46,7 +48,7 @@ of the role files (git-ignored) and in GitHub variables.
    |---|---|---|
    | Variable | `AWS_ROLE_ARN` | ARN of the pipeline role |
    | Variable | `TF_STATE_BUCKET` | Name of the state bucket |
-   | Secret | `TF_VAR_amplify_access_token` | GitHub token, needed only when the Amplify app is first created |
+   | Secret | `TF_VAR_amplify_access_token` | GitHub token, needed when the Amplify app is created |
    | Environment | `practice` | Required reviewer |
 
 5. **Bedrock prompts**: run the prompts workflow manually with `all` ticked (creates every prompt that
@@ -54,10 +56,9 @@ of the role files (git-ignored) and in GitHub variables.
 
 ## The pipeline role
 
-One role, `gha-practice-manoj`-style, signs in without keys (OIDC). Its two files hold placeholders
-(`<ACCOUNT_ID>`, `<GITHUB_USER>`, `<OWNER_ID>`, `<REPO>`, `<REPO_ID>`). Never commit real values: copy each
-file to a name ending `.local.json` (git-ignored), fill the placeholders, and from the **repository
-root** run:
+One role signs in without keys (OIDC). Its two files hold placeholders (`<ACCOUNT_ID>`, `<GITHUB_USER>`,
+`<OWNER_ID>`, `<REPO>`, `<REPO_ID>`). Never commit real values: copy each file to a name ending `.local.json`
+(git-ignored), fill the placeholders, and from the **repository root** run:
 
 ```
 aws iam create-role --role-name <ROLE_NAME> --assume-role-policy-document file://infra/ci/trust.local.json --profile <profile>
@@ -70,28 +71,32 @@ aws iam put-role-policy --role-name <ROLE_NAME> --policy-name pmai-deploy --poli
   `repo:<GITHUB_USER>@<OWNER_ID>/<REPO>@<REPO_ID>:ref:refs/heads/<branch>`. The ids are public:
   `https://api.github.com/repos/<GITHUB_USER>/<REPO>` returns `id` and `owner.id`. The match is
   case-sensitive.
-- The trust policy allows the infra branch, the `practice` environment and pull requests of this repository only.
+- The trust policy in this branch allows the branch `single-1step`, the `practice` environment and pull
+  requests of this repository only. If the same role is also used from another branch, add that branch's
+  subject to the list and run `aws iam update-assume-role-policy`.
 - To change the permissions later, edit the JSON and run `put-role-policy` again.
 
-## First deployment (staged)
+## First deployment (single step)
 
-The service cannot start until an image exists, and the image repository is created by the first apply,
-so the first deployment is done in stages. Each stage is a push or a run of a workflow.
+Run the **deploy-single** workflow once for a new environment (Actions, Run workflow; the workflow file must
+be on the repository's default branch for the button to appear). It:
 
-1. Set `desired_count = 0` in `practice.tfvars`, push, and approve the **infra** apply. All
-   infrastructure is created and no container runs.
-2. Push a change under `backend/` (or run the **app** workflow). It builds the image, tags it with the
-   commit id, registers a task definition revision and updates the service.
-3. Set `desired_count = 1`, push, approve. The container starts.
-4. Put the Amplify branch URL (`https://<branch>.<amplify domain>`, see `tofu output amplify_default_domain`)
-   into `api_gateway_cors_allowed_origins` and `s3_cors_allowed_origins`, push, approve. Then run the **app**
-   workflow once, because the backend's own CORS list is part of the task definition (see below).
-5. In the Amplify console, authorise the GitHub app once ("Update required"), then run a build.
+1. Plans, then waits for approval of `practice`.
+2. Applies every resource with `desired_count = 1`. The image repository is empty at this point, so ECS
+   cannot start the container.
+3. Builds the image, tags it with the commit id and pushes it.
+4. Prints what ECS did while the image was missing (deployments and service events).
+5. Forces a new deployment of the ECS service, and waits until the service is stable.
+
+It refuses to run when the state already holds resources. Afterwards authorise the GitHub app once in the
+Amplify console ("Update required") and run a build. CORS needs no edit: the Amplify URL is added
+automatically.
 
 ## Workflows
 
 | Workflow | Starts on | Does |
 |---|---|---|
+| `deploy-single.yml` | Manual run | The first deployment above |
 | `infra.yml` | Changes under `infra/`, pull requests, manual run | `init`, `validate`, `plan`; after a push the apply job waits for approval of `practice`, applies, then rolls out the latest task definition |
 | `app.yml` | Changes under `backend/` (not `prompts/` or `scripts/`) | Builds the image, pushes it tagged with the commit id, deploys it to ECS |
 | `prompts.yml` | Changes under `backend/prompts/`, manual run | Lint on pull requests; on a push publishes new versions of the changed prompts, updates only their ids, then calls `infra.yml` |

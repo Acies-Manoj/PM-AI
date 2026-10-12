@@ -7,7 +7,7 @@ name: app
 
 on:
   push:
-    branches: [enhanced-with-agents-infra]
+    branches: [single-1step]
     paths:
       - "backend/**"
       # Prompt text is published by prompts.yml, and neither is part of the image.

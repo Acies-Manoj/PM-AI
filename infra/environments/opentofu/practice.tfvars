@@ -46,19 +46,14 @@ ecs_cpu        = 1024
 ecs_memory     = 4096
 image_tag      = "1.1.0"
 
-# First apply: keep 0 until the image is pushed to ECR.
-# Then set to 1 and apply again.
+# Single-step method: one apply creates everything and asks for 1 container straight away. The image
+# repository is empty during that apply, so the container cannot start until the image is pushed and a
+# new deployment is forced (the deploy-single workflow does both).
 desired_count = 1
 
-# Frontend/API CORS. Add the Amplify branch URL after the app is created:
-# https://<branch>.<amplify id>.amplifyapp.com
-api_gateway_cors_allowed_origins = [
-  "http://localhost:5173","https://enhanced-with-agents-infra.dp7wiuaiiygwo.amplifyapp.com"
-]
-
-s3_cors_allowed_origins = [
-  "http://localhost:5173","https://enhanced-with-agents-infra.dp7wiuaiiygwo.amplifyapp.com"
-]
+# CORS: the Amplify URL (https://<branch>.<amplify domain>) is added automatically (locals.tf).
+# List only EXTRA origins here, for example local development or a custom domain.
+extra_cors_origins = ["http://localhost:5173"]
 
 # App resources created by OpenTofu.
 create_ecr                = true
@@ -93,7 +88,7 @@ entra_client_id = ""
 # ("Update required" in the Amplify console) before the first build.
 enable_amplify         = true
 amplify_repository_url = "https://github.com/Acies-Manoj/PM-AI"
-amplify_branch_name    = "enhanced-with-agents-infra"
+amplify_branch_name    = "single-1step"
 
 # Bedrock prompt ids (bedrock_prompt_ids) are NOT set here. The prompts workflow writes them to
 # prompt-ids-practice.tfvars.json, which the infra workflow passes as a second -var-file.

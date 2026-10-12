@@ -18,7 +18,7 @@ on:
       - "infra/**"
       - ".github/workflows/infra.yml"
   push:
-    branches: [enhanced-with-agents-infra]
+    branches: [single-1step]
     paths:
       - "infra/**"
       - ".github/workflows/infra.yml"

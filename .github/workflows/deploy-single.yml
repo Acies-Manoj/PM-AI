@@ -1,0 +1,141 @@
+name: deploy-single
+
+# First deployment of a NEW environment, single-step method (Approach 2).
+#
+# One apply creates every resource with desired_count = 1 (CORS is automatic). The image repository is
+# empty during that apply, so ECS cannot start the container yet. The workflow then builds and pushes the
+# image and forces a new deployment of the ECS service. Before it forces it, it prints what ECS did with the
+# missing image (deployments and service events), so that behaviour can be read in the log.
+#
+# Started by hand. It refuses to run when the state already holds resources: use infra.yml for changes and
+# app.yml for new image versions. The apply job waits for approval of the "practice" environment.
+#
+# A manually started workflow only shows under "Run workflow" when its file is on the repository's default
+# branch. Make this branch the default branch while you run it (Settings, Branches).
+#
+# Needs in the GitHub repo: Variables AWS_ROLE_ARN and TF_STATE_BUCKET, Secret TF_VAR_amplify_access_token
+# (the Amplify app is created here), Environment practice. Prompts must already exist (run prompts.yml with
+# "all" first), and the role's trust must include this branch.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: tofu-practice-manoj
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  TF_VAR_FILE: environments/opentofu/practice.tfvars
+  TF_PROMPT_IDS_FILE: environments/opentofu/prompt-ids-practice.tfvars.json
+  TF_BACKEND_FILE: environments/opentofu/backend-practice.hcl
+  ECS_CLUSTER: pmai-practice-manoj-cluster
+  ECS_SERVICE: pmai-practice-manoj-backend-service
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.13.0
+          tofu_wrapper: false
+
+      - name: Init
+        run: tofu init -input=false -backend-config="$TF_BACKEND_FILE" -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+
+      - name: Refuse when the environment already exists
+        run: |
+          COUNT=$(tofu state list | wc -l)
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::The state already holds $COUNT resources. This workflow is only for a new environment: use infra.yml for changes and app.yml for new images."
+            exit 1
+          fi
+
+      - name: Validate
+        run: tofu validate
+
+      - name: Plan
+        run: |
+          TAG="${GITHUB_SHA::7}"
+          tofu plan -input=false -lock-timeout=5m -var-file="$TF_VAR_FILE" -var-file="$TF_PROMPT_IDS_FILE" \
+            -var="aws_profile=" -var="desired_count=1" -var="image_tag=$TAG"
+
+  deploy:
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: practice
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.13.0
+          tofu_wrapper: false
+
+      - name: Init
+        run: tofu init -input=false -backend-config="$TF_BACKEND_FILE" -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+
+      - name: Refuse when the environment already exists
+        run: |
+          COUNT=$(tofu state list | wc -l)
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::The state already holds $COUNT resources. This workflow is only for a new environment."
+            exit 1
+          fi
+
+      # The task definition is created pointing at this commit's image tag, which is pushed below.
+      - name: Apply (every resource, desired_count = 1)
+        env:
+          TF_VAR_amplify_access_token: ${{ secrets.TF_VAR_amplify_access_token }}
+        run: |
+          TAG="${GITHUB_SHA::7}"
+          tofu apply -auto-approve -input=false -lock-timeout=5m -var-file="$TF_VAR_FILE" -var-file="$TF_PROMPT_IDS_FILE" \
+            -var="aws_profile=" -var="desired_count=1" -var="image_tag=$TAG"
+
+      - name: Build and push the image
+        run: |
+          TAG="${GITHUB_SHA::7}"
+          REPO_URL=$(tofu output -raw ecr_repository_url)
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${REPO_URL%%/*}"
+          docker build -t "$REPO_URL:$TAG" ../backend
+          docker push "$REPO_URL:$TAG"
+
+      # ECS has been trying to start a container from an image that did not exist until now.
+      - name: Show what ECS did while the image was missing
+        run: |
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+            --query 'services[0].{desired:desiredCount,running:runningCount,deployments:deployments[].{status:status,rollout:rolloutState,reason:rolloutStateReason,failedTasks:failedTasks},events:events[:8].message}' \
+            --output json
+
+      - name: Force a new deployment
+        run: aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --force-new-deployment --query 'service.deployments[].{status:status,rollout:rolloutState}' --output json
+
+      - name: Wait until the service is stable
+        run: aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+
+      - name: Next steps
+        run: |
+          echo "Check /health on the API URL: $(tofu output -raw api_gateway_url)/health"
+          echo "Frontend: $(tofu output -raw frontend_origin)"
+          echo "Authorise the GitHub app once in the Amplify console (Update required), then run a build."

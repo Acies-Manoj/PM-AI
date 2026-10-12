@@ -57,14 +57,10 @@ image_tag      = "1.0.0"
 # 3) Change to 1 and run apply again
 desired_count = 0
 
-# Replace with CG Amplify/custom UAT frontend URL after frontend is known.
-api_gateway_cors_allowed_origins = [
-  "CHANGE_ME_FRONTEND_ORIGIN"
-]
-
-s3_cors_allowed_origins = [
-  "CHANGE_ME_FRONTEND_ORIGIN"
-]
+# CORS: the Amplify URL is added automatically when enable_amplify = true.
+# List only EXTRA origins here (for example a CG custom domain). Leave [] if there are none.
+# If enable_amplify = false there is no Amplify URL to add, so list the real frontend origin here.
+extra_cors_origins = []
 
 # App resources: create unless CG gives existing resources.
 create_ecr                 = true

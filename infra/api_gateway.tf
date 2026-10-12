@@ -15,7 +15,7 @@ resource "aws_apigatewayv2_api" "backend" {
     allow_credentials = false
     allow_headers     = ["*"]
     allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_origins     = var.api_gateway_cors_allowed_origins
+    allow_origins     = local.cors_origins
     expose_headers    = ["*"]
     max_age           = var.api_gateway_cors_max_age_seconds
   }

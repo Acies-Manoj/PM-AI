@@ -102,8 +102,7 @@ existing_private_subnet_ids = [
   "CHANGE_ME_PRIVATE_SUBNET_ID_A",
   "CHANGE_ME_PRIVATE_SUBNET_ID_B"
 ]
-api_gateway_cors_allowed_origins = ["CHANGE_ME_FRONTEND_ORIGIN"]
-s3_cors_allowed_origins = ["CHANGE_ME_FRONTEND_ORIGIN"]
+extra_cors_origins = []   # the Amplify URL is added automatically; list only extra origins
 owner = "CHANGE_ME_OWNER"
 cost_center = "CHANGE_ME_COST_CENTER"
 bedrock_model_id = "CHANGE_ME_CG_APPROVED_BEDROCK_MODEL_ID"

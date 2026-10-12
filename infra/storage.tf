@@ -44,14 +44,15 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
 }
 
 resource "aws_s3_bucket_cors_configuration" "data" {
-  count = var.create_s3_bucket ? 1 : 0
+  # An S3 CORS rule needs at least one origin, so skip it when there is none.
+  count = var.create_s3_bucket && length(local.cors_origins) > 0 ? 1 : 0
 
   bucket = aws_s3_bucket.data[0].id
 
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["PUT", "GET", "HEAD"]
-    allowed_origins = var.s3_cors_allowed_origins
+    allowed_origins = local.cors_origins
     expose_headers  = ["ETag"]
     max_age_seconds = var.s3_cors_max_age_seconds
   }

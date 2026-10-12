@@ -37,18 +37,13 @@ ecs_cpu        = 1024
 ecs_memory     = 4096
 image_tag      = "1.1.0"
 
-# First apply: keep 0 until ECR image + secret values are ready.
-# After pushing image and adding secret values, set this to 1 and apply again.
-desired_count = 0
+# 1-step method: start 1 container straight away. The ECR repo is empty during the apply, so
+# the container cannot start until you push image_tag; push it, then force a new deployment.
+# (3-step method: set 0 here, push the image, then set 1 and apply again.)
+desired_count = 1
 
-# Frontend/API CORS. Add Amplify URL after it is created.
-api_gateway_cors_allowed_origins = [
-  "http://localhost:5173"
-]
-
-s3_cors_allowed_origins = [
-  "http://localhost:5173"
-]
+# CORS: the Amplify URL is added automatically (locals.tf). Only list EXTRA origins here.
+extra_cors_origins = ["http://localhost:5173"]
 
 # ECR / app resources are created by OpenTofu.
 create_ecr                = true
@@ -90,5 +85,23 @@ amplify_branch_name    = "enhanced-with-agents"
 # Bedrock Prompt Management ids (from: python scripts/bedrock_prompts.py create).
 # Without these the backend answers 503 "No system prompt for 'planner_agent'".
 bedrock_prompt_ids = {
-
+  planner_agent                    = "8DBE2WI9FO:1",
+  drilldown_path                   = "6UL0FSAT59:1",
+  feature_agent_think              = "2IM936UH9P:1",
+  feature_agent_write_code         = "A2FYQ8K4CG:1",
+  feature_agent_validate           = "PUFTNPNB54:1",
+  feature_suggester                = "H3EPIZ7NIP:1",
+  analysis_agent_think             = "N8HR6ATR60:1",
+  analysis_agent_write_code        = "Q2Q371FEKT:1",
+  analysis_agent_chart_suggestion  = "EC7LSY02QR:1",
+  analysis_agent_interpret         = "FSZC2XYIGR:1",
+  analysis_agent_drilldown         = "HPLYFJOPF7:1",
+  analysis_designer_template_match = "SP5RSZVKJ0:1",
+  analysis_designer_chart          = "NSE77L2OQI:1",
+  analysis_suggester               = "T55QEVWPGQ:1",
+  drilldown_agent                  = "L9OOWU040Z:1",
+  drilldown_agent_more             = "KQHBQPEJVZ:1",
+  audit_agent                      = "BBEA7GIIBA:1",
+  overall_analysis_agent           = "WQLYTHR71Q:1",
+  report_final_summary_agent       = "908YYO0K5S:1"
 }

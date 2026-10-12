@@ -18,7 +18,7 @@ Fill:
 | Region | `aws_region` | Keep same as practice account region |
 | Backend image tag | `image_tag` | `1.0.0` |
 | Bedrock model ID | `bedrock_model_id` | Put approved model ID, or keep placeholder until ready |
-| Frontend CORS | `api_gateway_cors_allowed_origins`, `s3_cors_allowed_origins` | Add Amplify URL after frontend exists |
+| Extra CORS origins | `extra_cors_origins` | Only extras (for example `http://localhost:5173`). The Amplify URL is added automatically. |
 
 Keep first run:
 
@@ -49,7 +49,7 @@ Fill these first:
 | VPC ID | `existing_vpc_id` | `vpc-...` |
 | Private subnet IDs | `existing_private_subnet_ids` | Same list used by VPC Link, internal ALB, and ECS |
 | Private route table IDs | `existing_private_route_table_ids` | Needed only if `enable_vpc_endpoints=true` |
-| Frontend URL | `api_gateway_cors_allowed_origins`, `s3_cors_allowed_origins` | Amplify URL or CG custom domain |
+| Extra CORS origins | `extra_cors_origins` | CG custom domain, if any. The Amplify URL is added automatically when `enable_amplify = true`; if Amplify is off, list the frontend origin here. |
 | Tags | `owner`, `cost_center`, `additional_tags` | CG governance tags |
 | Bedrock model ID | `bedrock_model_id` | CG-approved Bedrock model |
 | Bedrock model ARNs | `bedrock_model_arns` | Specific ARNs if CG provides them; `*` only for early test if allowed |

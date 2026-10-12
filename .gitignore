@@ -33,3 +33,15 @@ backend/prompts_export/
 
 # chat exports (contain account ids and resource names)
 docs/exports/
+
+# Runtime output, scratch files and dumps (never commit)
+*.log
+backend/out*.txt
+backend/td.json
+backend/label_counts.txt
+backend/data/token_usage.jsonl
+check_current.txt
+frontend/verify.txt
+
+# Real customer data must not be committed
+backend/data/raw/*.xlsx

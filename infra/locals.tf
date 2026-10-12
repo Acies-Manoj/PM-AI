@@ -69,7 +69,7 @@ locals {
     }] : []
   )
 
-  # Names below are the ones the backend reads (backend/app/config.py, deploy/taskdef.json).
+  # Names below are the ones the backend reads (backend/app/config.py).
   # S3_BUCKET + DDB_SESSIONS + DDB_DOCS must all be set, or the backend falls back to local files.
   ecs_environment = concat([
     { name = "CORS_ORIGINS", value = join(",", var.api_gateway_cors_allowed_origins) },

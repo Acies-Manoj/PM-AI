@@ -1,8 +1,7 @@
-# PMAI OpenTofu Infrastructure
+# PMAI OpenTofu Infrastructure (Approach 1: staged first deployment)
 
-This `/infra` folder is a template implementation for the PMAI AWS setup.
-
-It follows the same architecture described in the E2E/backend/frontend deployment notes:
+This folder builds the PMAI AWS setup with OpenTofu. This branch is **Approach 1**: the staged
+(3-step) first deployment, with GitHub Actions for day-to-day changes and for Bedrock prompt versions.
 
 ```text
 Amplify frontend
@@ -10,164 +9,121 @@ Amplify frontend
    -> VPC Link
    -> internal ALB
    -> ECS Fargate FastAPI backend
-   -> S3, DynamoDB, Secrets Manager, CloudWatch, Translate, Bedrock
+   -> S3, DynamoDB, CloudWatch, Translate, Bedrock
 ```
 
-## Important safety point
+The network is not created here: the stack uses an **existing VPC** and its private subnets
+(`create_vpc = false`). The VPC needs two private subnets in different availability zones, outbound
+access for private containers (a NAT gateway or VPC endpoints) and permission to create security groups.
 
-This code does **not** contain real AWS credentials, account IDs, secret values, subnet IDs, or client-specific values.
+## Files
 
-You must fill the values in one of these files:
+| Path | Purpose |
+|---|---|
+| `*.tf` | The infrastructure: network lookup, security groups, IAM, ECR, S3, DynamoDB, ECS, ALB, API Gateway, Amplify |
+| `environments/opentofu/practice.tfvars` | The settings of this environment |
+| `environments/opentofu/prompt-ids-practice.tfvars.json` | Bedrock prompt ids, written by the prompts workflow. Pass it as a second `-var-file`. |
+| `environments/opentofu/backend-practice.hcl` | Remote state settings (state key, region, lock file). The bucket name is passed at init, never stored. |
+| `environments/opentofu/opentofu-cg-existing-vpc.tfvars` | Template for a client environment. Replace every `CHANGE_ME`. |
+| `environments/opentofu/backend.hcl.template` | Template for the remote state settings of another account |
+| `ci/github-oidc-trust-policy.json`, `ci/pipeline-permissions-policy.json` | The AWS role the workflows assume, with placeholders (see "The pipeline role") |
+| `../.github/workflows/` | `infra.yml`, `app.yml`, `prompts.yml` |
+| `../.github/actions/sync-task-definition/` | Rolls the latest task definition out with the image that is running |
 
-```text
-environments/opentofu/opentofu-acies-practice.tfvars
-environments/opentofu/opentofu-cg-existing-vpc.tfvars
+No file holds credentials, account ids or secret values. Real ids belong only in `*.local.json` copies
+of the role files (git-ignored) and in GitHub variables.
+
+## One-time setup (once per AWS account)
+
+1. **State bucket**, created by hand (it must not be managed by the stack it stores): private,
+   versioned, encrypted, no public access. OpenTofu 1.10+ locks state with a lock file in the bucket.
+2. **GitHub OIDC provider** `token.actions.githubusercontent.com` in IAM. An account can have only one.
+3. **The pipeline role** (below).
+4. **GitHub settings** on the repository (Settings, Secrets and variables, Actions), at **repository**
+   level, because the plan job does not use an environment:
+
+   | Kind | Name | Value |
+   |---|---|---|
+   | Variable | `AWS_ROLE_ARN` | ARN of the pipeline role |
+   | Variable | `TF_STATE_BUCKET` | Name of the state bucket |
+   | Secret | `TF_VAR_amplify_access_token` | GitHub token, needed only when the Amplify app is first created |
+   | Environment | `practice` | Required reviewer |
+
+5. **Bedrock prompts**: run the prompts workflow manually with `all` ticked (creates every prompt that
+   does not exist yet and records the ids), before the first deployment.
+
+## The pipeline role
+
+One role, `gha-practice-manoj`-style, signs in without keys (OIDC). Its two files hold placeholders
+(`<ACCOUNT_ID>`, `<GITHUB_USER>`, `<OWNER_ID>`, `<REPO>`, `<REPO_ID>`). Never commit real values: copy each
+file to a name ending `.local.json` (git-ignored), fill the placeholders, and from the **repository
+root** run:
+
+```
+aws iam create-role --role-name <ROLE_NAME> --assume-role-policy-document file://infra/ci/trust.local.json --profile <profile>
+aws iam put-role-policy --role-name <ROLE_NAME> --policy-name pmai-deploy --policy-document file://infra/ci/permissions.local.json --profile <profile>
 ```
 
-## Two modes
+- The role is **not** named `pmai-*`, so its IAM permissions (limited to `pmai-*` roles) cannot be used
+  to change the role itself.
+- Newer GitHub repositories put numeric ids in the identity string:
+  `repo:<GITHUB_USER>@<OWNER_ID>/<REPO>@<REPO_ID>:ref:refs/heads/<branch>`. The ids are public:
+  `https://api.github.com/repos/<GITHUB_USER>/<REPO>` returns `id` and `owner.id`. The match is
+  case-sensitive.
+- The trust policy allows the infra branch, the `practice` environment and pull requests of this repository only.
+- To change the permissions later, edit the JSON and run `put-role-policy` again.
 
-### 1. Acies learning/practice mode
+## First deployment (staged)
 
-Use:
+The service cannot start until an image exists, and the image repository is created by the first apply,
+so the first deployment is done in stages. Each stage is a push or a run of a workflow.
 
-```hcl
-create_vpc = true
+1. Set `desired_count = 0` in `practice.tfvars`, push, and approve the **infra** apply. All
+   infrastructure is created and no container runs.
+2. Push a change under `backend/` (or run the **app** workflow). It builds the image, tags it with the
+   commit id, registers a task definition revision and updates the service.
+3. Set `desired_count = 1`, push, approve. The container starts.
+4. Put the Amplify branch URL (`https://<branch>.<amplify domain>`, see `tofu output amplify_default_domain`)
+   into `api_gateway_cors_allowed_origins` and `s3_cors_allowed_origins`, push, approve. Then run the **app**
+   workflow once, because the backend's own CORS list is part of the task definition (see below).
+5. In the Amplify console, authorise the GitHub app once ("Update required"), then run a build.
+
+## Workflows
+
+| Workflow | Starts on | Does |
+|---|---|---|
+| `infra.yml` | Changes under `infra/`, pull requests, manual run | `init`, `validate`, `plan`; after a push the apply job waits for approval of `practice`, applies, then rolls out the latest task definition |
+| `app.yml` | Changes under `backend/` (not `prompts/` or `scripts/`) | Builds the image, pushes it tagged with the commit id, deploys it to ECS |
+| `prompts.yml` | Changes under `backend/prompts/`, manual run | Lint on pull requests; on a push publishes new versions of the changed prompts, updates only their ids, then calls `infra.yml` |
+
+The ECS service ignores its task definition (`ecs.tf`), so `app.yml` owns which image runs. A change to the
+container's environment (prompt ids, CORS origins) creates a new revision that only reaches the running
+container through the roll-out step of `infra.yml` or the next `app.yml` run.
+
+## Prompts
+
+The prompt text lives in `backend/prompts/*.txt` and the backend reads it from Bedrock Prompt Management,
+by the ids in `prompt-ids-practice.tfvars.json`. Edit a file and merge: the workflow publishes a new version
+of that prompt only, records its id, and the apply puts it into the container. Bedrock prompts are shared by
+name in an account, so the workflow stops if the latest version in Bedrock is not the one recorded in the
+ids file (someone published it outside the pipeline). Roll back by reverting the ids file.
+
+## Running OpenTofu by hand
+
+Run from this folder. Pass the settings **and** the ids file, and the bucket name at init:
+
+```
+tofu init -backend-config=environments/opentofu/backend-practice.hcl -backend-config="bucket=<state bucket>" -backend-config="profile=<profile>"
+tofu plan -var-file=environments/opentofu/practice.tfvars -var-file=environments/opentofu/prompt-ids-practice.tfvars.json
 ```
 
-This creates a fresh VPC, public/private subnets, NAT, route tables, and app resources.
+A plan without `-var-file` uses the defaults and wants to rebuild everything: never apply it.
 
-Run with:
+## Teardown
 
-```bash
-tofu init
-tofu fmt -recursive
-tofu validate
-tofu plan -var-file=environments/opentofu/opentofu-acies-practice.tfvars
+```
+tofu destroy -var-file=environments/opentofu/practice.tfvars -var-file=environments/opentofu/prompt-ids-practice.tfvars.json
 ```
 
-Only apply after reading the plan:
-
-```bash
-tofu apply -var-file=environments/opentofu/opentofu-acies-practice.tfvars
-```
-
-### 2. CG existing VPC mode
-
-Use:
-
-```hcl
-create_vpc = false
-existing_vpc_id = "vpc-..."
-existing_private_subnet_ids = ["subnet-a", "subnet-b"]
-```
-
-This reuses CG's existing VPC and private subnets, while creating the PMAI app resources.
-
-Run with:
-
-```bash
-tofu init -backend-config=environments/opentofu/backend.hcl
-tofu fmt -recursive
-tofu validate
-tofu plan -var-file=environments/opentofu/opentofu-cg-existing-vpc.tfvars
-```
-
-Only apply after CG reviews the plan:
-
-```bash
-tofu apply -var-file=environments/opentofu/opentofu-cg-existing-vpc.tfvars
-```
-
-## Recommended first deployment flow
-
-Use `desired_count = 0` for the first apply. This creates infrastructure but does not start the backend container yet.
-
-Then:
-
-1. Push the Docker image to ECR.
-2. Add secret values to Secrets Manager, if OpenRouter/DeepL are enabled.
-3. Set `desired_count = 1`.
-4. Run `tofu plan` and `tofu apply` again.
-
-## Main values to fill for CG
-
-Use `environments/opentofu/opentofu-cg-existing-vpc.tfvars`.
-
-Required values:
-
-```hcl
-aws_region = "CHANGE_ME_CG_REGION"
-existing_vpc_id = "CHANGE_ME_VPC_ID"
-existing_private_subnet_ids = [
-  "CHANGE_ME_PRIVATE_SUBNET_ID_A",
-  "CHANGE_ME_PRIVATE_SUBNET_ID_B"
-]
-api_gateway_cors_allowed_origins = ["CHANGE_ME_FRONTEND_ORIGIN"]
-s3_cors_allowed_origins = ["CHANGE_ME_FRONTEND_ORIGIN"]
-owner = "CHANGE_ME_OWNER"
-cost_center = "CHANGE_ME_COST_CENTER"
-bedrock_model_id = "CHANGE_ME_CG_APPROVED_BEDROCK_MODEL_ID"
-bedrock_model_arns = ["CHANGE_ME_CG_APPROVED_BEDROCK_MODEL_ARN_OR_STAR_FOR_INITIAL_TEST"]
-```
-
-Optional depending on CG rules:
-
-```hcl
-enable_vpc_endpoints = true
-existing_private_route_table_ids = ["rtb-a", "rtb-b"]
-permissions_boundary_arn = "arn:..."
-create_iam_roles = false
-existing_ecs_execution_role_arn = "arn:..."
-existing_ecs_task_role_arn = "arn:..."
-create_security_groups = false
-existing_vpclink_security_group_id = "sg-..."
-existing_alb_security_group_id = "sg-..."
-existing_ecs_security_group_id = "sg-..."
-```
-
-## Bedrock
-
-Bedrock is enabled by default as an application runtime option:
-
-```hcl
-enable_bedrock = true
-bedrock_model_id = "CHANGE_ME_CG_APPROVED_BEDROCK_MODEL_ID"
-bedrock_model_arns = ["CHANGE_ME_CG_APPROVED_BEDROCK_MODEL_ARN_OR_STAR_FOR_INITIAL_TEST"]
-```
-
-This version intentionally does **not** create a prompt registry or Bedrock Prompt Management resource.
-
-## Secret values
-
-Secret containers can be created by OpenTofu, but secret values should be inserted separately.
-
-Example:
-
-```bash
-aws secretsmanager put-secret-value \
-  --secret-id <openrouter_secret_arn_or_name> \
-  --secret-string '<actual-secret-value>' \
-  --region <region>
-```
-
-Do not put secret values inside `.tf` or `.tfvars` files.
-
-## File map
-
-```text
-versions.tf                  Provider version and optional backend block
-providers.tf                 AWS provider configuration
-variables.tf                 All configurable values
-locals.tf                    Derived names/IDs/env vars
-network.tf                   VPC/subnets/NAT/routes/endpoints
-security_groups.tf           VPC Link, ALB, ECS security groups
-ecr.tf                       Backend Docker image repository
-iam.tf                       ECS roles and app permissions
-secrets.tf                   Placeholder secret containers
-storage.tf                   S3 bucket and DynamoDB tables
-load_balancer.tf             Internal ALB, target group, listener
-ecs.tf                       ECS cluster, task definition, service
-api_gateway.tf               HTTP API, VPC Link, ALB integration
-amplify.tf                   Optional Amplify app and branch
-outputs.tf                   Useful output values
-```
+The state bucket, the pipeline role, the GitHub provider, the Bedrock prompts and the shared VPC are not
+managed by this stack and stay.

@@ -1,3 +1,0 @@
-Sheets: ['Pipeline Steps', 'Legend', 'Agents', 'Diagram Notes', 'LLM Prompts']
-Notes count: 0
-Guardrails count: 12

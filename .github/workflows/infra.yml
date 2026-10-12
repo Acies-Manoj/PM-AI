@@ -48,9 +48,9 @@ concurrency:
 
 env:
   AWS_REGION: eu-north-1
-  TF_VAR_FILE: environments/opentofu/manoj-existing-vpc.tfvars
-  TF_PROMPT_IDS_FILE: environments/opentofu/prompt-ids-practice-manoj.tfvars.json
-  TF_BACKEND_FILE: environments/opentofu/backend-practice-manoj.hcl
+  TF_VAR_FILE: environments/opentofu/practice.tfvars
+  TF_PROMPT_IDS_FILE: environments/opentofu/prompt-ids-practice.tfvars.json
+  TF_BACKEND_FILE: environments/opentofu/backend-practice.hcl
   TF_VAR_amplify_access_token: ${{ secrets.TF_VAR_amplify_access_token }}
   ECS_CLUSTER: pmai-practice-manoj-cluster
   ECS_SERVICE: pmai-practice-manoj-backend-service

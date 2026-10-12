@@ -126,7 +126,7 @@ resource "aws_s3_bucket_policy" "data" {
   policy = data.aws_iam_policy_document.data_bucket[0].json
 }
 
-# Table keys match what the backend reads and writes (backend/app/services/common/*, deploy/README.md).
+# Table keys match what the backend reads and writes (backend/app/services/common/*).
 resource "aws_dynamodb_table" "sessions" {
   count = var.create_dynamodb_tables ? 1 : 0
 

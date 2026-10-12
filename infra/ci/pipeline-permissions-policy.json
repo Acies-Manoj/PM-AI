@@ -59,6 +59,24 @@
       "Effect": "Allow",
       "Action": "iam:CreateServiceLinkedRole",
       "Resource": "*"
+    },
+    {
+      "Sid": "BedrockPromptManagement",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:CreatePrompt",
+        "bedrock:UpdatePrompt",
+        "bedrock:CreatePromptVersion",
+        "bedrock:GetPrompt",
+        "bedrock:ListPrompts",
+        "bedrock:TagResource"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-north-1"
+        }
+      }
     }
   ]
 }

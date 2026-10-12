@@ -96,5 +96,5 @@ amplify_repository_url = "https://github.com/Acies-Manoj/PM-AI"
 amplify_branch_name    = "enhanced-with-agents-infra"
 
 # Bedrock prompt ids (bedrock_prompt_ids) are NOT set here. The prompts workflow writes them to
-# prompt-ids-practice-manoj.tfvars.json, which the infra workflow passes as a second -var-file.
+# prompt-ids-practice.tfvars.json, which the infra workflow passes as a second -var-file.
 # They live outside OpenTofu and survive `tofu destroy`.

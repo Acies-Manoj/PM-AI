@@ -48,7 +48,7 @@ image_tag      = "1.1.0"
 
 # Single-step method: one apply creates everything and asks for 1 container straight away. The image
 # repository is empty during that apply, so the container cannot start until the image is pushed and a
-# new deployment is forced (the deploy-single workflow does both).
+# new deployment is forced (the last job of infra.yml does both for a new environment).
 desired_count = 1
 
 # CORS: the Amplify URL (https://<branch>.<amplify domain>) is added automatically (locals.tf).

@@ -95,26 +95,6 @@ enable_amplify         = true
 amplify_repository_url = "https://github.com/Acies-Manoj/PM-AI"
 amplify_branch_name    = "enhanced-with-agents-infra"
 
-# Bedrock Prompt Management ids (created earlier with: python scripts/bedrock_prompts.py create).
+# Bedrock prompt ids (bedrock_prompt_ids) are NOT set here. The prompts workflow writes them to
+# prompt-ids-practice-manoj.tfvars.json, which the infra workflow passes as a second -var-file.
 # They live outside OpenTofu and survive `tofu destroy`.
-bedrock_prompt_ids = {
-  planner_agent                    = "8DBE2WI9FO:1"
-  drilldown_path                   = "6UL0FSAT59:1"
-  feature_agent_think              = "2IM936UH9P:1"
-  feature_agent_write_code         = "A2FYQ8K4CG:1"
-  feature_agent_validate           = "PUFTNPNB54:1"
-  feature_suggester                = "H3EPIZ7NIP:1"
-  analysis_agent_think             = "N8HR6ATR60:1"
-  analysis_agent_write_code        = "Q2Q371FEKT:1"
-  analysis_agent_chart_suggestion  = "EC7LSY02QR:1"
-  analysis_agent_interpret         = "FSZC2XYIGR:1"
-  analysis_agent_drilldown         = "HPLYFJOPF7:1"
-  analysis_designer_template_match = "SP5RSZVKJ0:1"
-  analysis_designer_chart          = "NSE77L2OQI:1"
-  analysis_suggester               = "T55QEVWPGQ:1"
-  drilldown_agent                  = "L9OOWU040Z:1"
-  drilldown_agent_more             = "KQHBQPEJVZ:1"
-  audit_agent                      = "BBEA7GIIBA:1"
-  overall_analysis_agent           = "WQLYTHR71Q:1"
-  report_final_summary_agent       = "908YYO0K5S:1"
-}

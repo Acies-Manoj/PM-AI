@@ -1,7 +1,11 @@
 name: infra
 
 # Plan on every pull request that touches infra/. After a merge to the infra branch the same plan
-# runs, then the apply job waits for a reviewer to approve the "practice" environment.
+# runs, then the apply job waits for a reviewer to approve the "practice" environment. After the
+# apply, the latest task definition revision is rolled out (see .github/actions/sync-task-definition).
+#
+# Also called by prompts.yml (workflow_call) after new prompt versions are published, and it can be
+# started by hand with "apply" ticked.
 #
 # Needs in the GitHub repo:
 #   Variables: AWS_ROLE_ARN, TF_STATE_BUCKET
@@ -19,6 +23,20 @@ on:
       - "infra/**"
       - ".github/workflows/infra.yml"
   workflow_dispatch:
+    inputs:
+      apply:
+        description: "Also apply (waits for approval of the practice environment)"
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      apply:
+        type: boolean
+        default: false
+      ref:
+        description: "Commit to run on (default: the commit that started the run)"
+        type: string
+        default: ""
 
 permissions:
   id-token: write
@@ -31,8 +49,12 @@ concurrency:
 env:
   AWS_REGION: eu-north-1
   TF_VAR_FILE: environments/opentofu/manoj-existing-vpc.tfvars
+  TF_PROMPT_IDS_FILE: environments/opentofu/prompt-ids-practice-manoj.tfvars.json
   TF_BACKEND_FILE: environments/opentofu/backend-practice-manoj.hcl
   TF_VAR_amplify_access_token: ${{ secrets.TF_VAR_amplify_access_token }}
+  ECS_CLUSTER: pmai-practice-manoj-cluster
+  ECS_SERVICE: pmai-practice-manoj-backend-service
+  ECS_TASK_FAMILY: pmai-practice-manoj-backend
 
 defaults:
   run:
@@ -43,6 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -62,15 +86,17 @@ jobs:
 
       # aws_profile is blank in CI: the role from OIDC supplies the credentials.
       - name: Plan
-        run: tofu plan -input=false -lock-timeout=5m -var-file="$TF_VAR_FILE" -var="aws_profile="
+        run: tofu plan -input=false -lock-timeout=5m -var-file="$TF_VAR_FILE" -var-file="$TF_PROMPT_IDS_FILE" -var="aws_profile="
 
   apply:
     needs: plan
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.apply
     runs-on: ubuntu-latest
     environment: practice
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -88,4 +114,13 @@ jobs:
       # The reviewer approved the environment after reading the plan job. This step plans again
       # and applies, so it can differ from that plan if infra changed in between.
       - name: Apply
-        run: tofu apply -auto-approve -input=false -lock-timeout=5m -var-file="$TF_VAR_FILE" -var="aws_profile="
+        run: tofu apply -auto-approve -input=false -lock-timeout=5m -var-file="$TF_VAR_FILE" -var-file="$TF_PROMPT_IDS_FILE" -var="aws_profile="
+
+      # OpenTofu ignores the service's task definition (the app workflow owns the image), so an
+      # environment change (prompt ids, CORS) only reaches the running container through this step.
+      - name: Roll out the latest task definition
+        uses: ./.github/actions/sync-task-definition
+        with:
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          family: ${{ env.ECS_TASK_FAMILY }}

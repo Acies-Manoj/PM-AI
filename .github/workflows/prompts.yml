@@ -1,0 +1,169 @@
+name: prompts
+
+# Publishes the prompt text in backend/prompts/ to Amazon Bedrock Prompt Management as NEW VERSIONS,
+# records the resulting ids, and hands them to the infra workflow so the backend uses them.
+#
+#   pull request   lint the prompt files (no AWS: create --dry-run)
+#   push           publish a new version of each prompt file that changed, commit the ids file,
+#                  then run the infra workflow (plan, approval, apply, roll out)
+#   manual run     "all" creates every missing prompt (first-time setup of an environment) and
+#                  commits the ids file, but does not deploy anything
+#
+# Needs in the GitHub repo: Variable PROMPTS_ROLE_ARN (see infra/ci/README.md), the variables and
+# secret the infra workflow needs, and the "practice" environment.
+
+on:
+  pull_request:
+    paths:
+      - "backend/prompts/**"
+      - "backend/scripts/bedrock_prompts.py"
+  push:
+    branches: [enhanced-with-agents-infra]
+    paths:
+      - "backend/prompts/**"
+  workflow_dispatch:
+    inputs:
+      all:
+        description: "Create every missing prompt (first-time setup of an environment)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prompts-practice-manoj
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  BEDROCK_REGION: eu-north-1
+  IDS_FILE: infra/environments/opentofu/prompt-ids-practice-manoj.tfvars.json
+
+jobs:
+  lint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install python-dotenv boto3
+
+      # Checks that every prompt file exists and only uses the {{placeholders}} the code fills in.
+      - name: Check the prompt files
+        working-directory: backend
+        run: python scripts/bedrock_prompts.py create --dry-run
+
+  publish:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    outputs:
+      ids_changed: ${{ steps.commit.outputs.ids_changed }}
+      commit: ${{ steps.commit.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install python-dotenv boto3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.PROMPTS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Each "create --update" makes a new version even when the text is unchanged, so only the
+      # files git reports as changed in this push are published.
+      - name: Find the prompts that changed
+        id: changed
+        env:
+          ALL: ${{ inputs.all }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$ALL" = "true" ]; then
+            echo "mode=all" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE="HEAD^"
+          fi
+          CHANGED=$(git diff --name-only --diff-filter=AM "$BEFORE" HEAD -- backend/prompts \
+            | grep -E '\.txt$' | sed -E 's#^backend/prompts/##; s#\.txt$##' | paste -sd, - || true)
+          if [ -z "$CHANGED" ]; then
+            echo "No prompt file changed."
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed prompts: $CHANGED"
+            echo "mode=update" >> "$GITHUB_OUTPUT"
+            echo "only=$CHANGED" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish new versions
+        if: steps.changed.outputs.mode != 'none'
+        working-directory: backend
+        env:
+          MODE: ${{ steps.changed.outputs.mode }}
+          ONLY: ${{ steps.changed.outputs.only }}
+        run: |
+          if [ "$MODE" = "all" ]; then
+            python scripts/bedrock_prompts.py create
+          else
+            python scripts/bedrock_prompts.py create --update --only "$ONLY"
+          fi
+
+      # "create" without --update prints every existing prompt at its LATEST version, which gives
+      # the complete ids map (the previous step only returns the prompts it touched).
+      - name: Read every prompt at its latest version
+        if: steps.changed.outputs.mode != 'none'
+        working-directory: backend
+        run: python scripts/bedrock_prompts.py create --out prompts_export
+
+      - name: Write the ids file and commit it
+        id: commit
+        if: steps.changed.outputs.mode != 'none'
+        run: |
+          python - <<'EOF'
+          import json, os
+          ids = json.load(open("backend/prompts_export/bedrock_prompt_ids.json"))
+          out = {"bedrock_prompt_ids": dict(sorted(ids.items()))}
+          with open(os.environ["IDS_FILE"], "w", encoding="utf-8") as handle:
+              handle.write(json.dumps(out, indent=2) + "\n")
+          EOF
+          if [ -z "$(git status --porcelain -- "$IDS_FILE")" ]; then
+            echo "The ids did not change."
+            echo "ids_changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$IDS_FILE"
+          git commit -m "Update Bedrock prompt versions"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "ids_changed=true" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # A push made with the built-in token does not start other workflows, so the infra workflow is
+  # called here. It runs the plan, waits for approval of the practice environment, applies, and
+  # rolls the new task definition out. Not called after a manual run.
+  infra:
+    needs: publish
+    if: github.event_name == 'push' && needs.publish.outputs.ids_changed == 'true'
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/infra.yml
+    with:
+      apply: true
+      ref: ${{ needs.publish.outputs.commit }}
+    secrets: inherit

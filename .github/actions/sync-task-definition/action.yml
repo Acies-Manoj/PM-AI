@@ -1,0 +1,79 @@
+name: Sync task definition
+description: >
+  OpenTofu registers a new task definition revision when the container's environment changes
+  (prompt ids, CORS origins, ...), but the ECS service ignores it so the app workflow can own the
+  image. This step rolls the latest revision out. It keeps the image the service runs now, so it
+  never moves the image back to the older tag OpenTofu knows. It does nothing when the service
+  already runs the latest revision.
+
+inputs:
+  cluster:
+    description: ECS cluster name
+    required: true
+  service:
+    description: ECS service name
+    required: true
+  family:
+    description: Task definition family
+    required: true
+  container-name:
+    description: Container to keep the running image for
+    required: false
+    default: backend
+
+runs:
+  using: composite
+  steps:
+    - name: Compare the service's revision with the latest revision
+      id: check
+      shell: bash
+      env:
+        CLUSTER: ${{ inputs.cluster }}
+        SERVICE: ${{ inputs.service }}
+        FAMILY: ${{ inputs.family }}
+        CONTAINER: ${{ inputs.container-name }}
+      run: |
+        set -euo pipefail
+        CURRENT=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+          --query 'services[0].taskDefinition' --output text 2>/dev/null || echo None)
+        if [ -z "$CURRENT" ] || [ "$CURRENT" = "None" ]; then
+          echo "The service does not exist yet, nothing to roll out."
+          echo "needs_sync=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        LATEST=$(aws ecs describe-task-definition --task-definition "$FAMILY" \
+          --query 'taskDefinition.taskDefinitionArn' --output text)
+        if [ "$CURRENT" = "$LATEST" ]; then
+          echo "The service already runs the latest revision, nothing to roll out."
+          echo "needs_sync=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        IMAGE=$(aws ecs describe-task-definition --task-definition "$CURRENT" \
+          --query "taskDefinition.containerDefinitions[?name=='$CONTAINER'].image | [0]" --output text)
+        aws ecs describe-task-definition --task-definition "$LATEST" \
+          --query taskDefinition > "$RUNNER_TEMP/task-definition.json"
+        echo "The service runs a different revision than the latest one."
+        echo "Keeping the running image: ${IMAGE##*:}"
+        {
+          echo "needs_sync=true"
+          echo "image=$IMAGE"
+          echo "definition=$RUNNER_TEMP/task-definition.json"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Put the running image into the latest revision
+      id: render
+      if: steps.check.outputs.needs_sync == 'true'
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: ${{ steps.check.outputs.definition }}
+        container-name: ${{ inputs.container-name }}
+        image: ${{ steps.check.outputs.image }}
+
+    - name: Roll it out
+      if: steps.check.outputs.needs_sync == 'true'
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+      with:
+        task-definition: ${{ steps.render.outputs.task-definition }}
+        cluster: ${{ inputs.cluster }}
+        service: ${{ inputs.service }}
+        wait-for-service-stability: true

@@ -10,6 +10,9 @@ on:
     branches: [enhanced-with-agents-infra]
     paths:
       - "backend/**"
+      # Prompt text is published by prompts.yml, and neither is part of the image.
+      - "!backend/prompts/**"
+      - "!backend/scripts/**"
       - ".github/workflows/app.yml"
   workflow_dispatch:
 

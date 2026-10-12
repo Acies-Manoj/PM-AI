@@ -39,3 +39,25 @@ GitHub settings on the repo (Settings, Secrets and variables, Actions):
 | Variable | `TF_STATE_BUCKET` | Name of the state bucket |
 | Secret | `TF_VAR_amplify_access_token` | GitHub token for Amplify |
 | Environment | `practice` | Required reviewer: you |
+| Variable | `PROMPTS_ROLE_ARN` | ARN of `gha-prompts-practice-manoj` (see below) |
+
+## Prompts role
+
+`.github/workflows/prompts.yml` publishes new Bedrock prompt versions with its own, narrower role, so
+the powerful deploy role is not used for it.
+
+| File | Purpose |
+|---|---|
+| `prompts-trust-policy.json` | Trusted only for this repo's infra branch |
+| `prompts-permissions-policy.json` | Only the Bedrock Prompt Management actions, in the stack's region |
+
+Same placeholders and the same `.local.json` routine as above:
+
+```
+aws iam create-role --role-name gha-prompts-practice-manoj --assume-role-policy-document file://infra/ci/prompts-trust.local.json --profile <profile>
+aws iam put-role-policy --role-name gha-prompts-practice-manoj --policy-name pmai-prompts --policy-document file://infra/ci/prompts-permissions.local.json --profile <profile>
+```
+
+The workflow writes the ids to `infra/environments/opentofu/prompt-ids-<env>.tfvars.json`; the infra
+workflow passes that file as a second `-var-file`, so `bedrock_prompt_ids` is not set in the main
+settings file.

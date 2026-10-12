@@ -69,10 +69,20 @@ locals {
     }] : []
   )
 
+  # Frontend origin, worked out from the Amplify app itself, so nobody types it into tfvars.
+  # The Amplify app's default_domain exists as soon as the app is created (no build needed), and
+  # a branch is served at https://<branch>.<default_domain> (a "/" in the branch name becomes "-").
+  amplify_origin = var.enable_amplify ? "https://${replace(var.amplify_branch_name, "/", "-")}.${aws_amplify_app.frontend[0].default_domain}" : ""
+
+  # Every origin allowed to call the API (API Gateway CORS, S3 CORS and the backend's CORS_ORIGINS).
+  # The list is built with a conditional on a known flag, not compact(), so its LENGTH is known at
+  # plan time (the S3 CORS rule below needs that).
+  cors_origins = concat(var.extra_cors_origins, var.enable_amplify ? [local.amplify_origin] : [])
+
   # Names below are the ones the backend reads (backend/app/config.py).
   # S3_BUCKET + DDB_SESSIONS + DDB_DOCS must all be set, or the backend falls back to local files.
   ecs_environment = concat([
-    { name = "CORS_ORIGINS", value = join(",", var.api_gateway_cors_allowed_origins) },
+    { name = "CORS_ORIGINS", value = join(",", local.cors_origins) },
     { name = "BEDROCK_PROMPT_IDS", value = jsonencode(var.bedrock_prompt_ids) },
     { name = "AWS_REGION", value = var.aws_region },
     { name = "TRANSLATE_REGION", value = var.aws_region },

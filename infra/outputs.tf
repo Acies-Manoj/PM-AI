@@ -64,6 +64,21 @@ output "bedrock_model_id" {
   value       = var.enable_bedrock ? var.bedrock_model_id : ""
 }
 
+output "amplify_app_id" {
+  description = "Amplify app ID, used for `aws amplify start-job --app-id ...`."
+  value       = var.enable_amplify ? aws_amplify_app.frontend[0].id : ""
+}
+
+output "frontend_origin" {
+  description = "Frontend URL (the origin that CORS allows). Empty if Amplify is disabled."
+  value       = local.amplify_origin
+}
+
+output "cors_origins" {
+  description = "Every origin allowed by API Gateway CORS, S3 CORS and the backend."
+  value       = local.cors_origins
+}
+
 output "amplify_default_domain" {
   description = "Amplify default domain, if Amplify is enabled."
   value       = var.enable_amplify ? aws_amplify_app.frontend[0].default_domain : ""

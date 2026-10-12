@@ -260,10 +260,14 @@ variable "health_check_unhealthy_threshold" {
 # -----------------------------
 # API Gateway
 # -----------------------------
-variable "api_gateway_cors_allowed_origins" {
-  description = "Allowed browser origins for API Gateway CORS. Replace with Amplify/custom frontend URL."
+variable "extra_cors_origins" {
+  description = <<-EOT
+    EXTRA browser origins allowed by API Gateway, S3 and the backend, on top of the Amplify URL.
+    The Amplify URL itself is added automatically (see local.cors_origins in locals.tf), so do NOT
+    type it here. Use this for local development (http://localhost:5173) or a custom domain.
+  EOT
   type        = list(string)
-  default     = ["http://localhost:5173"]
+  default     = []
 }
 
 variable "api_gateway_timeout_ms" {
@@ -473,12 +477,6 @@ variable "kms_key_arn" {
   description = "KMS key ARN when s3_encryption_type=aws:kms."
   type        = string
   default     = ""
-}
-
-variable "s3_cors_allowed_origins" {
-  description = "Allowed browser origins for S3 direct upload/download."
-  type        = list(string)
-  default     = ["http://localhost:5173"]
 }
 
 variable "s3_cors_max_age_seconds" {

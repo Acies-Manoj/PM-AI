@@ -28,8 +28,10 @@ resource "aws_amplify_app" "frontend" {
               - node_modules/**/*
   YAML
 
+  # VITE_API_BASE_URL is deliberately NOT set on the app. The API's CORS list needs this app's
+  # default_domain, and the API URL would need the API, which would be a loop (app -> API -> app).
+  # The variable is set on the BRANCH below instead, and a branch variable is what the build uses.
   environment_variables = {
-    VITE_API_BASE_URL         = trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")
     AMPLIFY_MONOREPO_APP_ROOT = "frontend"
   }
 
